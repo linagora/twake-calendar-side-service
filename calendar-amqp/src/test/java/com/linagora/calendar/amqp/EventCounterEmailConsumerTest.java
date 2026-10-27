@@ -183,7 +183,7 @@ public class EventCounterEmailConsumerTest {
             "app", "src", "main", "resources", "templates");
 
         MailTemplateConfiguration mailTemplateConfig = new MailTemplateConfiguration("file://" + templateDirectory.toAbsolutePath(),
-            MaybeSender.getMailSender("no-reply@openpaas.org"));
+            MaybeSender.getMailSender("no-reply@twake.app"));
 
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);

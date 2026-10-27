@@ -19,17 +19,19 @@
 package com.linagora.calendar.saas.contact;
 
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.json;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 
+import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Action;
-import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Audience.Domain;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.AddressBookDeletedEvent;
 import com.linagora.calendar.storage.MemoryOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 import com.linagora.calendar.storage.OpenPaaSDomain;
@@ -47,6 +49,39 @@ class CommonContactOutboundEventConverterTest {
         userDAO = new MemoryOpenPaaSUserDAO();
         domainDAO = new MemoryOpenPaaSDomainDAO();
         testee = new CommonContactEventConverter(userDAO, domainDAO);
+    }
+
+    @Test
+    void shouldConvertAddressBookDeletionWithoutContactData() throws Exception {
+        OpenPaaSUser owner = userDAO.add(Username.of("owner@linagora.com")).block();
+
+        AddressBookDeletedEvent event = testee.convertAddressBookDeletion(
+            new SabreAddressBookDeletedNotificationDTO("addressbooks/principal/custom", "principals/users/" + owner.id().value())).block();
+
+        assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8)).isEqualTo("""
+            {
+              "audience": { "user": "owner@linagora.com" },
+              "action": "DELETE",
+              "path": "addressbooks/principal/custom"
+            }
+            """);
+    }
+
+    @Test
+    void shouldResolveDomainAudienceForAddressBookDeletion() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+
+        AddressBookDeletedEvent event = testee.convertAddressBookDeletion(
+            new SabreAddressBookDeletedNotificationDTO("addressbooks/principal/custom", "principals/domains/" + domain.id().value())).block();
+
+        assertThat(event.audience()).isEqualTo(new CommonContactOutboundEvent.Audience.Domain(domain.domain()));
+    }
+
+    @Test
+    void shouldThrowWhenDeletedAddressBookOwnerCannotBeResolved() {
+        assertThatThrownBy(() -> testee.convertAddressBookDeletion(
+            new SabreAddressBookDeletedNotificationDTO("addressbooks/principal/custom", "principals/users/unknown")).block())
+            .isInstanceOf(CommonContactEventConversionException.class);
     }
 
     @Test
@@ -100,7 +135,7 @@ class CommonContactOutboundEventConverterTest {
 
     @Test
     void shouldResolveDomainAudienceFromDomainOwner() {
-        OpenPaaSDomain domain = domainDAO.add(org.apache.james.core.Domain.of("linagora.com")).block();
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
 
         CommonContactOutboundEvent event = testee.convert(Action.ADD,
             new SabreContactNotificationDTO(CONTACT_PATH, "principals/domains/" + domain.id().value(), """
@@ -111,7 +146,34 @@ class CommonContactOutboundEventConverterTest {
                 END:VCARD
                 """)).block();
 
-        assertThat(event.audience()).isEqualTo(new Domain(domain.domain()));
+        assertThat(event.audience()).isEqualTo(new CommonContactOutboundEvent.Audience.Domain(domain.domain()));
+    }
+
+    @Test
+    void shouldConvertWorkplaceFqdnToVCardProps() throws Exception {
+        // Given a domain member card carrying the workspace host of the member
+        OpenPaaSDomain domain = domainDAO.add(org.apache.james.core.Domain.of("org.example.com")).block();
+
+        // When the Sabre notification of that card is converted
+        CommonContactOutboundEvent event = testee.convert(Action.ADD,
+            new SabreContactNotificationDTO(CONTACT_PATH, "principals/domains/" + domain.id().value(), """
+                BEGIN:VCARD
+                VERSION:4.0
+                UID:contact-uid
+                FN:Alice Martin
+                N:Martin;Alice;;;
+                EMAIL:alice@org.example.com
+                X-TWAKE-WORKPLACE-FQDN:alice.org.example.com
+                END:VCARD
+                """)).block();
+
+        // Then the workspace host is published among the vCard properties, for the stack to build the cozy URL
+        assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8))
+            .inPath("$.payload.vCardProps")
+            .isArray()
+            .contains(json("""
+                ["x-twake-workplace-fqdn", {}, "unknown", "alice.org.example.com"]
+                """));
     }
 
     @Test

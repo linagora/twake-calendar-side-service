@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.amqp;
 
+import static com.linagora.calendar.amqp.model.CalendarEventNotificationEmail.GET_FIRST_VEVENT_FUNCTION;
+
 import java.util.List;
 import java.util.Map;
 
@@ -47,6 +49,7 @@ import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolve
 import com.linagora.calendar.storage.event.EventFields.Person;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
+import net.fortuna.ical4j.model.component.VEvent;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -84,29 +87,39 @@ public class MailDeliveryFailureNotifier {
     }
 
     public Mono<Void> notify(CalendarEventInviteNotificationEmail event, String failedSubject) {
-        MailAddress organizer = EventParseUtils.getOrganizer(event.base().getFirstVEvent())
-            .map(Person::email)
-            .orElse(event.base().senderEmail());
-        Username organizerUser = Username.fromMailAddress(organizer);
-        return settingsResolver.resolveOrDefault(organizerUser, Username.fromMailAddress(event.base().senderEmail()))
-            .flatMap(settings -> generateMail(event, failedSubject, organizer, organizerUser, settings)
-                .flatMap(mailSenderFactory::send))
-            .doOnSuccess(ignored -> LOGGER.warn("Invitation to {} could not be delivered; notified organizer {}",
-                event.base().recipientEmail(), organizer));
+        return notify(event.base().senderEmail(), event.base().getFirstVEvent(), event.base().recipientEmail().asString(), failedSubject);
     }
 
-    private Mono<Mail> generateMail(CalendarEventInviteNotificationEmail event, String failedSubject, MailAddress organizer,
+    public Mono<Void> notifyInvalidRecipient(InvalidRecipientNotificationEmailDTO message) {
+        VEvent vEvent = GET_FIRST_VEVENT_FUNCTION.apply(message.event());
+        return notify(message.senderEmail(), vEvent, message.recipientEmail(),
+            EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY));
+    }
+
+    private Mono<Void> notify(MailAddress senderEmail, VEvent vEvent, String recipient, String failedSubject) {
+        MailAddress organizer = EventParseUtils.getOrganizer(vEvent)
+            .map(Person::email)
+            .orElse(senderEmail);
+        Username organizerUser = Username.fromMailAddress(organizer);
+        return settingsResolver.resolveOrDefault(organizerUser, Username.fromMailAddress(senderEmail))
+            .flatMap(settings -> generateMail(recipient, failedSubject, organizer, organizerUser, settings)
+                .flatMap(mailSenderFactory::send))
+            .doOnSuccess(ignored -> LOGGER.warn("Invitation to {} could not be delivered; notified organizer {}",
+                recipient, organizer));
+    }
+
+    private Mono<Mail> generateMail(String recipient, String failedSubject, MailAddress organizer,
                                     Username organizerUser, ResolvedSettings settings) {
         return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(settings.locale()), TEMPLATE))
             .flatMap(generator -> generator.generate(organizerUser, fromMailAddress,
-                toPugModel(event, failedSubject), List.of(logoAttachment)))
+                toPugModel(recipient, failedSubject), List.of(logoAttachment)))
             .map(message -> new Mail(templateConfiguration.sender(), List.of(organizer), message))
             .subscribeOn(Schedulers.boundedElastic());
     }
 
-    private Map<String, Object> toPugModel(CalendarEventInviteNotificationEmail event, String failedSubject) {
+    private Map<String, Object> toPugModel(String recipient, String failedSubject) {
         return ImmutableMap.of("content", ImmutableMap.of(
             "failedSubject", StringUtils.defaultString(failedSubject),
-            "recipient", event.base().recipientEmail().asString()));
+            "recipient", recipient));
     }
 }

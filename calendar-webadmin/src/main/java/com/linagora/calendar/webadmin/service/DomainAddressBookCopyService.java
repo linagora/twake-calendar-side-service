@@ -38,6 +38,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
 import com.linagora.calendar.storage.ldap.LdapFilter;
 import com.linagora.calendar.storage.ldap.LdapUser;
+import com.linagora.calendar.storage.ldap.LdapUserContactMapper;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -79,11 +80,14 @@ public class DomainAddressBookCopyService {
 
     private final CardDavClient cardDavClient;
     private final LdapDomainMemberProvider ldapDomainMemberProvider;
+    private final LdapUserContactMapper ldapUserContactMapper;
 
     @Inject
-    public DomainAddressBookCopyService(CardDavClient cardDavClient, LdapDomainMemberProvider ldapDomainMemberProvider) {
+    public DomainAddressBookCopyService(CardDavClient cardDavClient, LdapDomainMemberProvider ldapDomainMemberProvider,
+                                        LdapUserContactMapper ldapUserContactMapper) {
         this.cardDavClient = cardDavClient;
         this.ldapDomainMemberProvider = ldapDomainMemberProvider;
+        this.ldapUserContactMapper = ldapUserContactMapper;
     }
 
     public Mono<Task.Result> copyUsers(Domain sourceDomain, Optional<LdapFilter> ldapFilter, Destination destination, Context context) {
@@ -104,7 +108,7 @@ public class DomainAddressBookCopyService {
     }
 
     private AddressBookContact fromLdapUser(LdapUser ldapUser) {
-        return DomainMemberUpdate.toAddressBookContact(ldapUser, computeUid(Optional.empty(), ldapUser.mail()));
+        return DomainMemberUpdate.toAddressBookContact(ldapUser, computeUid(Optional.empty(), ldapUser.mail()), ldapUserContactMapper);
     }
 
     private Mono<Task.Result> copyContact(Destination destination, AddressBookContact contact, Context context) {

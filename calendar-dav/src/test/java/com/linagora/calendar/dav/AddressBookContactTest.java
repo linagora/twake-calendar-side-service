@@ -31,6 +31,8 @@ import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import com.google.common.collect.ImmutableListMultimap;
+
 public class AddressBookContactTest {
 
     @Nested
@@ -325,6 +327,83 @@ public class AddressBookContactTest {
                 softly.assertThat(contacts.get(1).telephoneNumber()).contains("+12345");
             });
         }
+
+        @Test
+        void shouldParseExtraProperties() {
+            // Given a card carrying the workplace of the member as an extended property
+            String vcard = """
+                BEGIN:VCARD
+                VERSION:4.0
+                UID:1234
+                EMAIL:alice@example.com
+                X-TWAKE-WORKPLACE-FQDN:alice.example.com
+                END:VCARD
+                """;
+
+            // When the card is parsed
+            List<AddressBookContact> contacts = AddressBookContact.parse(vcard.getBytes(StandardCharsets.UTF_8));
+
+            // Then the extended property is read along the standard ones
+            assertThat(contacts.getFirst().extraProperties())
+                .isEqualTo(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"));
+        }
+
+        @Test
+        void shouldParseEveryValueOfRepeatedExtraProperty() {
+            // Given a card carrying the same extended property twice
+            String vcard = """
+                BEGIN:VCARD
+                VERSION:4.0
+                UID:1234
+                X-INFO:abcdef
+                X-INFO:R&D
+                END:VCARD
+                """;
+
+            // When the card is parsed
+            List<AddressBookContact> contacts = AddressBookContact.parse(vcard.getBytes(StandardCharsets.UTF_8));
+
+            // Then both values are kept, in the card order
+            assertThat(contacts.getFirst().extraProperties())
+                .isEqualTo(ImmutableListMultimap.of("X-INFO", "abcdef", "X-INFO", "R&D"));
+        }
+
+        @Test
+        void shouldParseExtraPropertyNamesInUpperCase() {
+            // Given a card whose extended property name is written in lower case
+            String vcard = """
+                BEGIN:VCARD
+                VERSION:4.0
+                UID:1234
+                x-twake-workplace-fqdn:alice.example.com
+                END:VCARD
+                """;
+
+            // When the card is parsed
+            List<AddressBookContact> contacts = AddressBookContact.parse(vcard.getBytes(StandardCharsets.UTF_8));
+
+            // Then the property name is normalized to upper case
+            assertThat(contacts.getFirst().extraProperties())
+                .isEqualTo(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"));
+        }
+
+        @Test
+        void shouldIgnoreUnknownPropertiesThatAreNotExtended() {
+            // Given a card carrying a property ez-vcard does not know, without the X- prefix
+            String vcard = """
+                BEGIN:VCARD
+                VERSION:4.0
+                UID:1234
+                FOO:bar
+                END:VCARD
+                """;
+
+            // When the card is parsed
+            List<AddressBookContact> contacts = AddressBookContact.parse(vcard.getBytes(StandardCharsets.UTF_8));
+
+            // Then that property is not taken as an extra property
+            assertThat(contacts.getFirst().extraProperties()).isEqualTo(ImmutableListMultimap.of());
+        }
     }
 
     @Nested
@@ -451,6 +530,227 @@ public class AddressBookContactTest {
                 EMAIL:mai@example.com
                 TEL;TYPE=work:+84991234567
                 END:VCARD""".trim());
+        }
+
+        @Test
+        void shouldBuildVcardWithExtraProperties() {
+            // Given a contact carrying the workplace of the member
+            AddressBookContact card = AddressBookContact.builder()
+                .uid("uid-fqdn")
+                .mail("alice@example.com")
+                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
+                .build();
+
+            // When the card is written
+            String vcard = card.toVcardString();
+
+            // Then the workplace is written as an extended property
+            assertThat(vcard).isEqualToIgnoringNewLines("""
+                BEGIN:VCARD
+                VERSION:4.0
+                UID:uid-fqdn
+                EMAIL:alice@example.com
+                X-TWAKE-WORKPLACE-FQDN:alice.example.com
+                END:VCARD""".trim());
+        }
+
+        @Test
+        void shouldRoundTripExtraProperties() {
+            // Given a contact carrying the workplace of the member
+            AddressBookContact card = AddressBookContact.builder()
+                .uid("uid-fqdn")
+                .mail("alice@example.com")
+                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
+                .build();
+
+            // When the card is written then parsed back
+            List<AddressBookContact> contacts = AddressBookContact.parse(card.toVcardBytes());
+
+            // Then the parsed contact equals the original one
+            assertThat(contacts).containsExactly(card);
+        }
+
+        @Test
+        void shouldRoundTripRepeatedExtraProperty() {
+            // Given a contact carrying two values for the same extended property
+            AddressBookContact card = AddressBookContact.builder()
+                .uid("uid-info")
+                .mail("alice@example.com")
+                .extraProperties(ImmutableListMultimap.of("X-INFO", "abcdef", "X-INFO", "R&D"))
+                .build();
+
+            // When the card is written then parsed back
+            List<AddressBookContact> contacts = AddressBookContact.parse(card.toVcardBytes());
+
+            // Then both values are written as two properties and read back in the same order
+            assertThat(card.toVcardString()).contains("X-INFO:abcdef\r\nX-INFO:R&D\r\n");
+            assertThat(contacts).containsExactly(card);
+        }
+    }
+
+    @Nested
+    class Normalization {
+        @Test
+        void shouldNormalizeSpacesOfTextValues() {
+            // Given text values surrounded by and holding repeated spaces
+            // When a contact is built with them
+            AddressBookContact contact = AddressBookContact.builder()
+                .familyName(" Martin ")
+                .givenName("Alice  Marie")
+                .displayName("  Alice   Martin ")
+                .telephoneNumber(" +33 6 00 ")
+                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", " alice.example.com "))
+                .build();
+
+            // Then the spaces are normalized
+            assertThat(contact).isEqualTo(AddressBookContact.builder()
+                .familyName("Martin")
+                .givenName("Alice Marie")
+                .displayName("Alice Martin")
+                .telephoneNumber("+33 6 00")
+                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
+                .build());
+        }
+
+        @Test
+        void shouldDropBlankTextValues() {
+            // Given blank text values
+            // When a contact is built with them
+            AddressBookContact contact = AddressBookContact.builder()
+                .familyName("")
+                .givenName("  ")
+                .displayName(" ")
+                .telephoneNumber("")
+                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "  "))
+                .build();
+
+            // Then the contact holds none of them
+            assertThat(contact).isEqualTo(AddressBookContact.builder().build());
+        }
+
+        @Test
+        void shouldEqualTheContactReadBackFromItsCard() {
+            // Given a contact built from values holding extra spaces
+            AddressBookContact contact = AddressBookContact.builder()
+                .uid("uid-spaces")
+                .mail("alice@example.com")
+                .familyName(" Martin ")
+                .displayName("Alice  Martin")
+                .build();
+
+            // When its card is written then parsed back
+            List<AddressBookContact> contacts = AddressBookContact.parse(contact.toVcardBytes());
+
+            // Then the parsed contact equals the built one
+            assertThat(contacts).containsExactly(contact);
+        }
+    }
+
+    @Nested
+    class HasSameContentAs {
+        private final AddressBookContact contact = AddressBookContact.builder()
+            .uid("uid-1")
+            .familyName("Martin")
+            .givenName("Alice")
+            .displayName("Alice Martin")
+            .mail("alice@example.com")
+            .telephoneNumber("+33600000000")
+            .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
+            .build();
+
+        private AddressBookContact.Builder copy() {
+            return AddressBookContact.builder()
+                .uid(contact.uid())
+                .familyName(contact.familyName())
+                .givenName(contact.givenName())
+                .displayName(contact.displayName())
+                .mail(contact.mail())
+                .telephoneNumber(contact.telephoneNumber())
+                .extraProperties(contact.extraProperties());
+        }
+
+        @Test
+        void shouldIgnoreUid() {
+            // Given the same contact stored under another uid
+            AddressBookContact other = copy().uid("uid-2").build();
+
+            // When both contacts are compared
+            boolean sameContent = contact.hasSameContentAs(other);
+
+            // Then they hold the same content
+            assertThat(sameContent).isTrue();
+        }
+
+        @Test
+        void shouldCompareFamilyName() {
+            // Given the same contact with another family name
+            AddressBookContact other = copy().familyName("Durand").build();
+
+            // When both contacts are compared
+            boolean sameContent = contact.hasSameContentAs(other);
+
+            // Then the content differs
+            assertThat(sameContent).isFalse();
+        }
+
+        @Test
+        void shouldCompareGivenName() {
+            // Given the same contact with another given name
+            AddressBookContact other = copy().givenName("Alicia").build();
+
+            // When both contacts are compared
+            boolean sameContent = contact.hasSameContentAs(other);
+
+            // Then the content differs
+            assertThat(sameContent).isFalse();
+        }
+
+        @Test
+        void shouldCompareDisplayName() {
+            // Given the same contact with another display name
+            AddressBookContact other = copy().displayName("A. Martin").build();
+
+            // When both contacts are compared
+            boolean sameContent = contact.hasSameContentAs(other);
+
+            // Then the content differs
+            assertThat(sameContent).isFalse();
+        }
+
+        @Test
+        void shouldCompareMail() {
+            // Given the same contact with another mail
+            AddressBookContact other = copy().mail("alice.martin@example.com").build();
+
+            // When both contacts are compared
+            boolean sameContent = contact.hasSameContentAs(other);
+
+            // Then the content differs
+            assertThat(sameContent).isFalse();
+        }
+
+        @Test
+        void shouldCompareTelephoneNumber() {
+            // Given the same contact with another telephone number
+            AddressBookContact other = copy().telephoneNumber("+33611111111").build();
+
+            // When both contacts are compared
+            boolean sameContent = contact.hasSameContentAs(other);
+
+            // Then the content differs
+            assertThat(sameContent).isFalse();
+        }
+
+        @Test
+        void shouldCompareExtraProperties() {
+            // Given the same contact whose workplace is not known yet
+            AddressBookContact other = copy().extraProperties(ImmutableListMultimap.of()).build();
+
+            // When both contacts are compared
+            boolean sameContent = contact.hasSameContentAs(other);
+
+            // Then the content differs
+            assertThat(sameContent).isFalse();
         }
     }
 }

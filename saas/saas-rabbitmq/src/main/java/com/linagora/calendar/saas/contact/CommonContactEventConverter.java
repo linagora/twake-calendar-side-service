@@ -31,8 +31,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linagora.calendar.dav.ContactUid;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Action;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.AddressBookDeletedEvent;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Audience;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Audience.Domain;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.ContactChangedEvent;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -53,16 +55,22 @@ public class CommonContactEventConverter {
         audienceResolver = new AudienceResolver(userDAO, domainDAO);
     }
 
-    public Mono<CommonContactOutboundEvent> convert(Action action, SabreContactNotificationDTO notification) {
-        return audienceResolver.resolve(notification)
+    public Mono<ContactChangedEvent> convert(Action action, SabreContactNotificationDTO notification) {
+        return audienceResolver.resolve(notification.owner())
             .defaultIfEmpty(new Audience.Unknown())
             .flatMap(audience -> Mono.fromCallable(() -> convertContact(action, notification, audience)));
     }
 
-    public CommonContactOutboundEvent convert(Action action, Audience audience, String path, String cardData) {
+    public Mono<AddressBookDeletedEvent> convertAddressBookDeletion(SabreAddressBookDeletedNotificationDTO notification) {
+        return audienceResolver.resolve(notification.owner())
+            .defaultIfEmpty(new Audience.Unknown())
+            .map(audience -> new AddressBookDeletedEvent(audience, URI.create(notification.path())));
+    }
+
+    public ContactChangedEvent convert(Action action, Audience audience, String path, String cardData) {
         try {
             ConvertedContact convertedContact = convertVCard(cardData);
-            return new CommonContactOutboundEvent(audience, action, URI.create(path), convertedContact.uid(), convertedContact.payload());
+            return new ContactChangedEvent(audience, action, URI.create(path), convertedContact.uid(), convertedContact.payload());
         } catch (CommonContactEventConversionException e) {
             throw e;
         } catch (Exception e) {
@@ -70,7 +78,7 @@ public class CommonContactEventConverter {
         }
     }
 
-    private CommonContactOutboundEvent convertContact(Action action, SabreContactNotificationDTO notification, Audience audience) {
+    private ContactChangedEvent convertContact(Action action, SabreContactNotificationDTO notification, Audience audience) {
         return convert(action, audience, notification.path(), notification.carddata());
     }
 
@@ -106,8 +114,8 @@ public class CommonContactEventConverter {
             this.domainDAO = domainDAO;
         }
 
-        Mono<CommonContactOutboundEvent.Audience> resolve(SabreContactNotificationDTO notification) {
-            return switch (notification.owner()) {
+        Mono<CommonContactOutboundEvent.Audience> resolve(String principal) {
+            return switch (principal) {
                 case String owner when Strings.CS.startsWith(owner, PRINCIPALS_USERS_PREFIX) -> resolveUser(owner);
                 case String owner when Strings.CS.startsWith(owner, PRINCIPALS_DOMAINS_PREFIX) -> resolveDomain(owner);
                 case null, default -> Mono.empty();

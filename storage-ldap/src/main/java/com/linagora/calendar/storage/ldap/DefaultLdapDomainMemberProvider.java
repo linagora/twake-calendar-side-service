@@ -45,12 +45,15 @@ public class DefaultLdapDomainMemberProvider implements LdapDomainMemberProvider
 
     private final LdapRepositoryConfiguration ldapRepositoryConfiguration;
     private final LDAPConnectionPool ldapConnectionPool;
+    private final LdapVCardPropertiesConfiguration vcardPropertiesConfiguration;
 
     @Inject
     public DefaultLdapDomainMemberProvider(LdapRepositoryConfiguration ldapRepositoryConfiguration,
-                                           LDAPConnectionPool ldapConnectionPool) {
+                                           LDAPConnectionPool ldapConnectionPool,
+                                           LdapVCardPropertiesConfiguration vcardPropertiesConfiguration) {
         this.ldapRepositoryConfiguration = ldapRepositoryConfiguration;
         this.ldapConnectionPool = ldapConnectionPool;
+        this.vcardPropertiesConfiguration = vcardPropertiesConfiguration;
     }
 
     @Override
@@ -61,7 +64,7 @@ public class DefaultLdapDomainMemberProvider implements LdapDomainMemberProvider
                 Filter filter = buildFilter(domain, additionalFilter);
                 SearchResult searchResult = ldapConnectionPool.search(baseDn, SearchScope.SUB, filter);
                 return Flux.fromIterable(searchResult.getSearchEntries())
-                    .flatMap(entry -> Mono.fromCallable(() -> LdapUser.fromLdapEntry(entry)));
+                    .flatMap(entry -> Mono.fromCallable(() -> LdapUser.fromLdapEntry(entry, vcardPropertiesConfiguration.ldapAttributes())));
             } catch (LDAPSearchException e) {
                 return Flux.error(e);
             }

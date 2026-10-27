@@ -224,7 +224,7 @@ public class EventResourceConsumerTest {
             "app", "src", "main", "resources", "templates");
 
         MailTemplateConfiguration mailTemplateConfig = new MailTemplateConfiguration("file://" + templateDirectory.toAbsolutePath(),
-            MaybeSender.getMailSender("no-reply@openpaas.org"));
+            MaybeSender.getMailSender("no-reply@twake.app"));
 
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
@@ -288,7 +288,7 @@ public class EventResourceConsumerTest {
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(resourceAdmin.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: A user booked the resource Projector")
@@ -416,7 +416,7 @@ public class EventResourceConsumerTest {
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[1].message"))
                 .contains("Subject: The reservation of resource Projector has been accepted")
@@ -469,7 +469,7 @@ public class EventResourceConsumerTest {
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[1].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(organizer.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[1].message"))
                 .contains("Subject: The reservation of resource Projector has been declined")
@@ -573,7 +573,7 @@ public class EventResourceConsumerTest {
 
         // Then resource administrator should receive a resource booking request email
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(resourceAdmin.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: A user booked the resource Projector")

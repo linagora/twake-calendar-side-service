@@ -24,6 +24,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -2052,6 +2053,154 @@ public class AlarmInstantFactoryTest {
                 Optional.empty(),
                 List.of(),
                 AlarmAction.DISPLAY));
+    }
+
+    // In 2026, Europe/Paris goes from CET (+01:00) to CEST (+02:00) on March 29 at 02:00,
+    // and back on October 25 at 03:00
+    @Nested
+    class DaylightSavingTimeTest {
+
+        private static final Username BOB = Username.of("bob@example.com");
+
+        private Calendar parisEvent(String dtStart, String dtEnd, String rrule, String trigger) {
+            return CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Sabre//Sabre VObject 4.2.2//EN
+                BEGIN:VTIMEZONE
+                TZID:Europe/Paris
+                BEGIN:DAYLIGHT
+                TZOFFSETFROM:+0100
+                TZOFFSETTO:+0200
+                TZNAME:CEST
+                DTSTART:19700329T020000
+                RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+                END:DAYLIGHT
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0200
+                TZOFFSETTO:+0100
+                TZNAME:CET
+                DTSTART:19701025T030000
+                RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+                END:STANDARD
+                END:VTIMEZONE
+                BEGIN:VEVENT
+                UID:dst-event
+                DTSTART;TZID=Europe/Paris:%s
+                DTEND;TZID=Europe/Paris:%s
+                %s
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                SUMMARY:Daily Standup
+                BEGIN:VALARM
+                ACTION:EMAIL
+                TRIGGER:%s
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(dtStart, dtEnd, rrule, trigger));
+        }
+
+        private List<AlarmInstant> allAlarms(Calendar calendar, Instant clock) {
+            AlarmInstantFactory factory = testee(clock);
+            List<AlarmInstant> alarms = new ArrayList<>();
+            Optional<AlarmInstant> next = factory.computeNextAlarmInstant(calendar, BOB, Optional.empty());
+            while (next.isPresent() && alarms.size() < 10) {
+                alarms.add(next.get());
+                next = factory.computeNextAlarmInstant(calendar, BOB, next.map(AlarmInstant::alarmTime));
+            }
+            return alarms;
+        }
+
+        @Test
+        void recurringAlarmShouldKeepTheWallClockTimeWhenSwitchingToSummerTime() {
+            Calendar calendar = parisEvent("20260328T100000", "20260328T110000",
+                "RRULE:FREQ=DAILY;COUNT=3", "-PT15M");
+
+            List<AlarmInstant> alarms = allAlarms(calendar, Instant.parse("2026-03-27T00:00:00Z"));
+
+            assertThat(alarms.stream().map(AlarmInstant::eventStartTime).toList())
+                .describedAs("10:00 in Paris is 09:00Z in CET, then 08:00Z in CEST")
+                .isEqualTo(List.of(Instant.parse("2026-03-28T09:00:00Z"),
+                    Instant.parse("2026-03-29T08:00:00Z"),
+                    Instant.parse("2026-03-30T08:00:00Z")));
+            assertThat(alarms.stream().map(AlarmInstant::alarmTime).toList())
+                .isEqualTo(List.of(Instant.parse("2026-03-28T08:45:00Z"),
+                    Instant.parse("2026-03-29T07:45:00Z"),
+                    Instant.parse("2026-03-30T07:45:00Z")));
+        }
+
+        @Test
+        void recurringAlarmShouldKeepTheWallClockTimeWhenSwitchingToWinterTime() {
+            Calendar calendar = parisEvent("20261024T100000", "20261024T110000",
+                "RRULE:FREQ=DAILY;COUNT=3", "-PT15M");
+
+            List<AlarmInstant> alarms = allAlarms(calendar, Instant.parse("2026-10-23T00:00:00Z"));
+
+            assertThat(alarms.stream().map(AlarmInstant::eventStartTime).toList())
+                .describedAs("10:00 in Paris is 08:00Z in CEST, then 09:00Z in CET")
+                .isEqualTo(List.of(Instant.parse("2026-10-24T08:00:00Z"),
+                    Instant.parse("2026-10-25T09:00:00Z"),
+                    Instant.parse("2026-10-26T09:00:00Z")));
+            assertThat(alarms.stream().map(AlarmInstant::alarmTime).toList())
+                .isEqualTo(List.of(Instant.parse("2026-10-24T07:45:00Z"),
+                    Instant.parse("2026-10-25T08:45:00Z"),
+                    Instant.parse("2026-10-26T08:45:00Z")));
+        }
+
+        @Test
+        void weeklyAlarmShouldKeepTheWallClockTimeAcrossTheSwitch() {
+            Calendar calendar = parisEvent("20260323T090000", "20260323T100000",
+                "RRULE:FREQ=WEEKLY;COUNT=2", "-PT15M");
+
+            List<AlarmInstant> alarms = allAlarms(calendar, Instant.parse("2026-03-22T00:00:00Z"));
+
+            assertThat(alarms.stream().map(AlarmInstant::alarmTime).toList())
+                .isEqualTo(List.of(Instant.parse("2026-03-23T07:45:00Z"),
+                    Instant.parse("2026-03-30T06:45:00Z")));
+        }
+
+        @Test
+        void alarmShouldBeAnExactDurationBeforeAnEventRightAfterTheSwitch() {
+            // 03:30 CEST is 01:30Z: two hours before is 23:30Z, i.e. 00:30 CET on the wall
+            // clock, and not 01:30 on the wall clock
+            Calendar calendar = parisEvent("20260329T033000", "20260329T043000", "", "-PT2H");
+
+            Optional<AlarmInstant> alarm = testee(Instant.parse("2026-03-27T00:00:00Z"))
+                .computeNextAlarmInstant(calendar, BOB);
+
+            assertThat(alarm.map(AlarmInstant::alarmTime))
+                .contains(Instant.parse("2026-03-28T23:30:00Z"));
+        }
+
+        @Test
+        void eventInTheSkippedHourShouldBeReadWithTheOffsetBeforeTheGap() {
+            // 02:30 does not exist on March 29: RFC 5545 reads it with the offset before the
+            // gap, +01:00, which is 03:30 CEST
+            Calendar calendar = parisEvent("20260329T023000", "20260329T033000", "", "-PT15M");
+
+            Optional<AlarmInstant> alarm = testee(Instant.parse("2026-03-27T00:00:00Z"))
+                .computeNextAlarmInstant(calendar, BOB);
+
+            assertThat(alarm.map(AlarmInstant::eventStartTime))
+                .contains(Instant.parse("2026-03-29T01:30:00Z"));
+            assertThat(alarm.map(AlarmInstant::alarmTime))
+                .contains(Instant.parse("2026-03-29T01:15:00Z"));
+        }
+
+        @Test
+        void eventInTheRepeatedHourShouldBeReadAsItsFirstOccurrence() {
+            // 02:30 happens twice on October 25: RFC 5545 takes the first one, in CEST
+            Calendar calendar = parisEvent("20261025T023000", "20261025T033000", "", "-PT15M");
+
+            Optional<AlarmInstant> alarm = testee(Instant.parse("2026-10-23T00:00:00Z"))
+                .computeNextAlarmInstant(calendar, BOB);
+
+            assertThat(alarm.map(AlarmInstant::eventStartTime))
+                .contains(Instant.parse("2026-10-25T00:30:00Z"));
+            assertThat(alarm.map(AlarmInstant::alarmTime))
+                .contains(Instant.parse("2026-10-25T00:15:00Z"));
+        }
     }
 
     private MailAddress asMailAddress(String email) {

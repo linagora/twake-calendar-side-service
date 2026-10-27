@@ -59,6 +59,8 @@ import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
 import com.linagora.calendar.storage.ldap.LdapUser;
+import com.linagora.calendar.storage.ldap.LdapUserContactMapper;
+import com.linagora.calendar.storage.ldap.LdapVCardPropertiesConfiguration;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.webadmin.DomainMembersAddressBookRoutes.LdapToDavDomainMembersSyncTaskRegistration;
 import com.linagora.calendar.webadmin.service.DavDomainMembersClearService;
@@ -92,7 +94,7 @@ public class DomainMembersAddressBookRoutesTest {
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
         ldapDomainMemberProvider = mock(LdapDomainMemberProvider.class);
         LdapToDavDomainMembersSyncService syncService = new LdapToDavDomainMembersSyncService(
-            ldapDomainMemberProvider, cardDavClient);
+            ldapDomainMemberProvider, cardDavClient, new LdapUserContactMapper(LdapVCardPropertiesConfiguration.EMPTY));
 
         LdapToDavDomainMembersSyncTaskRegistration ldapToDavDomainMembersSyncTaskRegistration = new LdapToDavDomainMembersSyncTaskRegistration(
             syncService, domainDAO);

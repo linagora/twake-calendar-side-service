@@ -95,7 +95,7 @@ public interface AlarmEventSchedulerContract {
         JsonPath smtpMailsResponse = getSmtpMailbox();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo("attendee@abc.com");
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: Notification: Alarm Test Event")

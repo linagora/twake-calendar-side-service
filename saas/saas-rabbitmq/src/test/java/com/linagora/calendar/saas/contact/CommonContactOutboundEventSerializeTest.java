@@ -29,17 +29,33 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linagora.calendar.dav.ContactUid;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.AddressBookDeletedEvent;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Audience.Domain;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.ContactChangedEvent;
 
 class CommonContactOutboundEventSerializeTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    @Test
+    void shouldSerializeAddressBookDeletionWithoutUidOrPayload() throws Exception {
+        CommonContactOutboundEvent event = new AddressBookDeletedEvent(new CommonContactOutboundEvent.Audience.User(Username.of("alice@linagora.com")),
+            URI.create("addressbooks/alice/custom"));
+
+        assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8)).isEqualTo("""
+            {
+              "audience": { "user": "alice@linagora.com" },
+              "action": "DELETE",
+              "path": "addressbooks/alice/custom"
+            }
+            """);
+    }
 
     @Test
     void shouldSerializeContactDataAndAudience() throws Exception {
         ObjectNode jsContact = OBJECT_MAPPER.readValue("""
             { "version": "1.0", "uid": "contact-uid", "name": { "full": "Alice" } }
             """, ObjectNode.class);
-        CommonContactOutboundEvent event = new CommonContactOutboundEvent(new CommonContactOutboundEvent.Audience.User(Username.of("alice@linagora.com")), CommonContactOutboundEvent.Action.ADD,
+        CommonContactOutboundEvent event = new ContactChangedEvent(new CommonContactOutboundEvent.Audience.User(Username.of("alice@linagora.com")), CommonContactOutboundEvent.Action.ADD,
             URI.create("addressbooks/alice/collected"), new ContactUid("contact-uid"),
             jsContact);
 
@@ -62,7 +78,7 @@ class CommonContactOutboundEventSerializeTest {
 
     @Test
     void shouldOmitContactDataAndKeepEmptyAudience() throws Exception {
-        CommonContactOutboundEvent event = new CommonContactOutboundEvent(new CommonContactOutboundEvent.Audience.Unknown(), CommonContactOutboundEvent.Action.DELETE,
+        CommonContactOutboundEvent event = new ContactChangedEvent(new CommonContactOutboundEvent.Audience.Unknown(), CommonContactOutboundEvent.Action.DELETE,
             URI.create("addressbooks/alice/collected"), new ContactUid("contact-uid"), null);
 
         String actual = new String(event.serialize(), StandardCharsets.UTF_8);
@@ -79,7 +95,7 @@ class CommonContactOutboundEventSerializeTest {
 
     @Test
     void shouldSerializeDomainAudience() throws Exception {
-        CommonContactOutboundEvent event = new CommonContactOutboundEvent(new Domain(org.apache.james.core.Domain.of("linagora.com")), CommonContactOutboundEvent.Action.ADD,
+        CommonContactOutboundEvent event = new ContactChangedEvent(new Domain(org.apache.james.core.Domain.of("linagora.com")), CommonContactOutboundEvent.Action.ADD,
             URI.create("addressbooks/domain/domain-members/contact-uid.vcf"), new ContactUid("contact-uid"), null);
 
         assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8)).isEqualTo("""

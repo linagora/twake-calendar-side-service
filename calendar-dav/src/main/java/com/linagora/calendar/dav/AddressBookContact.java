@@ -21,14 +21,20 @@ package com.linagora.calendar.dav;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableListMultimap;
+import com.linagora.calendar.storage.UserContactResolver.UserContact;
 
 import ezvcard.Ezvcard;
 import ezvcard.VCard;
@@ -36,6 +42,7 @@ import ezvcard.VCardVersion;
 import ezvcard.parameter.TelephoneType;
 import ezvcard.property.Email;
 import ezvcard.property.FormattedName;
+import ezvcard.property.RawProperty;
 import ezvcard.property.StructuredName;
 import ezvcard.property.Telephone;
 import ezvcard.property.Uid;
@@ -46,7 +53,10 @@ public record AddressBookContact(Optional<String> uid,
                                  Optional<String> givenName,
                                  Optional<String> displayName,
                                  Optional<MailAddress> mail,
-                                 Optional<String> telephoneNumber) {
+                                 Optional<String> telephoneNumber,
+                                 ImmutableListMultimap<String, String> extraProperties) {
+
+    private static final String EXTENDED_PROPERTY_PREFIX = "X-";
 
     public static class DavContactCardParseException extends RuntimeException {
         public DavContactCardParseException(String message, Throwable cause) {
@@ -61,6 +71,7 @@ public record AddressBookContact(Optional<String> uid,
         private Optional<String> displayName = Optional.empty();
         private Optional<MailAddress> mail = Optional.empty();
         private Optional<String> telephoneNumber = Optional.empty();
+        private ImmutableListMultimap<String, String> extraProperties = ImmutableListMultimap.of();
 
         public Builder uid(String uid) {
             this.uid = Optional.of(uid);
@@ -127,8 +138,36 @@ public record AddressBookContact(Optional<String> uid,
             return this;
         }
 
+        public Builder extraProperties(ImmutableListMultimap<String, String> extraProperties) {
+            this.extraProperties = extraProperties;
+            return this;
+        }
+
+        public Builder userContact(UserContact userContact) {
+            return familyName(userContact.familyName())
+                .givenName(userContact.givenName())
+                .displayName(userContact.displayName())
+                .telephoneNumber(userContact.telephoneNumber())
+                .extraProperties(userContact.extraProperties());
+        }
+
+        // Text values are normalized, blank ones being dropped, so that a contact equals the card it is written to and read back from.
         public AddressBookContact build() {
-            return new AddressBookContact(uid, familyName, givenName, displayName, mail, telephoneNumber);
+            return new AddressBookContact(uid, normalize(familyName), normalize(givenName), normalize(displayName), mail,
+                normalize(telephoneNumber), normalize(extraProperties));
+        }
+
+        private static Optional<String> normalize(Optional<String> value) {
+            return value.map(StringUtils::normalizeSpace)
+                .filter(StringUtils::isNotEmpty);
+        }
+
+        private static ImmutableListMultimap<String, String> normalize(ImmutableListMultimap<String, String> properties) {
+            return properties.entries().stream()
+                .flatMap(property -> normalize(Optional.ofNullable(property.getValue()))
+                    .map(value -> Map.entry(property.getKey(), value))
+                    .stream())
+                .collect(ImmutableListMultimap.toImmutableListMultimap(Map.Entry::getKey, Map.Entry::getValue));
         }
     }
 
@@ -146,6 +185,19 @@ public record AddressBookContact(Optional<String> uid,
                 .toList();
         } catch (Exception e) {
             throw new DavContactCardParseException("parse vcard error", e);
+        }
+    }
+
+    public static List<AddressBookContact> parseJCard(String jcardData) {
+        Preconditions.checkNotNull(jcardData, "jCard data must not be null");
+
+        try {
+            return Ezvcard.parseJson(jcardData).all()
+                .stream()
+                .map(AddressBookContact::asAddressBookContact)
+                .toList();
+        } catch (Exception e) {
+            throw new DavContactCardParseException("parse jCard error", e);
         }
     }
 
@@ -191,7 +243,30 @@ public record AddressBookContact(Optional<String> uid,
             .displayName(displayName)
             .mail(mail)
             .telephoneNumber(telephone)
+            .extraProperties(extraProperties(vcard))
             .build();
+    }
+
+    // An extended property may occur several times: every value is kept, in the card order.
+    private static ImmutableListMultimap<String, String> extraProperties(VCard vcard) {
+        return vcard.getExtendedProperties().stream()
+            .filter(property -> Strings.CI.startsWith(property.getPropertyName(), EXTENDED_PROPERTY_PREFIX))
+            .filter(property -> StringUtils.isNotEmpty(property.getValue()))
+            .collect(ImmutableListMultimap.toImmutableListMultimap(
+                property -> property.getPropertyName().toUpperCase(Locale.US),
+                RawProperty::getValue));
+    }
+
+    /**
+     * Whether both contacts carry the same details, regardless of their uid.
+     */
+    public boolean hasSameContentAs(AddressBookContact other) {
+        return Objects.equals(familyName, other.familyName)
+            && Objects.equals(givenName, other.givenName)
+            && Objects.equals(displayName, other.displayName)
+            && Objects.equals(mail, other.mail)
+            && Objects.equals(telephoneNumber, other.telephoneNumber)
+            && Objects.equals(extraProperties, other.extraProperties);
     }
 
     public String vcardUid() {
@@ -204,11 +279,8 @@ public record AddressBookContact(Optional<String> uid,
         vcard.setUid(new Uid(vcardUid()));
 
         this.displayName()
-            .map(StringUtils::trimToNull)
             .ifPresent(vcard::setFormattedName);
 
-        Optional<String> familyName = this.familyName().map(StringUtils::trimToNull);
-        Optional<String> givenName = this.givenName().map(StringUtils::trimToNull);
         if (familyName.isPresent() || givenName.isPresent()) {
             StructuredName name = new StructuredName();
             familyName.ifPresent(name::setFamily);
@@ -220,12 +292,14 @@ public record AddressBookContact(Optional<String> uid,
             .ifPresent(email -> vcard.addEmail(new Email(email)));
 
         this.telephoneNumber()
-            .map(StringUtils::trimToNull)
             .ifPresent(phone -> {
                 Telephone tel = new Telephone(phone);
                 tel.getTypes().add(TelephoneType.WORK);
                 vcard.addTelephoneNumber(tel);
             });
+
+        this.extraProperties()
+            .forEach(vcard::addExtendedProperty);
 
         vcard.setVersion(VCardVersion.V4_0);
         return vcard;

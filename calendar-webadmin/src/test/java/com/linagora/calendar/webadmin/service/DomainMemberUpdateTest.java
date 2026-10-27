@@ -18,20 +18,35 @@
 
 package com.linagora.calendar.webadmin.service;
 
-import static com.linagora.calendar.webadmin.service.DomainMemberUpdate.toAddressBookContact;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.Test;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.common.collect.ImmutableListMultimap;
+import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.storage.ldap.LdapUser;
+import com.linagora.calendar.storage.ldap.LdapUserContactMapper;
+import com.linagora.calendar.storage.ldap.LdapVCardPropertiesConfiguration;
 
 public class DomainMemberUpdateTest {
+    private static final LdapUserContactMapper LDAP_USER_CONTACT_MAPPER = new LdapUserContactMapper(
+        new LdapVCardPropertiesConfiguration(ImmutableMap.of("twakeWorkspaceUrl", "X-TWAKE-WORKPLACE-FQDN")));
+
+    private static DomainMemberUpdate compute(Collection<LdapUser> sourceOfTruth, Collection<AddressBookContact> projectionContent) {
+        return DomainMemberUpdate.compute(sourceOfTruth, projectionContent, LDAP_USER_CONTACT_MAPPER);
+    }
+
+    private static AddressBookContact toAddressBookContact(LdapUser ldap, Optional<String> uid) {
+        return DomainMemberUpdate.toAddressBookContact(ldap, uid, LDAP_USER_CONTACT_MAPPER);
+    }
 
     private static MailAddress mailAddress(String input) {
         return Throwing.supplier(() -> new MailAddress(input)).get();
@@ -64,7 +79,7 @@ public class DomainMemberUpdateTest {
     void computeShouldDetectAddedMember() {
         LdapUser ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
 
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of());
+        DomainMemberUpdate result = compute(List.of(ldap), List.of());
 
         assertSoftly(softly -> {
             softly.assertThat(result.added())
@@ -86,7 +101,7 @@ public class DomainMemberUpdateTest {
             .build();
 
         // When computing the CardDAV contact projection
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of());
+        DomainMemberUpdate result = compute(List.of(ldap), List.of());
 
         // Then givenName is extracted from cn after removing sn, while displayName falls back to cn
         assertThat(result.added())
@@ -112,7 +127,7 @@ public class DomainMemberUpdateTest {
             .build();
 
         // When computing the CardDAV contact projection
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of());
+        DomainMemberUpdate result = compute(List.of(ldap), List.of());
 
         // Then displayName falls back to cn so the vCard formatted name remains readable
         assertThat(result.added())
@@ -136,7 +151,7 @@ public class DomainMemberUpdateTest {
             .build();
 
         // When computing the CardDAV contact projection
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of());
+        DomainMemberUpdate result = compute(List.of(ldap), List.of());
 
         // Then displayName falls back to email, without using email as givenName or familyName
         assertThat(result.added())
@@ -152,7 +167,7 @@ public class DomainMemberUpdateTest {
     void computeShouldDetectDeletedMember() {
         AddressBookContact dav = davCard("uid123", "user2@example.com", "Tran", "B", "Tran B", "456");
 
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(), List.of(dav));
+        DomainMemberUpdate result = compute(List.of(), List.of(dav));
 
         assertSoftly(softly -> {
             softly.assertThat(result.added()).isEmpty();
@@ -166,7 +181,7 @@ public class DomainMemberUpdateTest {
         LdapUser ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
         AddressBookContact dav = davCard("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
 
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
+        DomainMemberUpdate result = compute(List.of(ldap), List.of(dav));
 
         assertSoftly(softly -> {
             softly.assertThat(result.added()).isEmpty();
@@ -180,7 +195,7 @@ public class DomainMemberUpdateTest {
         LdapUser ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
         AddressBookContact dav = davCard("uid456", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "456");
 
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
+        DomainMemberUpdate result = compute(List.of(ldap), List.of(dav));
 
         assertSoftly(softly -> {
             softly.assertThat(result.added()).isEmpty();
@@ -194,7 +209,7 @@ public class DomainMemberUpdateTest {
         LdapUser ldap = ldapMember("uid123", "user3@example.com", "Le", "C", "Le C", "789");
         AddressBookContact dav = davCard("uid456", "user3@example.com", "Le", "C", "Different Display Name", "789");
 
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
+        DomainMemberUpdate result = compute(List.of(ldap), List.of(dav));
 
         assertSoftly(softly -> {
             softly.assertThat(result.added()).isEmpty();
@@ -208,7 +223,7 @@ public class DomainMemberUpdateTest {
         LdapUser ldap = ldapMember("uid123", "user5@example.com", "Vo", "E", "Vo E", "111");
         AddressBookContact dav = davCard("uid456", "user5@example.com", "Vo", "E_updated", "Vo E", "111");
 
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
+        DomainMemberUpdate result = compute(List.of(ldap), List.of(dav));
 
         assertThat(result.updated()).containsExactly(toAddressBookContact(ldap, dav.uid()));
     }
@@ -218,9 +233,120 @@ public class DomainMemberUpdateTest {
         LdapUser ldap = ldapMember("uid123", "user6@example.com", "Ho", "F", "Ho F", "222");
         AddressBookContact dav = davCard("uid456", "user6@example.com", "Different", "F", "Ho F", "222");
 
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(ldap), List.of(dav));
+        DomainMemberUpdate result = compute(List.of(ldap), List.of(dav));
 
         assertThat(result.updated()).containsExactly(toAddressBookContact(ldap, dav.uid()));
+    }
+
+    @Test
+    void computeShouldDetectUpdatedWhenExtraPropertyAppears() {
+        // Given an LDAP member whose workspace now exists, and its DAV card written before
+        LdapUser ldap = LdapUser.builder()
+            .uid("uid123")
+            .cn("Ho F")
+            .sn("Ho")
+            .givenName("F")
+            .mail(mailAddress("user7@example.com"))
+            .displayName("Ho F")
+            .extraAttributes(ImmutableMap.of("twakeWorkspaceUrl", "user7.example.com"))
+            .build();
+        AddressBookContact dav = AddressBookContact.builder()
+            .uid("uid456")
+            .mail(mailAddress("user7@example.com"))
+            .familyName("Ho")
+            .givenName("F")
+            .displayName("Ho F")
+            .build();
+
+        // When LDAP and DAV are compared
+        DomainMemberUpdate result = compute(List.of(ldap), List.of(dav));
+
+        // Then the card is updated with the workspace
+        assertThat(result.updated()).containsExactly(toAddressBookContact(ldap, dav.uid()));
+    }
+
+    @Test
+    void computeShouldDetectNoChangeWhenExtraPropertiesAreEqual() {
+        // Given an LDAP member and its DAV card carrying the same workspace
+        LdapUser ldap = LdapUser.builder()
+            .uid("uid123")
+            .cn("Ho F")
+            .sn("Ho")
+            .givenName("F")
+            .mail(mailAddress("user8@example.com"))
+            .displayName("Ho F")
+            .extraAttributes(ImmutableMap.of("twakeWorkspaceUrl", "user8.example.com"))
+            .build();
+        AddressBookContact dav = AddressBookContact.builder()
+            .uid("uid456")
+            .mail(mailAddress("user8@example.com"))
+            .familyName("Ho")
+            .givenName("F")
+            .displayName("Ho F")
+            .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "user8.example.com"))
+            .build();
+
+        // When LDAP and DAV are compared
+        DomainMemberUpdate result = compute(List.of(ldap), List.of(dav));
+
+        // Then nothing is to be updated
+        assertThat(result.updated()).isEmpty();
+    }
+
+    @Test
+    void computeShouldDetectNoChangeWhenLdapValuesDifferOnlyBySpaces() {
+        // Given an LDAP member whose values hold extra spaces, and the DAV card previously written from it
+        LdapUser ldap = LdapUser.builder()
+            .uid("uid123")
+            .cn("Ho  F ")
+            .sn(" Ho ")
+            .mail(mailAddress("user10@example.com"))
+            .telephoneNumber(" 123 ")
+            .build();
+        AddressBookContact dav = AddressBookContact.parse(toAddressBookContact(ldap, ldap.uid()).toVcardBytes()).getFirst();
+
+        // When LDAP and DAV are compared
+        DomainMemberUpdate result = compute(List.of(ldap), List.of(dav));
+
+        // Then nothing is to be updated
+        assertThat(result.updated()).isEmpty();
+    }
+
+    @Test
+    void computeShouldDetectNoChangeWhenLdapValuesAreEmpty() {
+        // Given an LDAP member with an empty surname and telephone number, and the DAV card previously written from it
+        LdapUser ldap = LdapUser.builder()
+            .uid("uid123")
+            .cn("Ho F")
+            .sn("")
+            .mail(mailAddress("user11@example.com"))
+            .telephoneNumber("")
+            .build();
+        AddressBookContact dav = AddressBookContact.parse(toAddressBookContact(ldap, ldap.uid()).toVcardBytes()).getFirst();
+
+        // When LDAP and DAV are compared
+        DomainMemberUpdate result = compute(List.of(ldap), List.of(dav));
+
+        // Then nothing is to be updated
+        assertThat(result.updated()).isEmpty();
+    }
+
+    @Test
+    void toAddressBookContactShouldCarryExtraProperties() {
+        // Given an LDAP member with a workspace
+        LdapUser ldap = LdapUser.builder()
+            .uid("uid123")
+            .cn("Ho F")
+            .sn("Ho")
+            .mail(mailAddress("user9@example.com"))
+            .extraAttributes(ImmutableMap.of("twakeWorkspaceUrl", "user9.example.com"))
+            .build();
+
+        // When it is converted to a DAV card
+        AddressBookContact contact = toAddressBookContact(ldap, ldap.uid());
+
+        // Then the card carries the workspace
+        assertThat(contact.extraProperties()).isEqualTo(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "user9.example.com"));
     }
 
     @Test
@@ -230,7 +356,7 @@ public class DomainMemberUpdateTest {
         LdapUser updatedLdap = ldapMember("uid3", "common@example.com", "Le", "C", "Le C", "333");
         AddressBookContact outdatedDav = davCard("uid4", "common@example.com", "Le", "C", "Different Display", "333");
 
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(addedLdap, updatedLdap),
+        DomainMemberUpdate result = compute(List.of(addedLdap, updatedLdap),
             List.of(deletedDav, outdatedDav));
 
         assertSoftly(softly -> {
@@ -246,7 +372,7 @@ public class DomainMemberUpdateTest {
         LdapUser first = ldapMember("deploy_gsafe", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", null);
         LdapUser second = ldapMember("deploy_gsafe_snapshots", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", null);
 
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(first, second), List.of());
+        DomainMemberUpdate result = compute(List.of(first, second), List.of());
 
         assertSoftly(softly -> {
             softly.assertThat(result.added()).containsExactly(toAddressBookContact(first, first.uid()));
@@ -261,7 +387,7 @@ public class DomainMemberUpdateTest {
         AddressBookContact first = davCard("uid1", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
         AddressBookContact second = davCard("uid2", "shared@example.com", "gSafe", "Deploy", "gSafe Deploy", "111");
 
-        DomainMemberUpdate result = DomainMemberUpdate.compute(List.of(), List.of(first, second));
+        DomainMemberUpdate result = compute(List.of(), List.of(first, second));
 
         assertSoftly(softly -> {
             softly.assertThat(result.added()).isEmpty();
@@ -287,7 +413,7 @@ public class DomainMemberUpdateTest {
         LdapUser updated2Ldap = ldapMember("uid7", "update2@example.com", "Dang", "F", "Dang F", "666");
         AddressBookContact outdated2Dav = davCard("uid8", "update2@example.com", "Dang", "F", "Different Display", "666");
 
-        DomainMemberUpdate result = DomainMemberUpdate.compute(
+        DomainMemberUpdate result = compute(
             List.of(added1, added2, updated1Ldap, updated2Ldap),
             List.of(deleted1, deleted2, outdated1Dav, outdated2Dav));
 

@@ -101,7 +101,7 @@ import reactor.core.publisher.Mono;
 public class AddressBookDelegatedNotificationConsumerTest {
     private static final int ACCESS_NOACCESS = 4;
     private static final String MAILTO_PREFIX = "mailto:";
-    private static final String SENDER_ADDRESS = "no-reply@openpaas.org";
+    private static final String SENDER_ADDRESS = "no-reply@twake.app";
     private static final String CONTACTS_URL = "https://contacts.example.org/";
     private static final String DEFAULT_ADDRESS_BOOK_DAV_NAME = "#default";
     private static final List<String> BUILT_IN_ADDRESS_BOOK_IDS = List.of("contacts", "collected", "domain-members");

@@ -18,7 +18,9 @@
 
 package com.linagora.calendar.dav;
 
+import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +32,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.utils.URIBuilder;
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,6 +122,12 @@ public class CardDavClient extends DavClient {
     public record NewAddressBook(String id, String name, String description) {
     }
 
+    /**
+     * A card of the domain members address book: {@code vcardUid} names its resource, {@code <vcardUid>.vcf}.
+     */
+    public record DomainMemberCard(String vcardUid, AddressBookContact contact) {
+    }
+
     @JsonInclude(JsonInclude.Include.NON_ABSENT)
     public record AddressBookPropertiesUpdate(@JsonProperty("dav:name") Optional<String> name,
                                               @JsonProperty("carddav:description") Optional<String> description) {
@@ -140,7 +149,7 @@ public class CardDavClient extends DavClient {
     public static final String LIMIT_PARAM = "limit";
     public static final String DOMAIN_MEMBERS_ADDRESS_BOOK_ID = "domain-members";
 
-    private static final String ADDRESS_BOOK_LIST_URI_TEMPLATE = "/addressbooks/%s.json?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true";
+    private static final String ADDRESS_BOOK_LIST_URI_TEMPLATE = "/addressbooks/%s?contactsCount=true&inviteStatus=2&personal=true&shared=true&subscribed=true";
     private static final String NUMBER_OF_CONTACTS_PROPERTY = "numberOfContacts";
     private static final String SYNC_TOKEN_PROPERTY = "dav:syncToken";
     private static final String ADDRESS_BOOK_SOURCE_PROPERTY = "openpaas:source";
@@ -209,7 +218,11 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<byte[]> retrieveContact(Username username, AddressBookURL addressBookURL, ContactUid contactUid) {
-        return httpClientWithImpersonation(username)
+        return retrieveContact(httpClientWithImpersonation(username), addressBookURL, contactUid);
+    }
+
+    private Mono<byte[]> retrieveContact(HttpClient client, AddressBookURL addressBookURL, ContactUid contactUid) {
+        return client
             .get()
             .uri(addressBookURL.vcardUri(contactUid.value()).toASCIIString())
             .responseSingle((response, byteBufMono) -> {
@@ -316,7 +329,7 @@ public class CardDavClient extends DavClient {
                 headers.add(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON)
                     .add(HttpHeaderNames.ACCEPT, HttpHeaderValues.APPLICATION_JSON))
             .post()
-            .uri("/addressbooks/%s.json".formatted(domainId.value()))
+            .uri("/addressbooks/%s".formatted(domainId.value()))
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(CREATE_DOMAIN_MEMBERS_ADDRESS_BOOK_PAYLOAD)))
             .responseSingle((response, byteBufMono) -> {
                 if (response.status().code() == 201) {
@@ -346,6 +359,56 @@ public class CardDavClient extends DavClient {
                     }
                     return Mono.error(exception);
                 }));
+    }
+
+    public Mono<byte[]> retrieveContactDomainMembers(OpenPaaSId domainId, String vcardUid) {
+        Preconditions.checkArgument(StringUtils.isNotEmpty(vcardUid), "vcardUid must not be empty");
+
+        AddressBookURL addressBookURL = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(client -> retrieveContact(client, addressBookURL, new ContactUid(vcardUid)));
+    }
+
+    /**
+     * The domain member cards whose preferred email is the given one, ignoring case.
+     * Empty when the domain members address book does not exist.
+     */
+    public Flux<DomainMemberCard> findContactsDomainMembersByEmail(OpenPaaSId domainId, MailAddress mail) {
+        AddressBookURL addressBookURL = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
+        String uri = addressBookURL.asUri().toASCIIString() + ".json?email=" + URLEncoder.encode(mail.asString(), StandardCharsets.UTF_8);
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(client -> client.headers(headers -> headers
+                    .add(HttpHeaderNames.ACCEPT, HttpHeaderValues.APPLICATION_JSON))
+                .get()
+                .uri(uri)
+                .responseSingle((response, buf) -> switch (response.status().code()) {
+                    case HttpStatus.SC_OK -> buf.asByteArray()
+                        .map(this::parseDomainMemberCards);
+                    case HttpStatus.SC_NOT_FOUND -> Mono.just(List.<DomainMemberCard>of());
+                    default -> responseBodyAsString(buf)
+                        .flatMap(errorBody -> Mono.error(new DavClientException(
+                            "Unexpected status code: %d when finding contacts %s\n%s"
+                                .formatted(response.status().code(), uri, errorBody))));
+                }))
+            .flatMapMany(Flux::fromIterable);
+    }
+
+    private List<DomainMemberCard> parseDomainMemberCards(byte[] json) {
+        try {
+            JsonNode items = OBJECT_MAPPER.readTree(json).path("_embedded").path("dav:item");
+            return Streams.stream(items.elements())
+                .flatMap(item -> AddressBookContact.parseJCard(item.path("data").toString()).stream()
+                    .limit(1)
+                    .map(contact -> new DomainMemberCard(cardName(item.path("_links").path("self").path("href").asText()), contact)))
+                .toList();
+        } catch (IOException e) {
+            throw new DavClientException("Unable to parse contact list", e);
+        }
+    }
+
+    private String cardName(String href) {
+        // href: /addressbooks/{domainId}/domain-members/{vcardUid}.vcf
+        return StringUtils.removeEnd(StringUtils.substringAfterLast(href, "/"), ".vcf");
     }
 
     public Mono<Void> deleteContactDomainMembers(OpenPaaSId domainId, String vcardUid) {
@@ -571,7 +634,7 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<Boolean> addressBookExists(Username username, OpenPaaSId userId, String addressBookId) {
-        String uri = new AddressBookURL(userId, addressBookId).asUri().toASCIIString() + ".json";
+        String uri = new AddressBookURL(userId, addressBookId).asUri().toASCIIString();
         return httpClientWithImpersonation(username)
             .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
             .get()
@@ -682,7 +745,7 @@ public class CardDavClient extends DavClient {
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
                 .add(HttpHeaderNames.ACCEPT, "application/json"))
             .post()
-            .uri("/addressbooks/%s.json".formatted(userId.value()))
+            .uri("/addressbooks/%s".formatted(userId.value()))
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
             .responseSingle((response, buf) -> {
                 if (response.status().code() == HttpStatus.SC_CREATED) {
@@ -700,7 +763,7 @@ public class CardDavClient extends DavClient {
      * through a PROPPATCH on the address book JSON endpoint.
      */
     public Mono<Void> updateAddressBookProperties(Username username, AddressBookURL addressBookURL, AddressBookPropertiesUpdate update) {
-        String uri = addressBookURL.asUri().toASCIIString() + ".json";
+        String uri = addressBookURL.asUri().toASCIIString();
         return httpClientWithImpersonation(username)
             .headers(headers -> headers
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
@@ -718,7 +781,7 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<Void> updateAddressBookPublicRight(Username username, AddressBookURL addressBookURL, boolean publish) {
-        String uri = addressBookURL.asUri().toASCIIString() + ".json";
+        String uri = addressBookURL.asUri().toASCIIString();
         byte[] payload = publish
             ? "{\"dav:publish-addressbook\":{\"privilege\":\"{DAV:}read\"}}".getBytes(StandardCharsets.UTF_8)
             : "{\"dav:unpublish-addressbook\":true}".getBytes(StandardCharsets.UTF_8);
@@ -741,7 +804,7 @@ public class CardDavClient extends DavClient {
 
     public Mono<Void> updateAddressBookShares(Username username, AddressBookURL addressBookURL,
                                               List<AddressBookSharee> sharees) {
-        String uri = addressBookURL.asUri().toASCIIString() + ".json";
+        String uri = addressBookURL.asUri().toASCIIString();
         byte[] payload;
         try {
             ObjectNode body = OBJECT_MAPPER.createObjectNode()
@@ -783,7 +846,7 @@ public class CardDavClient extends DavClient {
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
                 .add(HttpHeaderNames.ACCEPT, "application/json"))
             .post()
-            .uri("/addressbooks/%s.json".formatted(userId.value()))
+            .uri("/addressbooks/%s".formatted(userId.value()))
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
             .responseSingle((response, buf) -> {
                 if (response.status().code() == HttpStatus.SC_CREATED) {

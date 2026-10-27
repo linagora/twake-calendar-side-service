@@ -124,7 +124,7 @@ public class ImportRouteTest {
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         binder -> binder.bind(MailTemplateConfiguration.class)
             .toInstance(new MailTemplateConfiguration("classpath://templates/",
-                MaybeSender.getMailSender("no-reply@openpaas.org"))),
+                MaybeSender.getMailSender("no-reply@twake.app"))),
         binder -> binder.bind(MailSenderConfiguration.class)
             .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension)));
 
@@ -289,7 +289,7 @@ public class ImportRouteTest {
         JsonPath  smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: Calendar import reporting")
@@ -387,7 +387,7 @@ public class ImportRouteTest {
         JsonPath  smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: Rapport d'importation de calendrier");
@@ -458,7 +458,7 @@ public class ImportRouteTest {
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
 
             // Fallback to English subject
@@ -784,7 +784,7 @@ public class ImportRouteTest {
         JsonPath  smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: Contacts import reporting")
@@ -850,7 +850,7 @@ public class ImportRouteTest {
         JsonPath  smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(openPaaSUser.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: "+ MimeUtility.encodeText("Báo cáo nhập danh bạ", "UTF-8", "B"));

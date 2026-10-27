@@ -461,6 +461,10 @@ public class EventMailHandler {
                     .thenReturn(!INVITATION_SENT)));
     }
 
+    public Mono<Void> handleInvalidRecipientInvitation(InvalidRecipientNotificationEmailDTO message) {
+        return mailDeliveryFailureNotifier.notifyInvalidRecipient(message);
+    }
+
     public Mono<Void> handleUpdateEvent(CalendarEventUpdateNotificationEmail event) {
         MailAddress recipientEmail = event.base().recipientEmail();
         Username recipientUser = Username.fromMailAddress(recipientEmail);
