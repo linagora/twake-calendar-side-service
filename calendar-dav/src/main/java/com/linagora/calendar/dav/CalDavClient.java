@@ -21,6 +21,7 @@ package com.linagora.calendar.dav;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -168,7 +170,8 @@ public class CalDavClient extends DavClient {
                                        @JsonProperty("end")
                                        @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyyMMdd'T'HHmmss'Z'", timezone = "UTC") Instant end,
                                        @JsonProperty("users") List<String> users,
-                                       @JsonProperty("uids") List<String> uids) {
+                                       @JsonProperty("uids") List<String> uids,
+                                       @JsonProperty("timezone") ZoneId timezone) {
         public byte[] serializeAsByte() throws JsonProcessingException {
             return OBJECT_MAPPER.writeValueAsBytes(this);
         }
@@ -1081,18 +1084,26 @@ public class CalDavClient extends DavClient {
      * calendar, sabre implementing it on a calendar collection only.
      */
     public Flux<BusyInterval> findBusyIntervals(Username requester, OpenPaaSId userId, Instant from, Instant to) {
+        return findBusyIntervals(requester, userId, from, to, ZoneId.of("UTC"));
+    }
+
+    /**
+     * The time zone interprets floating dates and times, including all-day events. Returned intervals remain UTC.
+     */
+    public Flux<BusyInterval> findBusyIntervals(Username requester, OpenPaaSId userId, Instant from, Instant to, ZoneId timezone) {
         Preconditions.checkArgument(requester != null, "requester must not be null");
         Preconditions.checkArgument(userId != null, "userId must not be null");
         Preconditions.checkArgument(from != null, "from must not be null");
         Preconditions.checkArgument(to != null, "to must not be null");
+        Preconditions.checkArgument(timezone != null, "timezone must not be null");
         Preconditions.checkArgument(from.isBefore(to), "from must be before to");
 
-        return freeBusyBulkQuery(requester, userId, from, to)
+        return freeBusyBulkQuery(requester, userId, from, to, timezone)
             .flatMapIterable(FreeBusyBulkResponse::busyIntervals);
     }
 
-    private Mono<FreeBusyBulkResponse> freeBusyBulkQuery(Username requester, OpenPaaSId userId, Instant from, Instant to) {
-        FreeBusyBulkRequest request = new FreeBusyBulkRequest(from, to, List.of(userId.value()), List.of());
+    private Mono<FreeBusyBulkResponse> freeBusyBulkQuery(Username requester, OpenPaaSId userId, Instant from, Instant to, ZoneId timezone) {
+        FreeBusyBulkRequest request = new FreeBusyBulkRequest(from, to, List.of(userId.value()), List.of(), timezone);
 
         return httpClientWithImpersonation(requester)
             .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
