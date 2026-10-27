@@ -166,4 +166,33 @@ class TextEmailInviteRenderTest {
             Transférer cette invitation pourrait permettre à tout destinataire d'envoyer une réponse à l'organisateur, d'être ajouté à la liste des invités, d'inviter d'autres personnes indépendamment de leur propre statut d'invitation ou de modifier votre réponse.
             """);
     }
+
+    @Test
+    void renderShouldDisplayEmailOnlyOnceWhenDisplayNameIsTheEmail() {
+        Map<String, Object> model = ImmutableMap.of(
+            "content", ImmutableMap.builder()
+                .put("event", ImmutableMap.builder()
+                    .put("organizer", ImmutableMap.of("cn", "alice@domain.tld", "email", "alice@domain.tld"))
+                    .put("attendees", ImmutableMap.of(
+                        "bob@domain.tld", ImmutableMap.of("cn", "bob@domain.tld", "email", "bob@domain.tld")))
+                    .put("summary", "All Day Workshop")
+                    .put("allDay", true)
+                    .put("start", ImmutableMap.of(
+                        "date", "2025-07-01",
+                        "fullDate", "July 1, 2025"))
+                    .put("end", ImmutableMap.of(
+                        "date", "2025-07-02",
+                        "fullDate", "July 2, 2025"))
+                    .put("hasResources", false)
+                    .build())
+                .build(),
+            "translator", i18nFactory.forLocale(Locale.ENGLISH));
+
+        assertThat(textBodyRenderer.render(model))
+            .contains("""
+                Participants
+                - alice@domain.tld - organizer
+                - bob@domain.tld
+                """);
+    }
 }

@@ -1,6 +1,6 @@
 mixin displayParticipant(cn, email)
   div(style='margin: 4px 0;')
-    if (cn)
+    if (cn && cn !== email)
       b #{cn}
       | &nbsp;
     span(style='color: #5f6368;') #{email}
