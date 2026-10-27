@@ -21,7 +21,7 @@ mixin link(label, url)
     +line(`${label}: ${url}`)
 
 mixin participant(cn, email, suffix)
-  if (cn)
+  if (cn && cn !== email)
     +line(`- ${cn} <${email}>${suffix}`)
   else
     +line(`- ${email}${suffix}`)
