@@ -200,7 +200,7 @@ public class DavTestHelper extends DavClient {
         String username = openPaaSUser.username().asString();
         return httpClientWithImpersonation(openPaaSUser.username()).headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
             .request(HttpMethod.GET)
-            .uri("/addressbooks/%s.json?personal=true&shared=true&subscribed=true".formatted(homeBaseId.value()))
+            .uri("/addressbooks/%s?personal=true&shared=true&subscribed=true".formatted(homeBaseId.value()))
             .responseSingle((response, responseContent) -> {
                 if (response.status().code() == 200) {
                     return responseContent.asString(StandardCharsets.UTF_8);
@@ -220,7 +220,7 @@ public class DavTestHelper extends DavClient {
                     headers.add(HttpHeaderNames.CONTENT_TYPE, "application/json;charset=UTF-8")
                         .add(HttpHeaderNames.ACCEPT, "application/json"))
                 .post()
-                .uri("/addressbooks/%s.json".formatted(domainId.value()))
+                .uri("/addressbooks/%s".formatted(domainId.value()))
                 .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(CREATE_DOMAIN_ADDRESS_BOOK_PAYLOAD)))
                 .responseSingle((response, responseContent) -> {
                     if (response.status().code() == HttpStatus.SC_CREATED) {
@@ -252,7 +252,7 @@ public class DavTestHelper extends DavClient {
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
                 .add(HttpHeaderNames.ACCEPT, "application/json"))
             .post()
-            .uri("/addressbooks/%s.json".formatted(subscriber.id().value()))
+            .uri("/addressbooks/%s".formatted(subscriber.id().value()))
             .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(payload)))
             .responseSingle((response, body) -> {
                 if (response.status().code() == HttpStatus.SC_CREATED) {
@@ -324,7 +324,7 @@ public class DavTestHelper extends DavClient {
             }
             """.formatted(delegate.username().asString(), rightKey);
 
-        sendDelegationRequest(userRequest, URI.create(calendarURL.asUri() + ".json"), payload);
+        sendDelegationRequest(userRequest, calendarURL.asUri(), payload);
     }
 
     public void revokeDelegation(OpenPaaSUser userRequest, CalendarURL calendarURL, OpenPaaSUser delegatedUser) {
@@ -341,7 +341,7 @@ public class DavTestHelper extends DavClient {
             }
             """.formatted(delegatedUser.username().asString());
 
-        sendDelegationRequest(userRequest, URI.create(calendarURL.asUri() + ".json"), payload);
+        sendDelegationRequest(userRequest, calendarURL.asUri(), payload);
     }
 
     private void sendDelegationRequest(OpenPaaSUser userRequest, URI calendarURI, String payload) {
@@ -365,7 +365,7 @@ public class DavTestHelper extends DavClient {
     }
 
     public CalendarURL subscribeToSharedCalendar(OpenPaaSUser user, SubscribedCalendarRequest subscribedCalendarRequest) {
-        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + user.id().value() + ".json";
+        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + user.id().value();
 
         httpClientWithImpersonation(user.username())
             .headers(headers -> headers
@@ -464,7 +464,7 @@ public class DavTestHelper extends DavClient {
     }
 
     public Mono<String> getCalendarMetadata(OpenPaaSUser openPaaSUser, OpenPaaSId calendarId) {
-        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + openPaaSUser.id().value() + "/" + calendarId.value() + ".json"
+        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + openPaaSUser.id().value() + "/" + calendarId.value()
             + "?personal=true&sharedDelegationStatus=accepted&sharedPublicSubscription=2&withRights=true";
         return httpClientWithImpersonation(openPaaSUser.username()).headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
             .request(HttpMethod.GET)
@@ -491,7 +491,7 @@ public class DavTestHelper extends DavClient {
         return httpClientWithTechnicalToken(domainId)
             .flatMap(client -> client.headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/json"))
                 .request(HttpMethod.GET)
-                .uri(calendarURL.asUri().toASCIIString() + ".json?withRights=true")
+                .uri(calendarURL.asUri().toASCIIString() + "?withRights=true")
                 .responseSingle((response, content) -> {
                     if (response.status().code() == HttpStatus.SC_OK) {
                         return content.asString(StandardCharsets.UTF_8);
@@ -510,7 +510,7 @@ public class DavTestHelper extends DavClient {
             .flatMap(client ->
                 client.headers(headers -> headers.add(HttpHeaderNames.ACCEPT, "application/calendar+json"))
                     .request(HttpMethod.GET)
-                    .uri(CalendarURL.from(resourceId.asOpenPaaSId()).asUri().toASCIIString() + ".json?withRights=true")
+                    .uri(CalendarURL.from(resourceId.asOpenPaaSId()).asUri().toASCIIString() + "?withRights=true")
                     .responseSingle((response, content) -> {
                         if (response.status().code() == 200) {
                             return content.asString(StandardCharsets.UTF_8)
@@ -551,7 +551,7 @@ public class DavTestHelper extends DavClient {
                 .add(HttpHeaderNames.ACCEPT, "application/json")
                 .add("Depth", "0"))
             .request(HttpMethod.valueOf("REPORT"))
-            .uri(calendarURL.asUri() + ".json")
+            .uri(calendarURL.asUri().toString())
             .send(Mono.just(Unpooled.wrappedBuffer(body.getBytes(StandardCharsets.UTF_8))))
             .responseSingle((response, content) -> {
                 if (response.status().code() == 207) {
