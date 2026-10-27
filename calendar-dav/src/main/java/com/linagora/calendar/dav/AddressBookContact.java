@@ -188,6 +188,19 @@ public record AddressBookContact(Optional<String> uid,
         }
     }
 
+    public static List<AddressBookContact> parseJCard(String jcardData) {
+        Preconditions.checkNotNull(jcardData, "jCard data must not be null");
+
+        try {
+            return Ezvcard.parseJson(jcardData).all()
+                .stream()
+                .map(AddressBookContact::asAddressBookContact)
+                .toList();
+        } catch (Exception e) {
+            throw new DavContactCardParseException("parse jCard error", e);
+        }
+    }
+
     public static Optional<String> computeUid(Optional<String> existingUid, Optional<MailAddress> mail) {
         return existingUid.or(() -> mail.map(m ->
             UUID.nameUUIDFromBytes(m.asString().getBytes(StandardCharsets.UTF_8)).toString()));

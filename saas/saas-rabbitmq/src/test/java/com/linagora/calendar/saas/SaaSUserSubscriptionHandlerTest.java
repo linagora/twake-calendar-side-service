@@ -22,6 +22,7 @@ import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -40,6 +41,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import com.google.common.collect.ImmutableListMultimap;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.CardDavClient.DomainMemberCard;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.MemoryDomainSettingsDAO;
@@ -360,6 +362,26 @@ class SaaSUserSubscriptionHandlerTest {
     }
 
     @Test
+    void shouldUpdateCardOfSameEmailWrittenUnderAnotherName() {
+        // Given a domain member card of the user written by the LDAP sync, named after the LDAP uid and lacking the directory details
+        Username alice = aliceOfTestDomain();
+        userContactResolver.register(alice, aliceContact().build());
+        AddressBookContact ldapCard = AddressBookContact.builder().uid("alice-ldap").mail(asMailAddress(alice)).build();
+        cardDavClient.upsertContactDomainMembers(testDomain.id(), "alice-ldap", ldapCard.toVcardBytes()).block();
+
+        // When the subscription of that user is handled
+        handleCalendarSubscription(alice);
+
+        // Then that card, keeping its name and uid, carries the directory details, and no second card of the user is added
+        assertThat(findDomainMemberCards(alice))
+            .containsExactly(new DomainMemberCard("alice-ldap", AddressBookContact.builder()
+                .uid("alice-ldap")
+                .userContact(aliceContact().build())
+                .mail(asMailAddress(alice))
+                .build()));
+    }
+
+    @Test
     void shouldWriteMailOnlyCardWhenUserUnknownToDirectory() {
         // Given a calendar user the directory does not know
         Username alice = aliceOfTestDomain();
@@ -454,6 +476,12 @@ class SaaSUserSubscriptionHandlerTest {
             .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
             .blockOptional()
             .orElseThrow();
+    }
+
+    private List<DomainMemberCard> findDomainMemberCards(Username username) {
+        return cardDavClient.findContactsDomainMembersByEmail(testDomain.id(), asMailAddress(username))
+            .collectList()
+            .block();
     }
 
     private AddressBookContact readDomainMemberCard(Username username) {

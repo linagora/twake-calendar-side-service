@@ -39,12 +39,14 @@ import java.util.stream.IntStream;
 import javax.net.ssl.SSLException;
 
 import org.apache.james.core.Domain;
+import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.dav.CardDavClient.CardDavSearchException;
+import com.linagora.calendar.dav.CardDavClient.DomainMemberCard;
 import com.linagora.calendar.dav.dto.ContactSearchResponse;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
@@ -595,6 +597,36 @@ public class CardDavClientTest {
                 UID:%s
                 FN:John Doe
                 EMAIL;TYPE=Work:john.doe@example.com""".trim().formatted(vcardUid));
+    }
+
+    @Test
+    void findContactsDomainMembersByEmailShouldReturnCardsOfThatEmailIgnoringCase() throws Exception {
+        // Given two domain member cards of John and a card of Jane
+        OpenPaaSDomain domain = createNewDomainMemberAddressBook();
+        AddressBookContact john = AddressBookContact.builder().uid("john-1").displayName("John Doe").mail("john@example.com").build();
+        AddressBookContact jane = AddressBookContact.builder().uid("jane").displayName("Jane Doe").mail("jane@example.com").build();
+        testee.upsertContactDomainMembers(domain.id(), "john-1", john.toVcardBytes()).block();
+        testee.upsertContactDomainMembers(domain.id(), "jane", jane.toVcardBytes()).block();
+
+        // When the cards of John's email are looked up
+        List<DomainMemberCard> cards = testee.findContactsDomainMembersByEmail(domain.id(), new MailAddress("john@example.com"))
+            .collectList().block();
+
+        // Then both cards of John are returned, and Jane's is not
+        assertThat(cards).containsExactly(new DomainMemberCard("john-1", john));
+    }
+
+    @Test
+    void findContactsDomainMembersByEmailShouldReturnEmptyWhenAddressBookDoesNotExist() throws Exception {
+        // Given a domain without domain members address book
+        OpenPaaSDomain newDomain = mongoDBOpenPaaSDomainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
+
+        // When the cards of an email are looked up
+        List<DomainMemberCard> cards = testee.findContactsDomainMembersByEmail(newDomain.id(), new MailAddress("john@example.com"))
+            .collectList().block();
+
+        // Then no card is returned
+        assertThat(cards).isEmpty();
     }
 
     @Test

@@ -18,7 +18,9 @@
 
 package com.linagora.calendar.dav;
 
+import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +32,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.utils.URIBuilder;
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -117,6 +120,12 @@ public class CardDavClient extends DavClient {
     }
 
     public record NewAddressBook(String id, String name, String description) {
+    }
+
+    /**
+     * A card of the domain members address book: {@code vcardUid} names its resource, {@code <vcardUid>.vcf}.
+     */
+    public record DomainMemberCard(String vcardUid, AddressBookContact contact) {
     }
 
     @JsonInclude(JsonInclude.Include.NON_ABSENT)
@@ -358,6 +367,48 @@ public class CardDavClient extends DavClient {
         AddressBookURL addressBookURL = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
         return httpClientWithTechnicalToken(domainId)
             .flatMap(client -> retrieveContact(client, addressBookURL, new ContactUid(vcardUid)));
+    }
+
+    /**
+     * The domain member cards whose preferred email is the given one, ignoring case.
+     * Empty when the domain members address book does not exist.
+     */
+    public Flux<DomainMemberCard> findContactsDomainMembersByEmail(OpenPaaSId domainId, MailAddress mail) {
+        AddressBookURL addressBookURL = new AddressBookURL(domainId, DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
+        String uri = addressBookURL.asUri().toASCIIString() + ".json?email=" + URLEncoder.encode(mail.asString(), StandardCharsets.UTF_8);
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(client -> client.headers(headers -> headers
+                    .add(HttpHeaderNames.ACCEPT, HttpHeaderValues.APPLICATION_JSON))
+                .get()
+                .uri(uri)
+                .responseSingle((response, buf) -> switch (response.status().code()) {
+                    case HttpStatus.SC_OK -> buf.asByteArray()
+                        .map(this::parseDomainMemberCards);
+                    case HttpStatus.SC_NOT_FOUND -> Mono.just(List.<DomainMemberCard>of());
+                    default -> responseBodyAsString(buf)
+                        .flatMap(errorBody -> Mono.error(new DavClientException(
+                            "Unexpected status code: %d when finding contacts %s\n%s"
+                                .formatted(response.status().code(), uri, errorBody))));
+                }))
+            .flatMapMany(Flux::fromIterable);
+    }
+
+    private List<DomainMemberCard> parseDomainMemberCards(byte[] json) {
+        try {
+            JsonNode items = OBJECT_MAPPER.readTree(json).path("_embedded").path("dav:item");
+            return Streams.stream(items.elements())
+                .flatMap(item -> AddressBookContact.parseJCard(item.path("data").toString()).stream()
+                    .limit(1)
+                    .map(contact -> new DomainMemberCard(cardName(item.path("_links").path("self").path("href").asText()), contact)))
+                .toList();
+        } catch (IOException e) {
+            throw new DavClientException("Unable to parse contact list", e);
+        }
+    }
+
+    private String cardName(String href) {
+        // href: /addressbooks/{domainId}/domain-members/{vcardUid}.vcf
+        return StringUtils.removeEnd(StringUtils.substringAfterLast(href, "/"), ".vcf");
     }
 
     public Mono<Void> deleteContactDomainMembers(OpenPaaSId domainId, String vcardUid) {
