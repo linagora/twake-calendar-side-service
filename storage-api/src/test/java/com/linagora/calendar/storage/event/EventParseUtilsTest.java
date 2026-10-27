@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -551,6 +552,17 @@ class EventParseUtilsTest {
                 softly.assertThat(EventParseUtils.getStartTime(instance2))
                     .isEqualTo(ZonedDateTime.parse("2025-04-25T09:00:00Z"));
             });
+        }
+
+        @Test
+        void shouldSetDtStartOfTheMatchingOccurrenceWhenSeveralHappenTheSameDay() {
+            Calendar calendar = CalendarUtil.parseIcs(WEEKLY_UTC_ICS.replace("RRULE:FREQ=WEEKLY;BYDAY=FR", "RRULE:FREQ=HOURLY;COUNT=3"));
+            VEvent master = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, Instant.parse("2025-04-11T10:00:00Z"));
+
+            assertThat(EventParseUtils.getStartTime(instance))
+                .isEqualTo(ZonedDateTime.parse("2025-04-11T10:00:00Z"));
         }
 
         @Test

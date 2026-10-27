@@ -495,13 +495,23 @@ public class EventParseUtils {
                 default -> new Period(recurrenceDate, recurrenceDate);
             };
 
-            return (Period) master.calculateRecurrenceSet(period).stream()
+            Set<Period<Temporal>> occurrences = master.calculateRecurrenceSet(period);
+            // The lookup period spans the whole day: pick the occurrence starting at the recurrence date (e.g. hourly series)
+            return occurrences.stream()
+                .filter(occurrence -> startsAt(occurrence, recurrenceDate))
                 .findFirst()
+                .or(() -> occurrences.stream().findFirst())
                 .orElseThrow();
         } catch (Exception exception) {
             throw new IllegalArgumentException("Cannot calculateRecurrenceSet for recurrenceDate: " + recurrenceDate
                 + " of event: " + master, exception);
         }
+    }
+
+    private static boolean startsAt(Period<Temporal> occurrence, Temporal recurrenceDate) {
+        return temporalToZonedDateTime(occurrence.getStart())
+            .map(ZonedDateTime::toInstant)
+            .equals(temporalToZonedDateTime(recurrenceDate).map(ZonedDateTime::toInstant));
     }
 
     private static Period datetimePeriod(VEvent master, Instant recurrenceDate) {

@@ -900,6 +900,36 @@ class ItipEmailNotificationPublisherTest {
         }
 
         @Test
+        void removedExDateAndItsOverrideShouldOnlyInviteAttendeeToTheRestoredOccurrence() {
+            String previous = withExDate(RECURRING_MASTER_AND_OVERRIDE, "20260408T100000Z");
+
+            List<NotificationEmailDTO> notifications = request(RECURRING_OLD_NO_EXDATE, previous);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z", "DTSTART:20260408T100000Z");
+                });
+        }
+
+        @Test
+        void removedExDateOfAnHourlySeriesShouldInviteAttendeeToTheRestoredOccurrenceAtItsOwnTime() {
+            String hourly = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RRULE:FREQ=HOURLY;COUNT=3")
+                .replace("DTEND:20260401T110000Z", "DTEND:20260401T103000Z");
+            String previous = withExDate(hourly, "20260401T110000Z");
+
+            List<NotificationEmailDTO> notifications = request(hourly, previous);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260401T110000Z",
+                        "DTSTART:20260401T110000Z", "DTEND:20260401T113000Z");
+                });
+        }
+
+        @Test
         void newOverrideShouldOnlyNotifyTheMovedOccurrence() {
             List<NotificationEmailDTO> notifications = request(RECURRING_MASTER_AND_OVERRIDE, RECURRING_OLD_NO_EXDATE);
 

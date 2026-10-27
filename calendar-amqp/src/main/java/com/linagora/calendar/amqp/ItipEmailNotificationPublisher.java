@@ -203,10 +203,12 @@ class ItipEmailNotificationPublisher {
             Map<Temporal, Calendar> cancelCalendarsByRecurrence = exDateChanges
                 .map(changes -> computeCancelledCalendars(changes, newCalendar))
                 .orElseGet(Map::of);
+            Set<Temporal> recurrencesNotifiedSeparately = Sets.union(cancelCalendarsByRecurrence.keySet(),
+                exDateChanges.map(ExDateChanges::removedExDates).orElseGet(Set::of));
 
             List<NotificationEmailDTO> requestNotifications = CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
                 .stream()
-                .filter(diff -> shouldSendRequest(diff, cancelCalendarsByRecurrence.keySet()))
+                .filter(diff -> shouldSendRequest(diff, recurrencesNotifiedSeparately))
                 .map(diff -> buildChangedOccurrenceNotification(NotificationEmailDTO.builder(localDelivery).withEventPath(eventPath),
                     newCalendar, diff))
                 .toList();
