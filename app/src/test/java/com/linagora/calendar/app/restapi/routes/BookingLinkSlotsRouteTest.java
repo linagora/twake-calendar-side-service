@@ -31,12 +31,14 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.apache.http.HttpStatus;
 import org.apache.james.core.Username;
 import org.apache.james.utils.GuiceProbe;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
@@ -578,6 +580,70 @@ class BookingLinkSlotsRouteTest {
                   { "start": "2036-01-26T11:30:00Z" }
                 ]
                 """);
+    }
+
+    @Test
+    void shouldUseSourceOwnerTimeZoneForDelegatedCalendar(TwakeCalendarGuiceServer server) {
+        // Given: a Paris user creates a booking link on a delegated calendar whose owner lives in New York.
+        OpenPaaSUser sourceOwner = createTestUser(server, "source");
+        for (var entry : Map.of(openPaaSUser, "Europe/Paris", sourceOwner, "America/New_York").entrySet()) {
+            given()
+                .auth().preemptive().basic(entry.getKey().username().asString(), PASSWORD)
+                .body("""
+                    [{"name": "core", "configurations": [{"name": "datetime", "value": {"timeZone": "%s"}}]}]
+                    """.formatted(entry.getValue()))
+            .when()
+                .put("/api/configurations?scope=user")
+            .then()
+                .statusCode(HttpStatus.SC_NO_CONTENT);
+        }
+
+        davTestHelper.grantDelegation(sourceOwner, CalendarURL.from(sourceOwner.id()), openPaaSUser, "dav:read-write");
+        CalendarURL delegatedCalendar = Awaitility.await().atMost(Duration.ofSeconds(10))
+            .until(() -> calDavClient.findUserCalendarList(openPaaSUser)
+                .map(response -> response.calendars().keySet().stream()
+                    .filter(url -> !url.equals(CalendarURL.from(openPaaSUser.id())))
+                    .findFirst())
+                .block(), Optional::isPresent).orElseThrow();
+
+        String uid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(sourceOwner, """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Twake//BookingSlotsTest//EN
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20360101T000000Z
+            DTSTART;VALUE=DATE:20360126
+            DTEND;VALUE=DATE:20360127
+            TRANSP:OPAQUE
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid), uid);
+
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(),
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(delegatedCalendar)
+                .eventDuration(DURATION_30_MINUTES)
+                .availabilityRules(AvailabilityRules.of(new FixedAvailabilityRule(
+                    ZonedDateTime.parse("2036-01-26T04:00:00Z"),
+                    ZonedDateTime.parse("2036-01-27T06:00:00Z"))))
+                .build());
+
+        // When: requesting slots around the source owner's all-day event on January 26.
+        List<String> slots = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", "2036-01-26T04:00:00Z")
+            .queryParam("to", "2036-01-27T06:00:00Z")
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract().jsonPath().getList("slots.start", String.class);
+
+        // Then: the event blocks 05:00Z to 05:00Z the next day, matching New York midnights.
+        assertThat(slots).containsExactly("2036-01-26T04:00:00Z", "2036-01-26T04:30:00Z",
+            "2036-01-27T05:00:00Z", "2036-01-27T05:30:00Z");
     }
 
     @Test

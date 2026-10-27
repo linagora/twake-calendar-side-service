@@ -157,16 +157,18 @@ public class BookingLinkSlotsService {
      * whose availability is the team's rather than its author's.
      *
      * <p>All-day events are days of whoever owns the calendar, from their local midnight to their local
-     * midnight - the owner's for the availability home, each extra attendee's for their own calendars.
+     * midnight - the source owner's for the availability home, each extra attendee's for their own calendars.
+     * Team calendar homes have no user time zone and use UTC.
      */
     private Mono<UnavailableTimeRanges> retrieveUnavailableTimeRanges(BookingLink bookingLink, OpenPaaSUser owner, Instant from, Instant to) {
         Instant widenedFrom = from.minus(ALL_DAY_EVENT_MARGIN);
         Instant widenedTo = to.plus(ALL_DAY_EVENT_MARGIN);
 
-        return Mono.zip(availabilityHome(bookingLink, owner), timeZoneOf(owner.username()))
-            .flatMapMany(homeAndZone -> Flux.concat(
-                calDavClient.findBusyIntervals(bookingLink.username(), homeAndZone.getT1(), widenedFrom, widenedTo, homeAndZone.getT2()),
-                extraAttendeesBusyIntervals(bookingLink, widenedFrom, widenedTo)))
+        return availabilityHome(bookingLink, owner)
+            .flatMapMany(home -> timeZoneOf(home)
+                .flatMapMany(zoneId -> Flux.concat(
+                    calDavClient.findBusyIntervals(bookingLink.username(), home, widenedFrom, widenedTo, zoneId),
+                    extraAttendeesBusyIntervals(bookingLink, widenedFrom, widenedTo))))
             .map(busyInterval -> new TimeRange(busyInterval.start(), busyInterval.end()))
             .collectList()
             .map(UnavailableTimeRanges::new);
