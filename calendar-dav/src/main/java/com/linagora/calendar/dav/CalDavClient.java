@@ -21,8 +21,6 @@ package com.linagora.calendar.dav;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +37,7 @@ import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -47,6 +46,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse;
@@ -123,7 +123,9 @@ public class CalDavClient extends DavClient {
         "withRights", "true");
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CalDavClient.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+        .registerModule(new Jdk8Module())
+        .registerModule(new JavaTimeModule());
 
     public static class CalDavExportException extends DavClientException {
         public CalDavExportException(URI calendarUri, String requester, String davResponse) {
@@ -142,8 +144,6 @@ public class CalDavClient extends DavClient {
     private static final String CONTENT_TYPE_JSON = "application/json";
     private static final HttpMethod REPORT_METHOD = HttpMethod.valueOf("REPORT");
     private static final AsciiString HEADER_DEPTH = AsciiString.cached("Depth");
-    private static final DateTimeFormatter CALDAV_UTC_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
-        .withZone(ZoneOffset.UTC);
     private static final String FREE_BUSY_BULK_PATH = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/freebusy";
 
     /**
@@ -163,10 +163,15 @@ public class CalDavClient extends DavClient {
      * 'uids' names the events to leave out of the answer. It is sent empty rather than omitted: the calendar
      * server only rebuilds a proper JSON array of busy periods when that filter is present.
      */
-    private record FreeBusyBulkRequest(@JsonProperty("start") String start,
-                                       @JsonProperty("end") String end,
+    private record FreeBusyBulkRequest(@JsonProperty("start")
+                                       @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyyMMdd'T'HHmmss'Z'", timezone = "UTC") Instant start,
+                                       @JsonProperty("end")
+                                       @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyyMMdd'T'HHmmss'Z'", timezone = "UTC") Instant end,
                                        @JsonProperty("users") List<String> users,
                                        @JsonProperty("uids") List<String> uids) {
+        public byte[] serializeAsByte() throws JsonProcessingException {
+            return OBJECT_MAPPER.writeValueAsBytes(this);
+        }
     }
 
     public CalDavClient(DavConfiguration config, TechnicalTokenService technicalTokenService) throws SSLException {
@@ -1087,15 +1092,14 @@ public class CalDavClient extends DavClient {
     }
 
     private Mono<FreeBusyBulkResponse> freeBusyBulkQuery(Username requester, OpenPaaSId userId, Instant from, Instant to) {
-        FreeBusyBulkRequest request = new FreeBusyBulkRequest(CALDAV_UTC_FORMAT.format(from), CALDAV_UTC_FORMAT.format(to),
-            List.of(userId.value()), List.of());
+        FreeBusyBulkRequest request = new FreeBusyBulkRequest(from, to, List.of(userId.value()), List.of());
 
         return httpClientWithImpersonation(requester)
             .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
                 .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
             .request(HttpMethod.POST)
             .uri(FREE_BUSY_BULK_PATH)
-            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(request))))
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(request.serializeAsByte())))
             .responseSingle((response, body) -> {
                 int statusCode = response.status().code();
 
