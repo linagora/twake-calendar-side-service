@@ -99,7 +99,7 @@ public class MemoryAlarmEventSchedulerTest implements AlarmEventSchedulerContrac
         Path templateDirectory = Paths.get(Paths.get("").toAbsolutePath().getParent().toString(),
             "app", "src", "main", "resources", "templates");
         MailTemplateConfiguration mailTemplateConfig = new MailTemplateConfiguration("file://" + templateDirectory.toAbsolutePath(),
-            MaybeSender.getMailSender("no-reply@openpaas.org"));
+            MaybeSender.getMailSender("no-reply@twake.app"));
         MessageGenerator.Factory messageGeneratorFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem, new MemoryOpenPaaSUserDAO());
 
         AlarmTriggerService alarmTriggerService = new AlarmTriggerService(

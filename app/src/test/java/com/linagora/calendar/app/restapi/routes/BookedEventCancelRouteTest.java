@@ -137,7 +137,7 @@ class BookedEventCancelRouteTest {
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         binder -> binder.bind(MailTemplateConfiguration.class)
             .toInstance(new MailTemplateConfiguration("classpath://templates/",
-                MaybeSender.getMailSender("no-reply@openpaas.org"))),
+                MaybeSender.getMailSender("no-reply@twake.app"))),
         binder -> binder.bind(MailSenderConfiguration.class)
             .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension)),
         binder -> {

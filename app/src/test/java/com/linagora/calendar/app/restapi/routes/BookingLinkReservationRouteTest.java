@@ -140,7 +140,7 @@ class BookingLinkReservationRouteTest {
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         binder -> binder.bind(MailTemplateConfiguration.class)
             .toInstance(new MailTemplateConfiguration("classpath://templates/",
-                MaybeSender.getMailSender("no-reply@openpaas.org"))),
+                MaybeSender.getMailSender("no-reply@twake.app"))),
         binder -> binder.bind(MailSenderConfiguration.class)
             .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension)),
         binder -> {
@@ -381,7 +381,7 @@ class BookingLinkReservationRouteTest {
 
         assertSoftly(softly -> {
             softly.assertThat(smtpMailsResponse.getString("[%d].from".formatted(organizerMailIndex)))
-                .isEqualTo("no-reply@openpaas.org");
+                .isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[%d].recipients[0].address".formatted(organizerMailIndex)))
                 .isEqualTo(openPaaSUser.username().asString());
             softly.assertThat(smtpMailsResponse.getString("[%d].message".formatted(organizerMailIndex)))
@@ -466,7 +466,7 @@ class BookingLinkReservationRouteTest {
         // Then: the booker receives a generic acknowledgement without unauthenticated request content.
         assertSoftly(softly -> {
             softly.assertThat(smtpMailsResponse.getString("[%d].from".formatted(bookerMailIndex)))
-                .isEqualTo("no-reply@openpaas.org");
+                .isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[%d].recipients[0].address".formatted(bookerMailIndex)))
                 .isEqualTo("creator@example.com");
             softly.assertThat(rawMessage).contains("Subject: Booking request received");
