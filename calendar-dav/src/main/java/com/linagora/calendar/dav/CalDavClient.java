@@ -417,7 +417,7 @@ public class CalDavClient extends DavClient {
     }
 
     public Mono<Void> deleteCalendar(Username username, CalendarURL calendarURL) {
-        String uri = calendarURL.asUri() + ".json";
+        String uri = calendarURL.asUri().toString();
         return httpClientWithImpersonation(username)
             .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON))
             .request(HttpMethod.DELETE)
@@ -470,7 +470,7 @@ public class CalDavClient extends DavClient {
     }
 
     public Mono<Void> createNewCalendar(Username username, OpenPaaSId userId, NewCalendar newCalendar) {
-        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value() + ".json";
+        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + userId.value();
         return httpClientWithImpersonation(username)
             .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
                 .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
@@ -494,7 +494,7 @@ public class CalDavClient extends DavClient {
         Preconditions.checkArgument(calendarId != null, "calendarId must not be null");
         Preconditions.checkArgument(username != null, "username must not be null");
 
-        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + calendarId.value() + ".json";
+        String uri = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/" + calendarId.value();
 
         return httpClientWithImpersonation(username)
             .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_JSON)
@@ -685,7 +685,7 @@ public class CalDavClient extends DavClient {
     }
 
     private Mono<Void> updateCalendarAcl(Mono<HttpClient> httpClientPublisher, CalendarURL calendarURL, PublicRight publicRight) {
-        String uri = calendarURL.asUri() + ".json";
+        String uri = calendarURL.asUri().toString();
         String payload = """
             {
               "public_right":"%s"
@@ -724,7 +724,7 @@ public class CalDavClient extends DavClient {
     public Mono<Void> updateCalendarProperties(Mono<HttpClient> httpClientPublisher,
                                                CalendarURL calendarURL,
                                                CalendarPropertiesUpdate update) {
-        String uri = calendarURL.asUri() + ".json";
+        String uri = calendarURL.asUri().toString();
         return httpClientPublisher.flatMap(client -> client
             .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, JSON_CHARSET_UTF_8)
                 .add(HttpHeaderNames.ACCEPT, DEFAULT_JSON_ACCEPT))
@@ -755,7 +755,7 @@ public class CalDavClient extends DavClient {
     public Mono<Void> updateCalendarShares(Mono<HttpClient> httpClientPublisher,
                                            CalendarURL calendarURL,
                                            CalendarSharingUpdate sharingUpdate) {
-        String uri = calendarURL.asUri() + ".json";
+        String uri = calendarURL.asUri().toString();
         return httpClientPublisher.flatMap(client -> client
             .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, JSON_CHARSET_UTF_8)
                 .add(HttpHeaderNames.ACCEPT, DEFAULT_JSON_ACCEPT))
@@ -865,7 +865,7 @@ public class CalDavClient extends DavClient {
                 .headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, JSON_CHARSET_UTF_8)
                     .add(HttpHeaderNames.ACCEPT, DEFAULT_JSON_ACCEPT))
                 .request(HttpMethod.POST)
-                .uri(calendarURL.asUri() + ".json")
+                .uri(calendarURL.asUri().toString())
                 .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(buildPatchDelegationBodyRequest(addOrUpdateAdmins, revokeAdmins))))
                 .responseSingle((response, responseContent) -> {
                     int status = response.status().code();
@@ -891,7 +891,7 @@ public class CalDavClient extends DavClient {
     }
 
     public Mono<SyncToken> retrieveSyncToken(Username username, CalendarURL calendarUrl) {
-        String uri = calendarUrl.asUri() + ".json";
+        String uri = calendarUrl.asUri().toString();
 
         return httpClientWithImpersonation(username)
             .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
@@ -918,7 +918,7 @@ public class CalDavClient extends DavClient {
     }
 
     public Mono<Boolean> calendarExists(Username user, CalendarURL calendarUrl) {
-        String uri = calendarUrl.asUri() + ".json";
+        String uri = calendarUrl.asUri().toString();
 
         return httpClientWithImpersonation(user)
             .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
@@ -932,7 +932,7 @@ public class CalDavClient extends DavClient {
                         case HttpStatus.SC_OK -> Mono.fromCallable(() -> {
                             JsonNode jsonNode = OBJECT_MAPPER.readTree(body);
                             String href = jsonNode.path("_links").path("self").path("href").asText("");
-                            return href.equals(uri);
+                            return StringUtils.removeEnd(href, ".json").equals(uri);
                         });
                         case HttpStatus.SC_UNAUTHORIZED, HttpStatus.SC_FORBIDDEN, HttpStatus.SC_NOT_FOUND -> Mono.just(false);
                         default -> Mono.error(new DavClientException("""
