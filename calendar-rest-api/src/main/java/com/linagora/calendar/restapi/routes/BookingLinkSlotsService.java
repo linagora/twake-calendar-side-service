@@ -165,8 +165,7 @@ public class BookingLinkSlotsService {
 
         return Mono.zip(availabilityHome(bookingLink, owner), timeZoneOf(owner.username()))
             .flatMapMany(homeAndZone -> Flux.concat(
-                calDavClient.findBusyIntervals(bookingLink.username(), homeAndZone.getT1(), widenedFrom, widenedTo)
-                    .map(busyInterval -> busyInterval.anchorAllDayIn(homeAndZone.getT2())),
+                calDavClient.findBusyIntervals(bookingLink.username(), homeAndZone.getT1(), widenedFrom, widenedTo, homeAndZone.getT2()),
                 extraAttendeesBusyIntervals(bookingLink, widenedFrom, widenedTo)))
             .map(busyInterval -> new TimeRange(busyInterval.start(), busyInterval.end()))
             .collectList()
@@ -201,8 +200,7 @@ public class BookingLinkSlotsService {
     private Flux<BusyInterval> extraAttendeesBusyIntervals(BookingLink bookingLink, Instant from, Instant to) {
         return Flux.fromIterable(bookingLink.extraAttendees().participants())
             .concatMap(extraAttendee -> timeZoneOf(extraAttendee)
-                .flatMap(zoneId -> calDavClient.findBusyIntervals(bookingLink.username(), extraAttendee, from, to)
-                    .map(busyInterval -> busyInterval.anchorAllDayIn(zoneId))
+                .flatMap(zoneId -> calDavClient.findBusyIntervals(bookingLink.username(), extraAttendee, from, to, zoneId)
                     .collectList())
                 .onErrorResume(error -> {
                     LOGGER.warn("Booking link {} could not read the calendars of extra attendee {} as {}: treating them as free",

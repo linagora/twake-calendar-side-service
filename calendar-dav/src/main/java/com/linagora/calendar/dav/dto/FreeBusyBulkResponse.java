@@ -19,10 +19,6 @@
 package com.linagora.calendar.dav.dto;
 
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
@@ -53,33 +49,6 @@ public record FreeBusyBulkResponse(List<BusyInterval> busyIntervals) {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record BusyInterval(@JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyyMMdd'T'HHmmss'Z'", timezone = "UTC") Instant start,
                                @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyyMMdd'T'HHmmss'Z'", timezone = "UTC") Instant end) {
-
-        /**
-         * The calendar server resolves the floating dates of an all-day event ({@code VALUE=DATE}) as UTC
-         * midnights, which is what makes such an interval recognizable: an all-day event however spans its
-         * dates from midnight to midnight in the time zone of whoever owns it. Re-anchors such an interval to
-         * the midnights of the given zone, and leaves any other interval untouched.
-         */
-        public BusyInterval anchorAllDayIn(ZoneId zoneId) {
-            if (!spansWholeUtcDays()) {
-                return this;
-            }
-            return new BusyInterval(startOfDayIn(start, zoneId), startOfDayIn(end, zoneId));
-        }
-
-        private boolean spansWholeUtcDays() {
-            return isUtcMidnight(start) && isUtcMidnight(end) && start.isBefore(end);
-        }
-
-        private static boolean isUtcMidnight(Instant instant) {
-            return instant.truncatedTo(ChronoUnit.DAYS).equals(instant);
-        }
-
-        private static Instant startOfDayIn(Instant utcMidnight, ZoneId zoneId) {
-            return LocalDate.ofInstant(utcMidnight, ZoneOffset.UTC)
-                .atStartOfDay(zoneId)
-                .toInstant();
-        }
     }
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()

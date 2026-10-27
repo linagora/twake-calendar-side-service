@@ -581,6 +581,56 @@ class BookingLinkSlotsRouteTest {
     }
 
     @Test
+    void shouldPreserveTimedEventsAtUtcMidnight(TwakeCalendarGuiceServer server) {
+        given()
+            .auth().preemptive().basic(openPaaSUser.username().asString(), PASSWORD)
+            .body("""
+                [{"name": "core", "configurations": [{"name": "datetime", "value": {"timeZone": "Europe/Paris"}}]}]
+                """)
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(),
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(DURATION_30_MINUTES)
+                .availabilityRules(AvailabilityRules.of(new FixedAvailabilityRule(
+                    ZonedDateTime.parse("2036-01-26T23:00:00Z"),
+                    ZonedDateTime.parse("2036-01-27T01:00:00Z"))))
+                .build());
+
+        String uid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(openPaaSUser, """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Twake//BookingSlotsTest//EN
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20360101T000000Z
+            DTSTART:20360126T000000Z
+            DTEND:20360127T000000Z
+            SUMMARY:timed-event-at-utc-midnight
+            TRANSP:OPAQUE
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid), uid);
+
+        List<String> slots = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", "2036-01-26T23:00:00Z")
+            .queryParam("to", "2036-01-27T01:00:00Z")
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract().jsonPath().getList("slots.start", String.class);
+
+        assertThat(slots).containsExactly("2036-01-27T00:00:00Z", "2036-01-27T00:30:00Z");
+    }
+
+    @Test
     void shouldExcludeAllDayEventsFromMidnightToMidnightInTheOwnerTimeZone(TwakeCalendarGuiceServer server) {
         // Given: an owner living in Europe/Paris (UTC+1 in January)
         given()
