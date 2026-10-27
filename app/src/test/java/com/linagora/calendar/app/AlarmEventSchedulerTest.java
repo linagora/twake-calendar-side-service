@@ -273,15 +273,15 @@ public class AlarmEventSchedulerTest {
 
             // Invitations may arrive after clearing the inbox; only inspect alarm emails.
             // Attendee1
-            assertThat(jp.getString("find { it.from == 'no-reply@openpaas.org' && it.recipients[0].address == '" + attendee1.username().asString() + "' }" + ".message"))
+            assertThat(jp.getString("find { it.from == 'no-reply@twake.app' && it.recipients[0].address == '" + attendee1.username().asString() + "' }" + ".message"))
                 .contains(alarmEmailSubjectExpected);
 
             // Attendee2
-            assertThat(jp.getString("find { it.from == 'no-reply@openpaas.org' && it.recipients[0].address == '" + attendee2.username().asString() + "' }" + ".message"))
+            assertThat(jp.getString("find { it.from == 'no-reply@twake.app' && it.recipients[0].address == '" + attendee2.username().asString() + "' }" + ".message"))
                 .contains(alarmEmailSubjectExpected);
 
             // Ensure attendee3 did not receive an alarm email
-            String path3 = "find { it.from == 'no-reply@openpaas.org' && it.recipients[0].address == '" + attendee3.username().asString() + "' }";
+            String path3 = "find { it.from == 'no-reply@twake.app' && it.recipients[0].address == '" + attendee3.username().asString() + "' }";
             assertThat(jp.getString(path3)).isNull();
         });
 

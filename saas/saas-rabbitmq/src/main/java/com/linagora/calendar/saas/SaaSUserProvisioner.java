@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.CardDavClient.DomainMemberCard;
 import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
@@ -86,10 +87,10 @@ public class SaaSUserProvisioner {
             });
     }
 
-    private Mono<OpenPaaSUser> registerUser(Username username, Optional<UserNames> names) {
+    private Mono<OpenPaaSUser> registerUser(Username username, Optional<UserNames> maybeNames) {
         return userDAO.retrieve(username)
-            .flatMap(user -> reimportDisplayName(user, names))
-            .switchIfEmpty(Mono.defer(() -> userDAO.add(username, names)
+            .flatMap(user -> reimportDisplayName(user, maybeNames))
+            .switchIfEmpty(Mono.defer(() -> userDAO.add(username, maybeNames)
                 .doOnSuccess(created -> LOGGER.info("Registered user {} from SaaS subscription", username.asString()))));
     }
 
@@ -127,32 +128,47 @@ public class SaaSUserProvisioner {
 
     private Mono<Void> upsertUserContact(OpenPaaSDomain domain, OpenPaaSUser user, Optional<UserContact> userContact) {
         return Mono.fromCallable(() -> toAddressBookContact(user, userContact))
-            .flatMap(addressBookContact -> retrieveDomainMemberContact(domain, addressBookContact)
-                .filter(existing -> shouldUpsert(userContact, addressBookContact, existing))
-                .flatMap(ignored -> upsert(domain, user, addressBookContact)));
+            .flatMap(addressBookContact -> findDomainMemberCard(domain, user)
+                .flatMap(existing -> existing
+                    .map(card -> updateCard(domain, user, userContact, addressBookContact, card))
+                    .orElseGet(() -> upsert(domain, user, addressBookContact.vcardUid(), addressBookContact))));
+    }
+
+    // The card of the member may have been written by the LDAP sync under another name: it is looked up by email so that
+    // it gets updated rather than a second card added. Of several cards of the member, the first one is updated.
+    private Mono<Optional<DomainMemberCard>> findDomainMemberCard(OpenPaaSDomain domain, OpenPaaSUser user) {
+        return Mono.fromCallable(() -> user.username().asMailAddress())
+            .flatMapMany(mail -> cardDavClient.findContactsDomainMembersByEmail(domain.id(), mail))
+            .next()
+            .map(Optional::of)
+            .defaultIfEmpty(Optional.empty());
+    }
+
+    // The existing card is rewritten in place, keeping its name and uid, only when the directory details differ from it.
+    // Without directory details, a card holding only the mail never overrides it, as it may be a fuller one.
+    private Mono<Void> updateCard(OpenPaaSDomain domain, OpenPaaSUser user, Optional<UserContact> userContact,
+                                  AddressBookContact addressBookContact, DomainMemberCard card) {
+        if (userContact.isEmpty() || addressBookContact.hasSameContentAs(card.contact())) {
+            return Mono.empty();
+        }
+        return Mono.fromCallable(() -> toAddressBookContact(user, userContact, card.contact().uid()))
+            .flatMap(updatedContact -> upsert(domain, user, card.vcardUid(), updatedContact));
     }
 
     private AddressBookContact toAddressBookContact(OpenPaaSUser user, Optional<UserContact> userContact) throws Exception {
-        AddressBookContact.Builder builder = AddressBookContact.builder().mail(user.username().asMailAddress());
+        return toAddressBookContact(user, userContact, Optional.empty());
+    }
+
+    private AddressBookContact toAddressBookContact(OpenPaaSUser user, Optional<UserContact> userContact, Optional<String> uid) throws Exception {
+        AddressBookContact.Builder builder = AddressBookContact.builder()
+            .uid(uid)
+            .mail(user.username().asMailAddress());
         userContact.ifPresent(builder::userContact);
         return builder.build();
     }
 
-    private Mono<Optional<AddressBookContact>> retrieveDomainMemberContact(OpenPaaSDomain domain, AddressBookContact contact) {
-        return cardDavClient.retrieveContactDomainMembers(domain.id(), contact.vcardUid())
-            .map(vcard -> AddressBookContact.parse(vcard).stream().findFirst())
-            .defaultIfEmpty(Optional.empty());
-    }
-
-    // Without directory details, a card holding only the mail is written once and never overrides a fuller one.
-    private boolean shouldUpsert(Optional<UserContact> userContact, AddressBookContact addressBookContact, Optional<AddressBookContact> existing) {
-        return existing
-            .map(existingContact -> userContact.isPresent() && !addressBookContact.hasSameContentAs(existingContact))
-            .orElse(true);
-    }
-
-    private Mono<Void> upsert(OpenPaaSDomain domain, OpenPaaSUser user, AddressBookContact contact) {
-        return cardDavClient.upsertContactDomainMembers(domain.id(), contact.vcardUid(), contact.toVcardBytes())
+    private Mono<Void> upsert(OpenPaaSDomain domain, OpenPaaSUser user, String vcardUid, AddressBookContact contact) {
+        return cardDavClient.upsertContactDomainMembers(domain.id(), vcardUid, contact.toVcardBytes())
             .doOnSuccess(ignored -> LOGGER.info("Upserted user {} in domain member addressbook of domain {}",
                 user.username().asString(), domain.domain().asString()));
     }

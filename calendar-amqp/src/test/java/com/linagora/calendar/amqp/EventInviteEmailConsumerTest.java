@@ -355,7 +355,7 @@ public class EventInviteEmailConsumerTest {
             .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
 
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
-        assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+        assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
         assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(organizer.username().asString());
         assertThat(TestFixture.extractSubject(smtpMailsResponse.getString("[0].message"))).isEqualTo("Email delivery failed");
         assertThat(getHtml(smtpMailsResponse))
