@@ -21,27 +21,20 @@ package com.linagora.calendar.dav;
 import static com.linagora.calendar.dav.CalDavClient.DEFAULT_FIND_USER_CALENDARS_PARAMS;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
-import java.util.Map;
-
 import jakarta.inject.Inject;
 
 import org.apache.james.core.Username;
 import org.apache.james.user.api.DeleteUserDataTaskStep;
 
 import com.linagora.calendar.dav.CalDavClient.PublicRight;
-import com.linagora.calendar.dav.CalendarSharingUpdate.RemoveSharee;
-import com.linagora.calendar.dav.dto.CalendarDetailsResponse.CalendarInvite;
 import com.linagora.calendar.dav.dto.CalendarMirrorSource;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.MailtoUri;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public class DavCalendarDeletionTaskStep implements DeleteUserDataTaskStep {
-    private static final Map<String, String> WITH_RIGHTS = Map.of("withRights", "true");
-
     private final CalDavClient calDavClient;
     private final OpenPaaSUserDAO openPaaSUserDAO;
 
@@ -76,29 +69,9 @@ public class DavCalendarDeletionTaskStep implements DeleteUserDataTaskStep {
             // Dropping the mirror unsubscribes the deleted user from, or hands back the delegation of, a calendar owned by somebody else.
             return calDavClient.deleteCalendar(username, calendarURL);
         }
-        return revokeSharings(username, calendarURL)
+        return calDavClient.revokeAllSharees(username, calendarURL)
             .then(calDavClient.updateCalendarAcl(username, calendarURL, PublicRight.HIDE_ALL_EVENT))
             .then(deleteOwnedCalendar(username, calendarURL));
-    }
-
-    /**
-     * Sharees keep a mirror of the calendar in their own calendar home, which outlives the deletion of the
-     * underlying data: revoking their rights beforehand is what actually tears those mirrors down.
-     */
-    private Mono<Void> revokeSharings(Username username, CalendarURL calendarURL) {
-        return calDavClient.fetchCalendarDetails(username, calendarURL, WITH_RIGHTS)
-            .map(calendarDetails -> calendarDetails.invites().stream()
-                .filter(DavCalendarDeletionTaskStep::isSharee)
-                .map(invite -> RemoveSharee.of(Username.of(MailtoUri.stripMailtoPrefix(invite.href()))))
-                .toList())
-            .filter(sharees -> !sharees.isEmpty())
-            .flatMap(sharees -> calDavClient.updateCalendarShares(username, calendarURL,
-                CalendarSharingUpdate.builder().revokeAll(sharees).build()));
-    }
-
-    private static boolean isSharee(CalendarInvite invite) {
-        return MailtoUri.hasMailtoPrefix(invite.href())
-            && invite.access().flatMap(DavRight::fromAccess).isPresent();
     }
 
     private Mono<Void> deleteOwnedCalendar(Username username, CalendarURL calendarURL) {

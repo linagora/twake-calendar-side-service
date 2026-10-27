@@ -43,6 +43,7 @@ public class RegisteredUserDeletionService {
     private static final List<Map<String, String>> DELEGATED_CALENDARS_QUERIES = Stream.of("noresponse", "accepted")
         .map(status -> Map.of("sharedDelegationStatus", status))
         .toList();
+    private static final Map<String, String> OWNED_CALENDARS_QUERY = Map.of("personal", "true");
 
     private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
@@ -57,6 +58,7 @@ public class RegisteredUserDeletionService {
 
     public Mono<Void> delete(OpenPaaSUser user) {
         return revokeDelegationsGrantedTo(user)
+            .then(revokeDelegationsGrantedBy(user))
             .then(userDAO.delete(user.username()));
     }
 
@@ -69,6 +71,18 @@ public class RegisteredUserDeletionService {
         CalendarSharingUpdate revocation = CalendarSharingUpdate.revoke(user.username());
         return delegatedCalendars(user)
             .flatMap(sourceCalendar -> revoke(user, sourceCalendar, revocation), DEFAULT_CONCURRENCY)
+            .then();
+    }
+
+    /**
+     * The sharees of the calendars of the user would otherwise keep a mirror of a calendar whose owner principal is gone.
+     * Revoking them has to happen while the user still exists, as the revocation impersonates them.
+     */
+    private Mono<Void> revokeDelegationsGrantedBy(OpenPaaSUser user) {
+        return calDavClient.findUserCalendars(user.username(), user.id(), OWNED_CALENDARS_QUERY)
+            .flatMapIterable(calendarList -> calendarList.calendars().entrySet())
+            .filter(calendar -> !CalendarMirrorSource.parse(calendar.getValue()).isMirror())
+            .flatMap(calendar -> calDavClient.revokeAllSharees(user.username(), calendar.getKey()), DEFAULT_CONCURRENCY)
             .then();
     }
 

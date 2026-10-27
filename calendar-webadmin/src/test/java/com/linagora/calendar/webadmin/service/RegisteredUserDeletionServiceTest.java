@@ -38,6 +38,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.CalendarSharingUpdate.AddSharee;
 import com.linagora.calendar.dav.CalendarSharingUpdate;
 import com.linagora.calendar.dav.DavRight;
 import com.linagora.calendar.dav.DavTestHelper;
@@ -45,15 +46,21 @@ import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.SabreDavProvisioningService;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse.CalendarInvite;
+import com.linagora.calendar.dav.dto.CalendarMirrorSource;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
+import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBTeamCalendarRepository;
 import com.mongodb.reactivestreams.client.MongoDatabase;
+
+import reactor.core.publisher.Flux;
 
 class RegisteredUserDeletionServiceTest {
     private static final Map<String, String> WITH_RIGHTS = Map.of("withRights", "true");
@@ -66,6 +73,7 @@ class RegisteredUserDeletionServiceTest {
     private OpenPaaSDomain domain;
     private MongoDBOpenPaaSUserDAO userDAO;
     private MongoDBTeamCalendarRepository teamCalendarRepository;
+    private MongoDBResourceDAO resourceDAO;
     private CalDavClient calDavClient;
     private RegisteredUserDeletionService testee;
 
@@ -84,6 +92,7 @@ class RegisteredUserDeletionServiceTest {
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         teamCalendarRepository = new MongoDBTeamCalendarRepository(mongoDB, Clock.systemUTC());
+        resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         testee = new RegisteredUserDeletionService(userDAO, domainDAO, calDavClient);
     }
@@ -139,6 +148,62 @@ class RegisteredUserDeletionServiceTest {
             .doesNotContain(mailto(deleted));
     }
 
+    @Test
+    void deleteShouldRevokeDelegationsGrantedByTheUser() {
+        OpenPaaSUser deleted = sabreDavExtension.newTestUser(Optional.of("deleted_"));
+        OpenPaaSUser delegate = sabreDavExtension.newTestUser(Optional.of("delegate_"));
+        CalendarURL deletedCalendar = CalendarURL.from(deleted.id());
+        davTestHelper.grantDelegation(deleted, deletedCalendar, delegate, "dav:read-write");
+
+        testee.delete(deleted).block();
+
+        assertThat(delegatedSources(delegate)).doesNotContain(deletedCalendar);
+    }
+
+    @Test
+    void deleteShouldKeepDelegationsGrantedByOtherUsers() {
+        OpenPaaSUser deleted = sabreDavExtension.newTestUser(Optional.of("deleted_"));
+        OpenPaaSUser owner = sabreDavExtension.newTestUser(Optional.of("owner_"));
+        OpenPaaSUser delegate = sabreDavExtension.newTestUser(Optional.of("delegate_"));
+        CalendarURL ownerCalendar = CalendarURL.from(owner.id());
+        davTestHelper.grantDelegation(owner, ownerCalendar, delegate, "dav:read-write");
+
+        testee.delete(deleted).block();
+
+        assertThat(delegatedSources(delegate)).containsExactly(ownerCalendar);
+    }
+
+    @Test
+    void deleteShouldRemoveTheUserFromResourceAdministrators() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser(Optional.of("creator_"));
+        OpenPaaSUser deleted = sabreDavExtension.newTestUser(Optional.of("deleted_"));
+        OpenPaaSUser kept = sabreDavExtension.newTestUser(Optional.of("kept_"));
+        CalendarURL resourceCalendar = createResourceCalendar(creator);
+        calDavClient.updateCalendarShares(domain.id(), resourceCalendar, CalendarSharingUpdate.grant(
+                AddSharee.of(deleted.username(), DavRight.READ_WRITE),
+                AddSharee.of(kept.username(), DavRight.READ_WRITE)))
+            .block();
+
+        testee.delete(deleted).block();
+
+        assertThat(sharees(resourceCalendar)).containsExactly(mailto(kept));
+    }
+
+    @Test
+    void deleteShouldKeepResourceCalendarWritable() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser(Optional.of("creator_"));
+        OpenPaaSUser deleted = sabreDavExtension.newTestUser(Optional.of("deleted_"));
+        CalendarURL resourceCalendar = createResourceCalendar(creator);
+        calDavClient.updateCalendarShares(domain.id(), resourceCalendar, CalendarSharingUpdate.grant(deleted.username(), DavRight.READ_WRITE))
+            .block();
+
+        testee.delete(deleted).block();
+
+        String eventId = UUID.randomUUID().toString();
+        assertThatCode(() -> calDavClient.importCalendar(domain.id(), resourceCalendar, eventId, event(eventId)).block())
+            .doesNotThrowAnyException();
+    }
+
     private TeamCalendar createTeamCalendar() {
         return teamCalendarRepository.create(new TeamCalendarInsertRequest(
                 domain,
@@ -151,8 +216,32 @@ class RegisteredUserDeletionServiceTest {
         calDavClient.updateCalendarShares(domain.id(), teamCalendarURL(teamCalendar), sharingUpdate).block();
     }
 
+    private CalendarURL createResourceCalendar(OpenPaaSUser creator) {
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(
+                creator.id(),
+                "Resource",
+                domain.id(),
+                "projector",
+                "Resource " + UUID.randomUUID()))
+            .block();
+        return CalendarURL.from(resourceId.asOpenPaaSId());
+    }
+
+    private List<CalendarURL> delegatedSources(OpenPaaSUser delegate) {
+        return Flux.just("noresponse", "accepted")
+            .concatMap(status -> calDavClient.findUserCalendars(delegate.username(), delegate.id(), Map.of("sharedDelegationStatus", status)))
+            .flatMapIterable(calendarList -> calendarList.calendars().values())
+            .flatMap(calendarMetadata -> Flux.fromStream(CalendarMirrorSource.parse(calendarMetadata).delegatedSource().stream()))
+            .collectList()
+            .block();
+    }
+
     private List<String> teamCalendarSharees(TeamCalendar teamCalendar) {
-        return calDavClient.fetchCalendarDetails(domain.id(), teamCalendarURL(teamCalendar), WITH_RIGHTS)
+        return sharees(teamCalendarURL(teamCalendar));
+    }
+
+    private List<String> sharees(CalendarURL calendarURL) {
+        return calDavClient.fetchCalendarDetails(domain.id(), calendarURL, WITH_RIGHTS)
             .flatMapIterable(CalendarDetailsResponse::invites)
             .map(CalendarInvite::href)
             .filter(href -> href.startsWith("mailto:"))
