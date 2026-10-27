@@ -210,7 +210,7 @@ public class EventInviteEmailConsumerTest {
             "calendar-rest-api", "src", "main", "resources", "assets", "calendar", "logo.png");
 
         MailTemplateConfiguration mailTemplateConfig = new MailTemplateConfiguration("file://" + templateDirectory.toAbsolutePath(),
-            MaybeSender.getMailSender("no-reply@openpaas.org"));
+            MaybeSender.getMailSender("no-reply@twake.app"));
 
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
@@ -331,7 +331,7 @@ public class EventInviteEmailConsumerTest {
 
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
         String rawMessage = smtpMailsResponse.getString("[0].message");
-        assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+        assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
         assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(organizer.username().asString());
         assertThat(TestFixture.extractSubject(rawMessage)).isEqualTo("Email delivery failed");
         assertThat(getHtml(smtpMailsResponse))

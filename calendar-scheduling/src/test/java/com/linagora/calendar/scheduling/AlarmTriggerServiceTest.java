@@ -132,7 +132,7 @@ public class AlarmTriggerServiceTest {
         Path templateDirectory = Paths.get(Paths.get("").toAbsolutePath().getParent().toString(),
             "app", "src", "main", "resources", "templates");
         MailTemplateConfiguration mailTemplateConfig = new MailTemplateConfiguration("file://" + templateDirectory.toAbsolutePath(),
-            MaybeSender.getMailSender("no-reply@openpaas.org"));
+            MaybeSender.getMailSender("no-reply@twake.app"));
         MessageGenerator.Factory messageGeneratorFactory = MessageGenerator.factory(mailTemplateConfig, fileSystem, new MemoryOpenPaaSUserDAO());
 
         settingsResolver = Mockito.mock(SettingsBasedResolver.class);
@@ -204,7 +204,7 @@ public class AlarmTriggerServiceTest {
         JsonPath smtpMailsResponse = smtpMailsResponse();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo("attendee@abc.com");
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: Notification: Alarm Test Event")
@@ -569,7 +569,7 @@ public class AlarmTriggerServiceTest {
         JsonPath smtpMailsResponse = smtpMailsResponse();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo("attendee@abc.com");
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: Notification: Recurring Alarm Test Event")
@@ -654,7 +654,7 @@ public class AlarmTriggerServiceTest {
         JsonPath smtpMailsResponse = smtpMailsResponse();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo("attendee@abc.com");
             softly.assertThat(smtpMailsResponse.getString("[0].message"))
                 .contains("Subject: Notification: Recurring Alarm Test Event With Recurrence ID")

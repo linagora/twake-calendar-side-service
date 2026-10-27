@@ -200,7 +200,7 @@ public class CalendarDelegatedNotificationConsumerTest {
             "app", "src", "main", "resources", "templates");
 
         MailTemplateConfiguration mailTemplateConfig = new MailTemplateConfiguration("file://" + templateDirectory.toAbsolutePath(),
-            MaybeSender.getMailSender("no-reply@openpaas.org"));
+            MaybeSender.getMailSender("no-reply@twake.app"));
 
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
@@ -244,7 +244,7 @@ public class CalendarDelegatedNotificationConsumerTest {
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(alice.username().asString());
             String subject = extractSubject(smtpMailsResponse.getString("[0].message"));
             softly.assertThat(subject)
@@ -305,7 +305,7 @@ public class CalendarDelegatedNotificationConsumerTest {
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(alice.username().asString());
             String subject = extractSubject(smtpMailsResponse.getString("[0].message"));
             // Expected French subject: "<Bob full name> a partagé le calendrier « <calendar name> » avec vous"
@@ -370,7 +370,7 @@ public class CalendarDelegatedNotificationConsumerTest {
         JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
 
         assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@openpaas.org");
+            softly.assertThat(smtpMailsResponse.getString("[0].from")).isEqualTo("no-reply@twake.app");
             softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(bob.username().asString());
             String subject = extractSubject(smtpMailsResponse.getString("[0].message"));
             softly.assertThat(subject)

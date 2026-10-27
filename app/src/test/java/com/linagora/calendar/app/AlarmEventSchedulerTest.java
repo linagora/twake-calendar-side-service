@@ -194,8 +194,8 @@ public class AlarmEventSchedulerTest {
             JsonPath jp = smtpMailsResponseSupplier.get();
             assertThat(jp.getList("")).hasSize(1);
             String organizerAddr = organizer.username().asString();
-            String path = "find { it.from == 'no-reply@openpaas.org' && it.recipients && it.recipients[0].address == '" + organizerAddr + "' }";
-            assertThat(jp.getString(path + ".from")).isEqualTo("no-reply@openpaas.org");
+            String path = "find { it.from == 'no-reply@twake.app' && it.recipients && it.recipients[0].address == '" + organizerAddr + "' }";
+            assertThat(jp.getString(path + ".from")).isEqualTo("no-reply@twake.app");
             assertThat(jp.getString(path + ".recipients[0].address")).isEqualTo(organizerAddr);
             assertThat(jp.getString(path + ".message"))
                 .contains("Subject: Notification: Twake Calendar - Sprint planning #04");
