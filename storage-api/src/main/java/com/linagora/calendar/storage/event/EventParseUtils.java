@@ -458,11 +458,15 @@ public class EventParseUtils {
 
         Optional<ZoneId> masterZoneId = getZoneIdFromStartDate(master);
         addProperties(instance,
-            new RecurrenceId<>(normalizeTemporal(recurrenceDate, masterZoneId)),
+            createInstanceRecurrenceId(master, recurrenceDate),
             new DtStart<>(normalizeTemporal(actualPeriod.getStart(), masterZoneId)),
             new DtEnd<>(normalizeTemporal(actualPeriod.getEnd(), masterZoneId)));
 
         return instance;
+    }
+
+    public static RecurrenceId<Temporal> createInstanceRecurrenceId(VEvent master, Temporal recurrenceDate) {
+        return new RecurrenceId<>(normalizeTemporal(recurrenceDate, getZoneIdFromStartDate(master)));
     }
 
     private static Temporal normalizeTemporal(Temporal temporal, Optional<ZoneId> masterZoneId) {

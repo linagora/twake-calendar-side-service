@@ -22,18 +22,25 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -2200,6 +2207,748 @@ public class AlarmInstantFactoryTest {
                 .contains(Instant.parse("2026-10-25T00:30:00Z"));
             assertThat(alarm.map(AlarmInstant::alarmTime))
                 .contains(Instant.parse("2026-10-25T00:15:00Z"));
+        }
+
+        @Test
+        void oldDailySeriesShouldKeepTheWallClockTimeOfNominalTriggersAcrossTheSwitch() {
+            Calendar calendar = parisEvent("20100101T100000", "20100101T110000", "RRULE:FREQ=DAILY", "-P1D");
+
+            Optional<AlarmInstant> alarm = testee(Instant.parse("2026-10-24T12:00:00Z"))
+                .computeNextAlarmInstant(calendar, BOB);
+
+            // The alarm of the October 25 occurrence rang on October 24 at 10:00 CEST (08:00Z). The next one is
+            // October 25 at 10:00 CET (09:00Z), one day before October 26 at 10:00 CET
+            assertThat(alarm.map(AlarmInstant::alarmTime))
+                .contains(Instant.parse("2026-10-25T09:00:00Z"));
+            assertThat(alarm.map(AlarmInstant::eventStartTime))
+                .contains(Instant.parse("2026-10-26T09:00:00Z"));
+            assertThat(alarm.flatMap(AlarmInstant::recurrenceId).map(RecurrenceId::getDate))
+                .contains(ZonedDateTime.of(2026, 10, 26, 10, 0, 0, 0, ZoneId.of("Europe/Paris")));
+        }
+    }
+
+    @Nested
+    class LongRunningSeriesTest {
+
+        private static final Username BOB = Username.of("bob@example.com");
+        private static final Instant NOW = Instant.parse("2026-10-28T00:00:00Z");
+
+        private Calendar series(String dtStart, String rrule, String trigger) {
+            return CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                %s
+                RRULE:%s
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:%s
+                ACTION:EMAIL
+                ATTENDEE:mailto:bob@example.com
+                DESCRIPTION:Reminder
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(dtStart, rrule, trigger));
+        }
+
+        private Optional<AlarmInstant> nextAlarm(Calendar calendar) {
+            return testee(NOW).computeNextAlarmInstant(calendar, BOB);
+        }
+
+        private List<Instant> nextAlarmTimes(Calendar calendar, int count) {
+            AlarmInstantFactory factory = testee(NOW);
+            List<Instant> alarmTimes = new ArrayList<>();
+            Optional<AlarmInstant> next = factory.computeNextAlarmInstant(calendar, BOB, Optional.empty());
+            while (next.isPresent() && alarmTimes.size() < count) {
+                alarmTimes.add(next.get().alarmTime());
+                next = factory.computeNextAlarmInstant(calendar, BOB, next.map(AlarmInstant::alarmTime));
+            }
+            return alarmTimes;
+        }
+
+        private AlarmInstant emailAlarm(Instant alarmTime, Instant eventStart) {
+            return new AlarmInstant(alarmTime, eventStart, Optional.of(new RecurrenceId<>(eventStart)),
+                List.of(asMailAddress("bob@example.com")), AlarmAction.EMAIL);
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void nextAlarmOfAnOldHourlySeriesShouldBeComputedQuickly() {
+            Calendar calendar = series("DTSTART:20150101T083000Z", "FREQ=HOURLY", "-PT5M");
+
+            assertThat(nextAlarm(calendar))
+                .contains(emailAlarm(Instant.parse("2026-10-28T00:25:00Z"), Instant.parse("2026-10-28T00:30:00Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void nextAlarmOfADailySeriesSince1900ShouldBeComputedQuickly() {
+            Calendar calendar = series("DTSTART:19000101T090000Z", "FREQ=DAILY", "-PT15M");
+
+            assertThat(nextAlarm(calendar))
+                .contains(emailAlarm(Instant.parse("2026-10-28T08:45:00Z"), Instant.parse("2026-10-28T09:00:00Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void nextAlarmOfAWeeklySeriesStartedInTheMiddleAgesShouldBeComputedQuickly() {
+            Calendar calendar = series("DTSTART;TZID=UTC:10130304T083000", "FREQ=WEEKLY", "-PT15M");
+
+            Optional<AlarmInstant> alarm = nextAlarm(calendar);
+
+            assertThat(alarm.map(AlarmInstant::eventStartTime))
+                .hasValueSatisfying(start -> {
+                    assertThat(start).isAfter(NOW);
+                    assertThat(start).isBefore(NOW.plus(7, ChronoUnit.DAYS));
+                    assertThat(start.atZone(ZoneOffset.UTC).toLocalTime()).isEqualTo(LocalTime.of(8, 30));
+                });
+            assertThat(alarm.map(alarmInstant -> alarmInstant.eventStartTime().minus(15, ChronoUnit.MINUTES)))
+                .isEqualTo(alarm.map(AlarmInstant::alarmTime));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void nextAlarmOfAnOldMinutelySeriesShouldBeComputedQuickly() {
+            Calendar calendar = series("DTSTART:20150101T083000Z", "FREQ=MINUTELY", "-PT5M");
+
+            // 00:05 rings at 00:00, which is not after now: the first alarm is the one of 00:06
+            assertThat(nextAlarm(calendar))
+                .contains(emailAlarm(Instant.parse("2026-10-28T00:01:00Z"), Instant.parse("2026-10-28T00:06:00Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void nextAlarmOfAnOldSecondlySeriesShouldBeComputedQuickly() {
+            Calendar calendar = series("DTSTART:20150101T083000Z", "FREQ=SECONDLY", "-PT5M");
+
+            assertThat(nextAlarm(calendar))
+                .contains(emailAlarm(Instant.parse("2026-10-28T00:00:01Z"), Instant.parse("2026-10-28T00:05:01Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void nextAlarmOfAnOldSeriesWithAnIntervalShouldBeComputedQuickly() {
+            // 2015-01-01T08:30Z plus a multiple of 7 minutes: 2026-10-28T00:04Z is the first one after 00:00
+            Calendar calendar = series("DTSTART:20150101T083000Z", "FREQ=MINUTELY;INTERVAL=7", "-PT1M");
+
+            assertThat(nextAlarm(calendar))
+                .contains(emailAlarm(Instant.parse("2026-10-28T00:03:00Z"), Instant.parse("2026-10-28T00:04:00Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void nextAlarmsOfAnOldHourlySeriesShouldBeReturnedIteratively() {
+            Calendar calendar = series("DTSTART:20150101T083000Z", "FREQ=HOURLY", "-PT5M");
+
+            assertThat(nextAlarmTimes(calendar, 5))
+                .isEqualTo(List.of(Instant.parse("2026-10-28T00:25:00Z"),
+                    Instant.parse("2026-10-28T01:25:00Z"),
+                    Instant.parse("2026-10-28T02:25:00Z"),
+                    Instant.parse("2026-10-28T03:25:00Z"),
+                    Instant.parse("2026-10-28T04:25:00Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void sinceInstantFarAfterNowShouldBeHandledQuickly() {
+            Calendar calendar = series("DTSTART:20150101T083000Z", "FREQ=MINUTELY", "-PT5M");
+
+            Optional<AlarmInstant> alarm = testee(NOW)
+                .computeNextAlarmInstant(calendar, BOB, Optional.of(Instant.parse("2027-04-28T00:00:00Z")));
+
+            assertThat(alarm)
+                .contains(emailAlarm(Instant.parse("2027-04-28T00:01:00Z"), Instant.parse("2027-04-28T00:06:00Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void positiveTriggerShouldRingAfterTheStartOfTheNextOccurrence() {
+            Calendar calendar = series("DTSTART:20150101T083000Z", "FREQ=HOURLY", "PT10M");
+
+            assertThat(nextAlarm(calendar))
+                .contains(emailAlarm(Instant.parse("2026-10-28T00:40:00Z"), Instant.parse("2026-10-28T00:30:00Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void positiveAndNegativeTriggersShouldBeCombinedOnAnOldSeries() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20150101T083000Z
+                RRULE:FREQ=HOURLY
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:PT10M
+                ACTION:DISPLAY
+                END:VALARM
+                BEGIN:VALARM
+                TRIGGER:-PT10M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            assertThat(nextAlarmTimes(calendar, 4))
+                .isEqualTo(List.of(Instant.parse("2026-10-28T00:20:00Z"),
+                    Instant.parse("2026-10-28T00:40:00Z"),
+                    Instant.parse("2026-10-28T01:20:00Z"),
+                    Instant.parse("2026-10-28T01:40:00Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void longerTriggerOfALaterOccurrenceShouldWinOverShorterTriggerOfTheNextOccurrence() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20100101T100000Z
+                RRULE:FREQ=DAILY
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT5M
+                ACTION:DISPLAY
+                END:VALARM
+                BEGIN:VALARM
+                TRIGGER:-P1DT1H
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            // Today's occurrence rings at 09:55 (its one day earlier alarm is gone), but tomorrow's one rings
+            // one day and one hour before it, at 09:00 today
+            Optional<AlarmInstant> alarm = testee(Instant.parse("2026-10-28T08:00:00Z")).computeNextAlarmInstant(calendar, BOB);
+
+            assertThat(alarm.map(AlarmInstant::alarmTime)).contains(Instant.parse("2026-10-28T09:00:00Z"));
+            assertThat(alarm.map(AlarmInstant::eventStartTime)).contains(Instant.parse("2026-10-29T10:00:00Z"));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void exDateOnTheNextOccurrenceOfAnOldSeriesShouldBeSkipped() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20150101T083000Z
+                RRULE:FREQ=HOURLY
+                EXDATE:20261028T003000Z,20261028T013000Z
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT5M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            assertThat(nextAlarm(calendar).map(AlarmInstant::alarmTime))
+                .contains(Instant.parse("2026-10-28T02:25:00Z"));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void declinedOverrideOfTheNextOccurrenceOfAnOldSeriesShouldBeSkipped() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20150101T083000Z
+                RRULE:FREQ=HOURLY
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT5M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:long-running-series
+                RECURRENCE-ID:20261028T003000Z
+                DTSTART:20261028T003000Z
+                ATTENDEE;CN=Bob;PARTSTAT=DECLINED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT5M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            assertThat(nextAlarm(calendar).map(AlarmInstant::alarmTime))
+                .contains(Instant.parse("2026-10-28T01:25:00Z"));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void movedOverrideShouldReplaceItsOccurrenceInAnOldSeries() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20150101T083000Z
+                RRULE:FREQ=HOURLY
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT5M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:long-running-series
+                RECURRENCE-ID:20261028T003000Z
+                DTSTART:20261028T030000Z
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT5M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            assertThat(nextAlarmTimes(calendar, 5))
+                .describedAs("00:30 moved to 03:00")
+                .isEqualTo(List.of(Instant.parse("2026-10-28T01:25:00Z"),
+                    Instant.parse("2026-10-28T02:25:00Z"),
+                    Instant.parse("2026-10-28T02:55:00Z"),
+                    Instant.parse("2026-10-28T03:25:00Z"),
+                    Instant.parse("2026-10-28T04:25:00Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void laterOverrideWithAnEarlierAlarmShouldWin() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20100101T100000Z
+                RRULE:FREQ=DAILY
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT15M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:long-running-series
+                RECURRENCE-ID:20261101T100000Z
+                DTSTART:20261101T100000Z
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-P4DT2H
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            Optional<AlarmInstant> alarm = nextAlarm(calendar);
+
+            assertThat(alarm.map(AlarmInstant::alarmTime)).contains(Instant.parse("2026-10-28T08:00:00Z"));
+            assertThat(alarm.map(AlarmInstant::eventStartTime)).contains(Instant.parse("2026-11-01T10:00:00Z"));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void overrideShouldBeUsedWhenTheMasterOfAnOldSeriesIsNotAccepted() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20150101T083000Z
+                RRULE:FREQ=HOURLY
+                ATTENDEE;CN=Bob;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT5M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:long-running-series
+                RECURRENCE-ID:20261102T083000Z
+                DTSTART:20261102T083000Z
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT10M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            assertThat(nextAlarm(calendar).map(AlarmInstant::alarmTime))
+                .contains(Instant.parse("2026-11-02T08:20:00Z"));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void overrideWhoseRecurrenceIdIsNotAnOccurrenceShouldBeIgnored() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20150101T083000Z
+                RRULE:FREQ=HOURLY
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT5M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:long-running-series
+                RECURRENCE-ID:20261028T001500Z
+                DTSTART:20261028T001500Z
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT1M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            assertThat(nextAlarm(calendar).map(AlarmInstant::alarmTime))
+                .contains(Instant.parse("2026-10-28T00:25:00Z"));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void manyOverridesOfAnOldSeriesShouldBeHandledQuickly() {
+            StringBuilder overrides = new StringBuilder();
+            Instant firstOverride = Instant.parse("2026-10-28T10:30:00Z");
+            for (int i = 0; i < 500; i++) {
+                String recurrenceId = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
+                    .format(firstOverride.plus(i, ChronoUnit.HOURS));
+                overrides.append("""
+                    BEGIN:VEVENT
+                    UID:long-running-series
+                    RECURRENCE-ID:%1$s
+                    DTSTART:%1$s
+                    ATTENDEE;CN=Bob;PARTSTAT=DECLINED:mailto:bob@example.com
+                    END:VEVENT
+                    """.formatted(recurrenceId));
+            }
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20150101T083000Z
+                RRULE:FREQ=HOURLY
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT5M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                %sEND:VCALENDAR
+                """.formatted(overrides));
+
+            assertThat(testee(Instant.parse("2026-10-28T10:00:00Z")).computeNextAlarmInstant(calendar, BOB).map(AlarmInstant::alarmTime))
+                .describedAs("The 500 hours from 10:30 are declined")
+                .contains(firstOverride.plus(500, ChronoUnit.HOURS).minus(5, ChronoUnit.MINUTES));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void emailAlarmTargetingOnlyAnotherAttendeeOfAnOldSeriesShouldBeIgnoredQuickly() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20150101T083000Z
+                RRULE:FREQ=MINUTELY
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                ATTENDEE;CN=Alice;PARTSTAT=ACCEPTED:mailto:alice@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT5M
+                ACTION:EMAIL
+                ATTENDEE:mailto:alice@example.com
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            assertThat(nextAlarm(calendar)).isEmpty();
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void oldSeriesWithoutAlarmShouldBeIgnoredQuickly() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20150101T083000Z
+                RRULE:FREQ=SECONDLY
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            assertThat(nextAlarm(calendar)).isEmpty();
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void cancelledOldSeriesShouldBeIgnoredQuickly() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20150101T083000Z
+                RRULE:FREQ=MINUTELY
+                STATUS:CANCELLED
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT5M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            assertThat(nextAlarm(calendar)).isEmpty();
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void notAcceptedOldSeriesShouldBeIgnoredQuickly() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20150101T083000Z
+                RRULE:FREQ=SECONDLY
+                ATTENDEE;CN=Bob;PARTSTAT=TENTATIVE:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT5M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            assertThat(nextAlarm(calendar)).isEmpty();
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void seriesEndedByUntilShouldNotRing() {
+            Calendar calendar = series("DTSTART:20150101T083000Z", "FREQ=HOURLY;UNTIL=20200101T000000Z", "-PT5M");
+
+            assertThat(nextAlarm(calendar)).isEmpty();
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void seriesEndedByCountShouldNotRing() {
+            Calendar calendar = series("DTSTART:20150101T090000Z", "FREQ=DAILY;COUNT=10", "-PT15M");
+
+            assertThat(nextAlarm(calendar)).isEmpty();
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void oldSeriesWithAFutureCountShouldRing() {
+            // 2015-01-01 plus 5000 days is in 2028
+            Calendar calendar = series("DTSTART:20150101T090000Z", "FREQ=DAILY;COUNT=5000", "-PT15M");
+
+            assertThat(nextAlarm(calendar))
+                .contains(emailAlarm(Instant.parse("2026-10-28T08:45:00Z"), Instant.parse("2026-10-28T09:00:00Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void hugeCountShouldBeCappedQuickly() {
+            // Capped to 81920 seconds, the series ends on January 2, 2015
+            Calendar calendar = series("DTSTART:20150101T083000Z", "FREQ=SECONDLY;COUNT=1000000000", "-PT5M");
+
+            assertThat(nextAlarm(calendar)).isEmpty();
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void countShouldBeCappedTo81920Occurrences() {
+            // Occurrence n starts n minutes after 2026-09-01T18:00Z: the 81920th one (n = 81919) starts at
+            // 2026-10-28T15:19Z, the next ones are dropped
+            Calendar calendar = series("DTSTART:20260901T180000Z", "FREQ=MINUTELY;COUNT=100000", "-PT5M");
+            AlarmInstantFactory factory = testee(NOW);
+
+            Optional<AlarmInstant> lastAlarm = factory.computeNextAlarmInstant(calendar, BOB, Optional.of(Instant.parse("2026-10-28T15:13:00Z")));
+
+            assertThat(lastAlarm)
+                .contains(emailAlarm(Instant.parse("2026-10-28T15:14:00Z"), Instant.parse("2026-10-28T15:19:00Z")));
+            assertThat(factory.computeNextAlarmInstant(calendar, BOB, lastAlarm.map(AlarmInstant::alarmTime)))
+                .isEmpty();
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void countedAllDaySeriesShouldRing() {
+            Calendar calendar = series("DTSTART;VALUE=DATE:20100315", "FREQ=YEARLY;COUNT=100", "-P1D");
+
+            assertThat(nextAlarm(calendar).map(AlarmInstant::alarmTime))
+                .contains(Instant.parse("2027-03-14T00:00:00Z"));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void countedSeriesWithManyOverridesShouldBeHandledQuickly() {
+            StringBuilder overrides = new StringBuilder();
+            Instant firstOverride = Instant.parse("2026-10-28T10:30:00Z");
+            for (int i = 0; i < 500; i++) {
+                String recurrenceId = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
+                    .format(firstOverride.plus(i, ChronoUnit.HOURS));
+                overrides.append("""
+                    BEGIN:VEVENT
+                    UID:long-running-series
+                    RECURRENCE-ID:%1$s
+                    DTSTART:%1$s
+                    ATTENDEE;CN=Bob;PARTSTAT=DECLINED:mailto:bob@example.com
+                    END:VEVENT
+                    """.formatted(recurrenceId));
+            }
+            // Capped to 81920 hours, the series ends in 2029
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20200101T003000Z
+                RRULE:FREQ=HOURLY;COUNT=1000000
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT5M
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                %sEND:VCALENDAR
+                """.formatted(overrides));
+
+            assertThat(testee(Instant.parse("2026-10-28T10:00:00Z")).computeNextAlarmInstant(calendar, BOB).map(AlarmInstant::alarmTime))
+                .describedAs("The 500 hours from 10:30 are declined")
+                .contains(firstOverride.plus(500, ChronoUnit.HOURS).minus(5, ChronoUnit.MINUTES));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void distantTriggersOfASecondlySeriesShouldBeHandledQuickly() {
+            // Only an occurrence 300 days later could ring earlier than the -PT1M alarm: the iteration is capped
+            // to 81920 occurrences instead of going through 300 days of seconds
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART:20150101T083000Z
+                RRULE:FREQ=SECONDLY
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT1M
+                ACTION:DISPLAY
+                END:VALARM
+                BEGIN:VALARM
+                TRIGGER:-P300D
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            assertThat(nextAlarm(calendar).map(AlarmInstant::alarmTime))
+                .contains(Instant.parse("2026-10-28T00:00:01Z"));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void oldWeeklySeriesOnSeveralDaysShouldRingInOrder() {
+            // 2015-01-05 is a Monday, 2026-10-28 a Wednesday
+            Calendar calendar = series("DTSTART:20150105T090000Z", "FREQ=WEEKLY;BYDAY=MO,WE,FR", "-PT15M");
+
+            assertThat(nextAlarmTimes(calendar, 3))
+                .isEqualTo(List.of(Instant.parse("2026-10-28T08:45:00Z"),
+                    Instant.parse("2026-10-30T08:45:00Z"),
+                    Instant.parse("2026-11-02T08:45:00Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void oldMonthlySeriesOnTheLastFridayShouldRing() {
+            Calendar calendar = series("DTSTART:20120127T090000Z", "FREQ=MONTHLY;BYDAY=-1FR", "-PT15M");
+
+            assertThat(nextAlarmTimes(calendar, 2))
+                .isEqualTo(List.of(Instant.parse("2026-10-30T08:45:00Z"),
+                    Instant.parse("2026-11-27T08:45:00Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void oldYearlyAllDaySeriesShouldRing() {
+            Calendar calendar = series("DTSTART;VALUE=DATE:20100315", "FREQ=YEARLY", "-P1D");
+
+            Optional<AlarmInstant> alarm = nextAlarm(calendar);
+
+            assertThat(alarm.map(AlarmInstant::alarmTime)).contains(Instant.parse("2027-03-14T00:00:00Z"));
+            assertThat(alarm.map(AlarmInstant::eventStartTime)).contains(Instant.parse("2027-03-15T00:00:00Z"));
+            assertThat(alarm.flatMap(AlarmInstant::recurrenceId).map(RecurrenceId::getDate))
+                .contains(LocalDate.of(2027, 3, 15));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void oldDailyAllDaySeriesShouldRing() {
+            Calendar calendar = series("DTSTART;VALUE=DATE:20000101", "FREQ=DAILY", "-PT15H");
+
+            // Today started at now: the next occurrence is tomorrow, 15 hours before is today at 09:00
+            assertThat(nextAlarmTimes(calendar, 2))
+                .isEqualTo(List.of(Instant.parse("2026-10-28T09:00:00Z"),
+                    Instant.parse("2026-10-29T09:00:00Z")));
+        }
+
+        @Test
+        @Timeout(value = 2, unit = TimeUnit.SECONDS)
+        void excludedDateOfAnOldAllDaySeriesShouldBeSkipped() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:long-running-series
+                DTSTART;VALUE=DATE:20000101
+                RRULE:FREQ=DAILY
+                EXDATE;VALUE=DATE:20261029
+                ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+                BEGIN:VALARM
+                TRIGGER:-PT15H
+                ACTION:DISPLAY
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            assertThat(nextAlarm(calendar).map(AlarmInstant::alarmTime))
+                .contains(Instant.parse("2026-10-29T09:00:00Z"));
         }
     }
 
