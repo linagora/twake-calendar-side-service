@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.storage.mongodb;
 
+import java.text.Normalizer;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -33,12 +34,20 @@ import com.google.common.collect.ImmutableMap;
  * is replaced by a character class holding all its accented variants, so that 'theo' matches 'Théo'
  * (and the other way around), aligning with the ASCII folding performed by the OpenSearch contact
  * auto-complete.
+ *
+ * <p>Characters that do not fold to a single ASCII letter (Hangul, Cyrillic, ...) are matched as typed.
+ * Each character may be followed by combining marks so that names stored decomposed (NFD) are found.</p>
  */
 public class AccentInsensitivePrefixPattern {
     private static final int LATIN_RANGE_START = 'A';
     private static final int LATIN_RANGE_END = 0x024F;
+    private static final int LATIN_EXTENDED_ADDITIONAL_START = 0x1E00;
+    private static final int LATIN_EXTENDED_ADDITIONAL_END = 0x1EFF;
+    private static final String OPTIONAL_COMBINING_MARKS = "\\p{M}*";
 
-    private static final Map<String, String> CHARACTER_CLASS_BY_FOLDED_LETTER = IntStream.rangeClosed(LATIN_RANGE_START, LATIN_RANGE_END)
+    private static final Map<String, String> CHARACTER_CLASS_BY_FOLDED_LETTER = IntStream.concat(
+            IntStream.rangeClosed(LATIN_RANGE_START, LATIN_RANGE_END),
+            IntStream.rangeClosed(LATIN_EXTENDED_ADDITIONAL_START, LATIN_EXTENDED_ADDITIONAL_END))
         .filter(Character::isLetter)
         .mapToObj(Character::toString)
         .filter(letter -> isAsciiLetter(fold(letter)))
@@ -48,7 +57,7 @@ public class AccentInsensitivePrefixPattern {
         .collect(ImmutableMap.toImmutableMap(Map.Entry::getKey, entry -> "[" + entry.getValue() + "]"));
 
     public static Pattern of(String query) {
-        String regex = fold(query)
+        String regex = Normalizer.normalize(query, Normalizer.Form.NFC)
             .codePoints()
             .mapToObj(Character::toString)
             .map(AccentInsensitivePrefixPattern::toRegex)
@@ -57,7 +66,7 @@ public class AccentInsensitivePrefixPattern {
     }
 
     private static String toRegex(String character) {
-        return CHARACTER_CLASS_BY_FOLDED_LETTER.getOrDefault(character, Pattern.quote(character));
+        return CHARACTER_CLASS_BY_FOLDED_LETTER.getOrDefault(fold(character), Pattern.quote(character)) + OPTIONAL_COMBINING_MARKS;
     }
 
     private static String fold(String value) {
