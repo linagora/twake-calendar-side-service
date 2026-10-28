@@ -1,9 +1,13 @@
 mixin displayParticipant(cn, email)
+  //- Escape URI delimiters without encoding the @ that separates local part and domain.
+  - var at = email.lastIndexOf('@')
+  - var encodedEmail = at < 0 ? uriComponentEscaper.escape(email) : uriComponentEscaper.escape(email.substring(0, at)) + '@' + uriComponentEscaper.escape(email.substring(at + 1))
   div(style='margin: 4px 0;')
-    if (cn && cn !== email)
-      b #{cn}
-      | &nbsp;
-    span(style='color: #3c4043;') #{email}
+    a(href=`mailto:${encodedEmail}` style='color: #3c4043; text-decoration: none;')
+      if (cn && cn !== email)
+        b #{cn}
+        | &nbsp;
+      | #{email}
     if block
       block
 
