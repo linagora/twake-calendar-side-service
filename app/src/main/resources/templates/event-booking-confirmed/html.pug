@@ -3,13 +3,13 @@ mixin displayParticipant(cn, email)
     if (cn && cn !== email)
       b #{cn}
       | &nbsp;
-    span(style='color: #5f6368;') #{email}
+    span(style='color: #3c4043;') #{email}
     if block
       block
 
 mixin displayAttendees(attendees, organizer, proposerEmail)
   +displayParticipant(organizer.cn, organizer.email)
-    span(style='color: #5f6368;') &nbsp;- #{translator.get('organizer')}
+    span(style='color: #80868b;') &nbsp;- #{translator.get('organizer')}
   each attendee, attendeeEmail in attendees
     if (attendeeEmail !== organizer.email)
       +displayParticipant(attendee.cn, attendeeEmail)
