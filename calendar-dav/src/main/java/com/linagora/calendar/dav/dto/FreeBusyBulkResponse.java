@@ -19,14 +19,14 @@
 package com.linagora.calendar.dav.dto;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.common.collect.Streams;
 import com.linagora.calendar.dav.DavClientException;
 
@@ -46,11 +46,13 @@ import com.linagora.calendar.dav.DavClientException;
  */
 public record FreeBusyBulkResponse(List<BusyInterval> busyIntervals) {
 
-    public record BusyInterval(Instant start, Instant end) {
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record BusyInterval(@JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyyMMdd'T'HHmmss'Z'", timezone = "UTC") Instant start,
+                               @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyyMMdd'T'HHmmss'Z'", timezone = "UTC") Instant end) {
     }
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final DateTimeFormatter ICALENDAR_UTC_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'");
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+        .registerModule(new JavaTimeModule());
     private static final String USERS = "users";
     private static final String CALENDARS = "calendars";
     private static final String BUSY = "busy";
@@ -84,10 +86,6 @@ public record FreeBusyBulkResponse(List<BusyInterval> busyIntervals) {
             return Optional.empty();
         }
 
-        return Optional.of(new BusyInterval(parseInstant(busy.get(START).asText()), parseInstant(busy.get(END).asText())));
-    }
-
-    private static Instant parseInstant(String value) {
-        return LocalDateTime.parse(value, ICALENDAR_UTC_FORMAT).toInstant(ZoneOffset.UTC);
+        return Optional.of(OBJECT_MAPPER.convertValue(busy, BusyInterval.class));
     }
 }

@@ -29,6 +29,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -45,6 +46,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.testcontainers.shaded.com.google.common.collect.ImmutableList;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -53,11 +56,11 @@ import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient.CalendarAccess;
 import com.linagora.calendar.dav.CalDavClient.CalendarPropertiesUpdate;
 import com.linagora.calendar.dav.CalDavClient.NewCalendar;
-import com.linagora.calendar.dav.dto.FreeBusyBulkResponse.BusyInterval;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse.CalendarObject;
+import com.linagora.calendar.dav.dto.FreeBusyBulkResponse.BusyInterval;
 import com.linagora.calendar.dav.dto.VCalendarDto;
 import com.linagora.calendar.dav.model.CalendarQuery;
 import com.linagora.calendar.dav.model.CalendarQuery.TimeRangePropFilter;
@@ -1458,6 +1461,130 @@ public class CalDavClientTest {
         // THEN: The event is reported as busy
         assertThat(busyIntervals)
             .containsExactly(new BusyInterval(Instant.parse("2025-01-10T10:00:00Z"), Instant.parse("2025-01-10T10:30:00Z")));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "UTC, 2025-01-10, 2025-01-11, 2025-01-10T00:00:00Z, 2025-01-11T00:00:00Z",
+        "Asia/Ho_Chi_Minh, 2025-01-10, 2025-01-11, 2025-01-09T17:00:00Z, 2025-01-10T17:00:00Z",
+        "America/New_York, 2025-01-10, 2025-01-11, 2025-01-10T05:00:00Z, 2025-01-11T05:00:00Z",
+        "America/New_York, 2025-03-09, 2025-03-10, 2025-03-09T05:00:00Z, 2025-03-10T04:00:00Z",
+        "Europe/Paris, 2025-10-26, 2025-10-27, 2025-10-25T22:00:00Z, 2025-10-26T23:00:00Z"
+    })
+    void findBusyIntervalsShouldInterpretAllDayEventsInRequestedTimezone(String timezone, String startDate, String endDate,
+                                                                         String expectedStart, String expectedEnd) {
+        OpenPaaSUser user = createOpenPaaSUser();
+        String uid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(user, """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:$UID
+            DTSTAMP:20250101T100000Z
+            DTSTART;VALUE=DATE:$START
+            DTEND;VALUE=DATE:$END
+            TRANSP:OPAQUE
+            SUMMARY:All-day busy event
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("$UID", uid)
+                .replace("$START", startDate.replace("-", ""))
+                .replace("$END", endDate.replace("-", "")), uid);
+
+        List<BusyInterval> busyIntervals = testee.findBusyIntervals(user.username(), user.id(),
+                Instant.parse(startDate + "T00:00:00Z").minusSeconds(86400),
+                Instant.parse(endDate + "T00:00:00Z").plusSeconds(86400), ZoneId.of(timezone))
+            .collectList()
+            .block();
+
+        assertThat(busyIntervals).containsExactly(new BusyInterval(Instant.parse(expectedStart), Instant.parse(expectedEnd)));
+    }
+
+    @Test
+    void findBusyIntervalsShouldInterpretAllDayEventsInUtcByDefault() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        String uid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(user, """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:$UID
+            DTSTAMP:20250101T100000Z
+            DTSTART;VALUE=DATE:20250110
+            DTEND;VALUE=DATE:20250111
+            TRANSP:OPAQUE
+            SUMMARY:All-day busy event
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("$UID", uid), uid);
+
+        List<BusyInterval> busyIntervals = testee.findBusyIntervals(user.username(), user.id(),
+                Instant.parse("2025-01-09T00:00:00Z"), Instant.parse("2025-01-12T00:00:00Z"))
+            .collectList()
+            .block();
+
+        assertThat(busyIntervals).containsExactly(new BusyInterval(
+            Instant.parse("2025-01-10T00:00:00Z"), Instant.parse("2025-01-11T00:00:00Z")));
+    }
+
+    @Test
+    void findBusyIntervalsShouldInterpretFloatingTimesInRequestedTimezone() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        String uid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(user, """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:$UID
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250110T100000
+            DTEND:20250110T103000
+            TRANSP:OPAQUE
+            SUMMARY:Floating busy event
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("$UID", uid), uid);
+
+        List<BusyInterval> busyIntervals = testee.findBusyIntervals(user.username(), user.id(),
+                Instant.parse("2025-01-10T00:00:00Z"), Instant.parse("2025-01-11T00:00:00Z"), ZoneId.of("Asia/Ho_Chi_Minh"))
+            .collectList()
+            .block();
+
+        assertThat(busyIntervals).containsExactly(new BusyInterval(
+            Instant.parse("2025-01-10T03:00:00Z"), Instant.parse("2025-01-10T03:30:00Z")));
+    }
+
+    @Test
+    void findBusyIntervalsShouldPreserveUtcEventTimesWhenTimezoneIsRequested() {
+        OpenPaaSUser user = createOpenPaaSUser();
+        String uid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(user, """
+            BEGIN:VCALENDAR
+            BEGIN:VEVENT
+            UID:$UID
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250110T100000Z
+            DTEND:20250110T103000Z
+            TRANSP:OPAQUE
+            SUMMARY:UTC busy event
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("$UID", uid), uid);
+
+        List<BusyInterval> busyIntervals = testee.findBusyIntervals(user.username(), user.id(),
+                Instant.parse("2025-01-10T00:00:00Z"), Instant.parse("2025-01-11T00:00:00Z"), ZoneId.of("Asia/Ho_Chi_Minh"))
+            .collectList()
+            .block();
+
+        assertThat(busyIntervals).containsExactly(new BusyInterval(
+            Instant.parse("2025-01-10T10:00:00Z"), Instant.parse("2025-01-10T10:30:00Z")));
+    }
+
+    @Test
+    void findBusyIntervalsShouldRejectNullTimezone() {
+        OpenPaaSUser user = createOpenPaaSUser();
+
+        assertThatThrownBy(() -> testee.findBusyIntervals(user.username(), user.id(),
+                Instant.parse("2025-01-10T00:00:00Z"), Instant.parse("2025-01-11T00:00:00Z"), null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("timezone must not be null");
     }
 
     @Test

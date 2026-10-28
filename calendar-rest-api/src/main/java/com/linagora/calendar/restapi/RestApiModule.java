@@ -380,6 +380,13 @@ public class RestApiModule extends AbstractModule {
 
     @Provides
     @Singleton
+    @Named("timezone")
+    SettingsBasedResolver provideTimeZoneResolver(ConfigurationResolver configurationResolver, SimpleSessionProvider sessionProvider) {
+        return SettingsBasedResolver.of(configurationResolver, sessionProvider, Set.of(SettingsBasedResolver.TimeZoneSettingReader.INSTANCE));
+    }
+
+    @Provides
+    @Singleton
     @Named("businessHours")
     SettingsBasedResolver provideBusinessHourResolver(ConfigurationResolver configurationResolver, SimpleSessionProvider sessionProvider) {
         return SettingsBasedResolver.of(configurationResolver, sessionProvider, Set.of(SettingsBasedResolver.TimeZoneSettingReader.INSTANCE, new BusinessHoursSettingReader()));
