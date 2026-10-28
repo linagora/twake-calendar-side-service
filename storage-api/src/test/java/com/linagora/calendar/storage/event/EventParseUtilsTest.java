@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -387,6 +388,50 @@ class EventParseUtilsTest {
             .isEmpty();
     }
 
+    @Test
+    void findMasterRecurrenceEventShouldReturnMasterListedAfterAnOverride() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-1
+            RECURRENCE-ID:20250418T090000Z
+            DTSTART:20250418T100000Z
+            DTEND:20250418T110000Z
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:event-1
+            DTSTART:20250411T090000Z
+            DTEND:20250411T100000Z
+            RRULE:FREQ=WEEKLY;BYDAY=FR
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+
+        assertThat(EventParseUtils.findMasterRecurrenceEvent(calendar))
+            .hasValueSatisfying(master -> assertThat(master.getProperty(Property.RRULE)).isPresent());
+    }
+
+    @Test
+    void findMasterRecurrenceEventShouldReturnEmptyForASingleEvent() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-1
+            DTSTART:20250411T090000Z
+            DTEND:20250411T100000Z
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+
+        assertThat(EventParseUtils.findMasterRecurrenceEvent(calendar)).isEmpty();
+    }
+
     @Nested
     class GetDescription {
         private static final String FOOTER = EventParseUtils.EVENT_FOOTER_SEPARATOR;
@@ -507,6 +552,17 @@ class EventParseUtilsTest {
                 softly.assertThat(EventParseUtils.getStartTime(instance2))
                     .isEqualTo(ZonedDateTime.parse("2025-04-25T09:00:00Z"));
             });
+        }
+
+        @Test
+        void shouldSetDtStartOfTheMatchingOccurrenceWhenSeveralHappenTheSameDay() {
+            Calendar calendar = CalendarUtil.parseIcs(WEEKLY_UTC_ICS.replace("RRULE:FREQ=WEEKLY;BYDAY=FR", "RRULE:FREQ=HOURLY;COUNT=3"));
+            VEvent master = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, Instant.parse("2025-04-11T10:00:00Z"));
+
+            assertThat(EventParseUtils.getStartTime(instance))
+                .isEqualTo(ZonedDateTime.parse("2025-04-11T10:00:00Z"));
         }
 
         @Test

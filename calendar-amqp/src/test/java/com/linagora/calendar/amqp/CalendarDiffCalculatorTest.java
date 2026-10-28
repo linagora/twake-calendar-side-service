@@ -87,6 +87,51 @@ class CalendarDiffCalculatorTest {
         }
 
         @Test
+        void singleEventBecomingRecurringShouldBeANewEvent() {
+            String singleOld = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                BEGIN:VEVENT
+                UID:uid-recur@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                SUMMARY:Weekly sync
+                SEQUENCE:1
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            String recurringNew = singleOld
+                .replace("SEQUENCE:1", "SEQUENCE:2")
+                .replace("SUMMARY:Weekly sync", "SUMMARY:Weekly sync\nRRULE:FREQ=WEEKLY");
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(recurringNew), parse(singleOld));
+
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> {
+                    assertThat(diff.isNewEvent()).isTrue();
+                    assertThat(diff.changes()).isEmpty();
+                    assertThat(diff.vevent().getProperty(Property.RRULE)).isPresent();
+                });
+        }
+
+        @Test
+        void recurrenceRuleOnlyChangeShouldBeANewEventForTheMasterOnly() {
+            String newIcs = MASTER_AND_EXCEPTION_OLD.replace("RRULE:FREQ=WEEKLY", "RRULE:FREQ=DAILY");
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(newIcs), parse(MASTER_AND_EXCEPTION_OLD));
+
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> {
+                    assertThat(diff.isNewEvent()).isTrue();
+                    assertThat(diff.vevent().getRecurrenceId()).isNull();
+                    assertThat(diff.vevent().getProperty(Property.RRULE).map(Property::getValue)).contains("FREQ=DAILY");
+                });
+        }
+
+        @Test
         void changedExceptionReturnsOneDiffWithSummaryChange() {
             String newIcs = """
                 BEGIN:VCALENDAR

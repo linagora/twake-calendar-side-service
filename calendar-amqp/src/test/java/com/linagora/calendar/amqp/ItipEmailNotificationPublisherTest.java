@@ -706,6 +706,379 @@ class ItipEmailNotificationPublisherTest {
                 .satisfies(cancel -> assertThat(cancel.event()).isEqualToIgnoringNewLines(expectedCancelEvent));
         }
 
+        @Test
+        void singleEventBecomingRecurringShouldInviteAttendeeToTheSeries() {
+            String timezone = """
+                BEGIN:VTIMEZONE
+                TZID:Europe/Moscow
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0300
+                TZOFFSETTO:+0300
+                TZNAME:MSK
+                DTSTART:19700101T000000
+                END:STANDARD
+                END:VTIMEZONE""";
+            String singleOld = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Linagora//Twake-Calendar//EN
+                %s
+                BEGIN:VEVENT
+                UID:recurring-uid@test
+                DTSTART;TZID=Europe/Moscow:20261026T123000
+                DTEND;TZID=Europe/Moscow:20261026T130000
+                SEQUENCE:1
+                SUMMARY:Weekly sync
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE;PARTSTAT=ACCEPTED;ROLE=CHAIR:mailto:bob@example.com
+                ATTENDEE;PARTSTAT=NEEDS-ACTION;SCHEDULE-STATUS=1.0:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(timezone);
+            String recurringNew = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Sabre//Sabre VObject 5.0.0//EN
+                METHOD:REQUEST
+                %s
+                BEGIN:VEVENT
+                UID:recurring-uid@test
+                DTSTART;TZID=Europe/Moscow:20261026T123000
+                DTEND;TZID=Europe/Moscow:20261026T130000
+                SEQUENCE:2
+                SUMMARY:Weekly sync
+                ORGANIZER:mailto:bob@example.com
+                RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR
+                ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:alice@example.com
+                ATTENDEE;PARTSTAT=ACCEPTED;ROLE=CHAIR:mailto:bob@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(timezone);
+
+            List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(
+                dto(Method.VALUE_REQUEST, recurringNew, Optional.of(singleOld)), EVENT_PATH, Optional.of(parseIcs(singleOld)));
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR");
+                });
+        }
+
+        @Test
+        void recurrenceRuleOnlyChangeShouldInviteAttendeeToTheNewSeries() {
+            String recurringDaily = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RRULE:FREQ=DAILY;COUNT=3");
+
+            List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(
+                dto(Method.VALUE_REQUEST, recurringDaily, Optional.of(RECURRING_OLD_NO_EXDATE)), EVENT_PATH,
+                Optional.of(parseIcs(RECURRING_OLD_NO_EXDATE)));
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RRULE:FREQ=DAILY;COUNT=3");
+                });
+        }
+
+        @Test
+        void requestWithOnlyOverridesShouldNotFailOnMissingMaster() {
+            String overridesOnly = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Calendar//EN
+                METHOD:REQUEST
+                %s
+                %s
+                END:VCALENDAR
+                """.formatted(OVERRIDE_VEVENT, OVERRIDE_VEVENT
+                    .replace("20260408T1", "20260415T1")
+                    .replace("SUMMARY:Weekly sync moved", "SUMMARY:Weekly sync moved again"));
+            String previousOverrides = overridesOnly.replace("SUMMARY:Weekly sync moved again", "SUMMARY:Weekly sync moved");
+
+            List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(
+                dto(Method.VALUE_REQUEST, overridesOnly, Optional.of(previousOverrides)), EVENT_PATH,
+                Optional.of(parseIcs(previousOverrides)));
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isFalse();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260415T100000Z");
+                });
+        }
+
+        @Test
+        void recurringEventBecomingSingleShouldInviteAttendeeToTheSingleEvent() {
+            String single = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3\n", "");
+
+            List<NotificationEmailDTO> notifications = request(single, RECURRING_OLD_NO_EXDATE);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).doesNotContain("RRULE");
+                });
+        }
+
+        @Test
+        void recurringEventWithOverrideBecomingSingleShouldOnlyInviteAttendeeToTheSingleEvent() {
+            String single = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3\n", "");
+
+            List<NotificationEmailDTO> notifications = request(single, RECURRING_MASTER_AND_OVERRIDE);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).doesNotContain("RRULE", "RECURRENCE-ID");
+                });
+        }
+
+        @Test
+        void singleEventBecomingRecurringWithOverrideShouldInviteAttendeeToTheSeriesAndTheOverride() {
+            String single = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3\n", "");
+
+            List<NotificationEmailDTO> notifications = request(RECURRING_MASTER_AND_OVERRIDE, single);
+
+            assertThat(notifications).hasSize(2)
+                .allSatisfy(notification -> assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST))
+                .anySatisfy(notification -> {
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RRULE:FREQ=WEEKLY;COUNT=3");
+                })
+                .anySatisfy(notification -> assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z"));
+        }
+
+        @Test
+        void changedExDateShouldCancelTheNewlyExcludedOccurrenceAndRestoreThePreviousOne() {
+            String previous = withExDate(RECURRING_OLD_NO_EXDATE, "20260408T100000Z");
+            String current = withExDate(RECURRING_OLD_NO_EXDATE, "20260415T100000Z");
+
+            List<NotificationEmailDTO> notifications = request(current, previous);
+
+            assertThat(notifications).hasSize(2)
+                .anySatisfy(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_CANCEL);
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260415T100000Z");
+                })
+                .anySatisfy(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z", "DTSTART:20260408T100000Z");
+                });
+        }
+
+        @Test
+        void removedExDateShouldInviteAttendeeToTheRestoredOccurrence() {
+            String previous = withExDate(RECURRING_OLD_NO_EXDATE, "20260408T100000Z");
+
+            List<NotificationEmailDTO> notifications = request(RECURRING_OLD_NO_EXDATE, previous);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z")
+                        .doesNotContain("RRULE", "EXDATE");
+                });
+        }
+
+        @Test
+        void removedExDateReplacedByAnOverrideShouldOnlyNotifyTheOverride() {
+            String previous = withExDate(RECURRING_OLD_NO_EXDATE, "20260408T100000Z");
+
+            List<NotificationEmailDTO> notifications = request(RECURRING_MASTER_AND_OVERRIDE, previous);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z", "SUMMARY:Weekly sync moved");
+                });
+        }
+
+        @Test
+        void removedExDateAndItsOverrideShouldOnlyInviteAttendeeToTheRestoredOccurrence() {
+            String previous = withExDate(RECURRING_MASTER_AND_OVERRIDE, "20260408T100000Z");
+
+            List<NotificationEmailDTO> notifications = request(RECURRING_OLD_NO_EXDATE, previous);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z", "DTSTART:20260408T100000Z");
+                });
+        }
+
+        @Test
+        void removedExDateOfAnHourlySeriesShouldInviteAttendeeToTheRestoredOccurrenceAtItsOwnTime() {
+            String hourly = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RRULE:FREQ=HOURLY;COUNT=3")
+                .replace("DTEND:20260401T110000Z", "DTEND:20260401T103000Z");
+            String previous = withExDate(hourly, "20260401T110000Z");
+
+            List<NotificationEmailDTO> notifications = request(hourly, previous);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260401T110000Z",
+                        "DTSTART:20260401T110000Z", "DTEND:20260401T113000Z");
+                });
+        }
+
+        @Test
+        void newOverrideShouldOnlyNotifyTheMovedOccurrence() {
+            List<NotificationEmailDTO> notifications = request(RECURRING_MASTER_AND_OVERRIDE, RECURRING_OLD_NO_EXDATE);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isFalse();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z");
+                    assertThatJson(notification.changes().orElseThrow().toString())
+                        .isObject().containsKeys("summary", "dtstart", "dtend");
+                });
+        }
+
+        @Test
+        void overrideChangeShouldOnlyNotifyTheOverride() {
+            String current = RECURRING_MASTER_AND_OVERRIDE.replace("SUMMARY:Weekly sync moved", "SUMMARY:Weekly sync moved again");
+
+            List<NotificationEmailDTO> notifications = request(current, RECURRING_MASTER_AND_OVERRIDE);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isFalse();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z");
+                    assertThatJson(notification.changes().orElseThrow().toString())
+                        .isEqualTo("""
+                            {
+                                "summary": {
+                                    "previous": "Weekly sync moved",
+                                    "current": "Weekly sync moved again"
+                                }
+                            }""");
+                });
+        }
+
+        @Test
+        void removedOverrideShouldNotifyTheOccurrenceGoingBackToTheSeries() {
+            List<NotificationEmailDTO> notifications = request(RECURRING_OLD_NO_EXDATE, RECURRING_MASTER_AND_OVERRIDE);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isFalse();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z", "DTSTART:20260408T100000Z")
+                        .doesNotContain("RRULE");
+                    assertThatJson(notification.changes().orElseThrow().toString())
+                        .isObject().containsKeys("summary", "dtstart", "dtend");
+                });
+        }
+
+        @Test
+        void overrideReplacedByAnExDateShouldOnlyCancelTheOccurrence() {
+            String current = withExDate(RECURRING_OLD_NO_EXDATE, "20260408T100000Z");
+
+            List<NotificationEmailDTO> notifications = request(current, RECURRING_MASTER_AND_OVERRIDE);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_CANCEL);
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z");
+                });
+        }
+
+        @Test
+        void recurrenceRuleAndExDateChangeShouldOnlyInviteAttendeeToTheNewSeries() {
+            String current = withExDate(RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RRULE:FREQ=DAILY;COUNT=3"),
+                "20260402T100000Z");
+
+            List<NotificationEmailDTO> notifications = request(current, RECURRING_OLD_NO_EXDATE);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RRULE:FREQ=DAILY;COUNT=3", "EXDATE:20260402T100000Z");
+                });
+        }
+
+        @Test
+        void recurrenceRuleChangeAndRemovedExDateShouldOnlyInviteAttendeeToTheNewSeries() {
+            String previous = withExDate(RECURRING_OLD_NO_EXDATE, "20260408T100000Z");
+            String current = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RRULE:FREQ=WEEKLY;COUNT=4");
+
+            List<NotificationEmailDTO> notifications = request(current, previous);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RRULE:FREQ=WEEKLY;COUNT=4");
+                });
+        }
+
+        @Test
+        void recurrenceRuleChangeWithUntouchedOverrideShouldOnlyInviteAttendeeToTheNewSeries() {
+            String current = RECURRING_MASTER_AND_OVERRIDE.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RRULE:FREQ=WEEKLY;COUNT=4");
+
+            List<NotificationEmailDTO> notifications = request(current, RECURRING_MASTER_AND_OVERRIDE);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RRULE:FREQ=WEEKLY;COUNT=4")
+                        .doesNotContain("RECURRENCE-ID");
+                });
+        }
+
+        @Test
+        void recurrenceRuleChangeWithChangedOverrideShouldInviteAttendeeToTheNewSeriesAndUpdateTheOverride() {
+            String current = RECURRING_MASTER_AND_OVERRIDE
+                .replace("RRULE:FREQ=WEEKLY;COUNT=3", "RRULE:FREQ=WEEKLY;COUNT=4")
+                .replace("SUMMARY:Weekly sync moved", "SUMMARY:Weekly sync moved again");
+
+            List<NotificationEmailDTO> notifications = request(current, RECURRING_MASTER_AND_OVERRIDE);
+
+            assertThat(notifications).hasSize(2)
+                .allSatisfy(notification -> assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST))
+                .anySatisfy(notification -> {
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RRULE:FREQ=WEEKLY;COUNT=4");
+                })
+                .anySatisfy(notification -> {
+                    assertThat(notification.isNewEvent()).isFalse();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z", "SUMMARY:Weekly sync moved again");
+                });
+        }
+
+        @Test
+        void recurrenceRuleChangeWithRemovedOverrideShouldOnlyInviteAttendeeToTheNewSeries() {
+            String current = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RRULE:FREQ=DAILY;COUNT=3");
+
+            List<NotificationEmailDTO> notifications = request(current, RECURRING_MASTER_AND_OVERRIDE);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RRULE:FREQ=DAILY;COUNT=3");
+                });
+        }
+
+        private List<NotificationEmailDTO> request(String current, String previous) {
+            return testee.buildNotificationMessages(dto(Method.VALUE_REQUEST, current, Optional.of(previous)), EVENT_PATH,
+                Optional.of(parseIcs(previous)));
+        }
+
+        private String withExDate(String ics, String exDate) {
+            return ics.replaceFirst("(RRULE:[^\\n]+\\n)", "$1EXDATE:" + exDate + "\n");
+        }
+
     }
 
     private ItipLocalDeliveryDTO dto(String method, String message, Optional<String> oldMessage) {
