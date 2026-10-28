@@ -75,6 +75,7 @@ import com.linagora.calendar.commoncontacts.api.CommonContactsApiModule;
 import com.linagora.calendar.dav.DavModule;
 import com.linagora.calendar.restapi.MeetRestApiModule;
 import com.linagora.calendar.restapi.RestApiModule;
+import com.linagora.calendar.saas.TWPCalendarUserCreationModule;
 import com.linagora.calendar.saas.TWPCalendarUserDeletionModule;
 import com.linagora.calendar.smtp.SmtpModule;
 import com.linagora.calendar.storage.CaffeineOIDCTokenCache;
@@ -248,6 +249,7 @@ public class TwakeCalendarMain {
     public static Module chooseTWPCalendarSetting(boolean enabled) {
         if (enabled) {
             return Modules.combine(TWP_CALENDAR_SETTINGS_AGGREGATE_MODULE,
+                new TWPCalendarUserCreationModule(),
                 new TWPCalendarUserDeletionModule(),
                 ReadOnlyPropertyProviderModule.WITH_READ_ONLY_LANGUAGE);
         }
