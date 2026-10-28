@@ -18,42 +18,49 @@
 
 package com.linagora.calendar.saas;
 
+import static com.linagora.tmail.saas.rabbitmq.TWPConstants.TWP_INJECTION_KEY;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
+import java.io.Closeable;
 import java.time.Duration;
+
+import jakarta.annotation.PreDestroy;
+import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
+import org.apache.james.lifecycle.api.Startable;
 
 import com.linagora.tmail.rabbitmq.ManagedRabbitMQConsumer;
 import com.linagora.tmail.rabbitmq.QueueDeclaration;
 import com.linagora.tmail.saas.rabbitmq.TWPCommonRabbitMQConfiguration;
 
-public final class TWPUserCreationConsumer {
-    public record UserCreationConsumerConfig(String queue, String deadLetterQueue) {
-        public static final UserCreationConsumerConfig DEFAULT = new UserCreationConsumerConfig("tcalendar-user-created", "tcalendar-user-created-dead-letter");
-    }
+public class TWPUserCreationConsumer implements Closeable, Startable {
+    public static final String QUEUE = "tcalendar-user-created";
+    public static final String DEAD_LETTER_QUEUE = "tcalendar-user-created-dead-letter";
 
     private static final Duration CONSUMER_TIMEOUT = Duration.ofMinutes(10L);
 
-    private TWPUserCreationConsumer() {
-    }
+    private final ManagedRabbitMQConsumer consumer;
 
-    public static ManagedRabbitMQConsumer create(ReactorRabbitMQChannelPool channelPool,
-                                                 RabbitMQConfiguration rabbitMQConfiguration,
-                                                 TWPCommonRabbitMQConfiguration twpCommonRabbitMQConfiguration,
-                                                 TWPUserCreationRabbitMQConfiguration userCreationRabbitMQConfiguration,
-                                                 UserCreationConsumerConfig consumerConfig,
-                                                 TWPUserCreationHandler handler) {
-        return new ManagedRabbitMQConsumer.Factory(channelPool)
+    @Inject
+    public TWPUserCreationConsumer(@Named(TWP_INJECTION_KEY) ReactorRabbitMQChannelPool channelPool,
+                                   @Named(TWP_INJECTION_KEY) RabbitMQConfiguration rabbitMQConfiguration,
+                                   TWPCommonRabbitMQConfiguration twpCommonRabbitMQConfiguration,
+                                   TWPUserCreationRabbitMQConfiguration configuration,
+                                   TWPUserCreationHandler handler) {
+        consumer = new ManagedRabbitMQConsumer.Factory(channelPool)
             .create(ManagedRabbitMQConsumer.Parameters.builder()
                 .queueDeclaration(QueueDeclaration.builder()
-                    .binding(userCreationRabbitMQConfiguration.exchange(), userCreationRabbitMQConfiguration.routingKey())
-                    .queue(consumerConfig.queue())
-                    .deadLetterQueue(consumerConfig.deadLetterQueue())
+                    .binding(configuration.exchange(), configuration.routingKey())
+                    .queue(QUEUE)
+                    .deadLetterQueue(DEAD_LETTER_QUEUE)
                     .build())
-                .queueArguments(() -> queueArgumentSupplier(rabbitMQConfiguration, twpCommonRabbitMQConfiguration))
+                .queueArguments(() -> twpCommonRabbitMQConfiguration.quorumQueuesBypass()
+                    ? QueueArguments.builder()
+                    : rabbitMQConfiguration.workQueueArgumentsBuilder())
                 .singleActiveConsumer()
                 .consumerTimeout(CONSUMER_TIMEOUT)
                 .qos(DEFAULT_CONCURRENCY)
@@ -61,11 +68,17 @@ public final class TWPUserCreationConsumer {
                 .build());
     }
 
-    private static QueueArguments.Builder queueArgumentSupplier(RabbitMQConfiguration rabbitMQConfiguration,
-                                                                TWPCommonRabbitMQConfiguration twpCommonRabbitMQConfiguration) {
-        if (!twpCommonRabbitMQConfiguration.quorumQueuesBypass()) {
-            return rabbitMQConfiguration.workQueueArgumentsBuilder();
-        }
-        return QueueArguments.builder();
+    public void init() {
+        consumer.init();
+    }
+
+    public void restart() {
+        consumer.restart();
+    }
+
+    @Override
+    @PreDestroy
+    public void close() {
+        consumer.close();
     }
 }

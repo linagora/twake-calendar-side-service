@@ -63,7 +63,7 @@ import com.linagora.calendar.dav.CardDavClient.DomainMemberCard;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
-import com.linagora.calendar.saas.TWPCalendarUserCreationModule;
+import com.linagora.calendar.saas.TWPUserCreationConsumer;
 import com.linagora.calendar.saas.TWPUserCreationRabbitMQConfiguration;
 import com.linagora.calendar.storage.OpenPaaSId;
 
@@ -182,8 +182,8 @@ class TWPUserCreationIntegrationTest {
 
         // When the monitored queues are listed
         // Then the user creation queue and its dead letter queue are monitored
-        assertThat(probe.consumedQueues()).contains(TWPCalendarUserCreationModule.CONSUMER_CONFIG.queue());
-        assertThat(probe.deadLetterQueues()).contains(TWPCalendarUserCreationModule.CONSUMER_CONFIG.deadLetterQueue());
+        assertThat(probe.consumedQueues()).contains(TWPUserCreationConsumer.QUEUE);
+        assertThat(probe.deadLetterQueues()).contains(TWPUserCreationConsumer.DEAD_LETTER_QUEUE);
     }
 
     private TestDomain addDomain(TwakeCalendarGuiceServer server) {
@@ -205,7 +205,7 @@ class TWPUserCreationIntegrationTest {
     private void purgeUserCreationDeadLetterQueue() {
         try {
             RabbitMQManagementAPI.from(sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration())
-                .purgeQueue("/", TWPCalendarUserCreationModule.CONSUMER_CONFIG.deadLetterQueue());
+                .purgeQueue("/", TWPUserCreationConsumer.DEAD_LETTER_QUEUE);
         } catch (Exception e) {
             throw new RuntimeException("Unable to purge TWP user creation dead letter queue before test", e);
         }

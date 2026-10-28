@@ -29,7 +29,6 @@ import org.apache.commons.configuration2.ex.ConfigurationException;
 import org.apache.james.backends.rabbitmq.MonitoredDeadLetterQueue;
 import org.apache.james.backends.rabbitmq.MonitoredRabbitMQConsumers;
 import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
-import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
@@ -39,47 +38,34 @@ import com.google.common.collect.ImmutableList;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.multibindings.ProvidesIntoSet;
-import com.linagora.calendar.saas.TWPUserCreationConsumer.UserCreationConsumerConfig;
-import com.linagora.tmail.rabbitmq.ManagedRabbitMQConsumer;
-import com.linagora.tmail.saas.rabbitmq.TWPCommonRabbitMQConfiguration;
 
 import reactor.core.publisher.Mono;
 
 public class TWPCalendarUserCreationModule extends AbstractModule {
-    public static final UserCreationConsumerConfig CONSUMER_CONFIG = UserCreationConsumerConfig.DEFAULT;
-
-    private static final String TWP_USER_CREATION_CONSUMER = "twp-user-creation";
-
-    @Provides
-    @Singleton
-    @Named(TWP_USER_CREATION_CONSUMER)
-    ManagedRabbitMQConsumer provideTWPUserCreationConsumer(@Named(TWP_INJECTION_KEY) ReactorRabbitMQChannelPool channelPool,
-                                                           @Named(TWP_INJECTION_KEY) RabbitMQConfiguration rabbitMQConfiguration,
-                                                           TWPCommonRabbitMQConfiguration twpCommonRabbitMQConfiguration,
-                                                           TWPUserCreationRabbitMQConfiguration twpUserCreationRabbitMQConfiguration,
-                                                           SaaSUserProvisioner userProvisioner) {
-        return TWPUserCreationConsumer.create(channelPool, rabbitMQConfiguration, twpCommonRabbitMQConfiguration,
-            twpUserCreationRabbitMQConfiguration, CONSUMER_CONFIG, new TWPUserCreationHandler(userProvisioner));
+    @Override
+    protected void configure() {
+        bind(TWPUserCreationHandler.class).in(Singleton.class);
+        bind(TWPUserCreationConsumer.class).in(Singleton.class);
     }
 
     @ProvidesIntoSet
     MonitoredRabbitMQConsumers twpUserCreationConsumers(@Named(TWP_INJECTION_KEY) SimpleConnectionPool twpConnectionPool,
-                                                        @Named(TWP_USER_CREATION_CONSUMER) ManagedRabbitMQConsumer twpUserCreationConsumer) {
+                                                        TWPUserCreationConsumer consumer) {
         return MonitoredRabbitMQConsumers.of("TWP user creation", twpConnectionPool,
-            () -> ImmutableList.of(CONSUMER_CONFIG.queue()),
-            connection -> Mono.fromRunnable(twpUserCreationConsumer::restart));
+            () -> ImmutableList.of(TWPUserCreationConsumer.QUEUE),
+            connection -> Mono.fromRunnable(consumer::restart));
     }
 
     @ProvidesIntoSet
     MonitoredDeadLetterQueue twpUserCreationDeadLetterQueue(@Named(TWP_INJECTION_KEY) RabbitMQConfiguration twpRabbitMQConfiguration) {
-        return new MonitoredDeadLetterQueue(twpRabbitMQConfiguration, CONSUMER_CONFIG.deadLetterQueue());
+        return new MonitoredDeadLetterQueue(twpRabbitMQConfiguration, TWPUserCreationConsumer.DEAD_LETTER_QUEUE);
     }
 
     @ProvidesIntoSet
-    InitializationOperation initializeTWPUserCreationConsumer(@Named(TWP_USER_CREATION_CONSUMER) ManagedRabbitMQConsumer instance) {
+    InitializationOperation initializeTWPUserCreationConsumer(TWPUserCreationConsumer consumer) {
         return InitilizationOperationBuilder
-            .forClass(ManagedRabbitMQConsumer.class)
-            .init(instance::init);
+            .forClass(TWPUserCreationConsumer.class)
+            .init(consumer::init);
     }
 
     @Provides

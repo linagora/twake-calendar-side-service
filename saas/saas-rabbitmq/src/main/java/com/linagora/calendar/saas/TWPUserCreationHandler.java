@@ -20,6 +20,8 @@ package com.linagora.calendar.saas;
 
 import java.io.IOException;
 
+import jakarta.inject.Inject;
+
 import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,13 +33,14 @@ import com.linagora.tmail.saas.rabbitmq.subscription.SaaSMessageHandler;
 import reactor.core.publisher.Mono;
 
 // Handles the Twake Workplace user.created events: the member is added to the domain member address book,
-// calendar user or not. Only internalEmail is read, the other fields being absent for B2C accounts.
+// calendar user or not. Only internalEmail is read.
 public class TWPUserCreationHandler implements SaaSMessageHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(TWPUserCreationHandler.class);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final SaaSUserProvisioner userProvisioner;
 
+    @Inject
     public TWPUserCreationHandler(SaaSUserProvisioner userProvisioner) {
         this.userProvisioner = userProvisioner;
     }
