@@ -34,6 +34,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.restapi.routes.BookingLinkEventIcsBuilder.BookingEventOptions;
 import com.linagora.calendar.restapi.routes.BookingLinkEventIcsBuilder.BuildResult;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
@@ -45,7 +46,10 @@ import com.linagora.calendar.storage.booking.EventTransparency;
 import com.linagora.calendar.storage.booking.EventVisibility;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
+import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Parameter;
+import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Uid;
 import net.fortuna.ical4j.util.UidGenerator;
@@ -475,6 +479,76 @@ public class BookingLinkEventIcsBuilderTest {
             .contains("CLASS:PUBLIC")
             .doesNotContain("BEGIN:VALARM")
             .doesNotContain("LOCATION:");
+    }
+
+    @Test
+    void carriageReturnInTitleShouldNotSplitTheIcs() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.empty(), FIXED_UID_GENERATOR);
+
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("BOB", "creator@example.com"),
+            List.of(),
+            "30-min\rEND:VEVENT intro call",
+            false,
+            "");
+
+        VEvent event = parseEvent(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).block());
+
+        assertThat(event.getSummary().getValue())
+            .isEqualTo("30-min\nEND:VEVENT intro call");
+    }
+
+    @Test
+    void carriageReturnInNotesShouldNotSplitTheIcs() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.empty(), FIXED_UID_GENERATOR);
+
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("BOB", "creator@example.com"),
+            List.of(),
+            "eventTitle",
+            false,
+            "line 1\r\nline 2\rRRULE:FREQ=DAILY");
+
+        VEvent event = parseEvent(testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).block());
+
+        assertThat(event.getDescription().getValue())
+            .isEqualTo("line 1\nline 2\nRRULE:FREQ=DAILY");
+        assertThat(event.getProperty(Property.RRULE))
+            .isEmpty();
+    }
+
+    @Test
+    void controlCharactersAndQuotesInNamesShouldNotSplitTheIcs() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.empty(), FIXED_UID_GENERATOR);
+
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("BOB\"\rTRANSP:TRANSPARENT", "creator@example.com"),
+            List.of(BookingAttendee.from("Nguyen\r\nCLASS:PRIVATE", "vana@example.com")),
+            "eventTitle",
+            false,
+            "");
+        BookingEventOptions options = new BookingEventOptions(Optional.of("Room\r3"), Optional.empty(), Optional.empty(),
+            List.of(BookingAttendee.from("Projector\rURL:https://evil.example.com", "projector-id@example.com")), List.of());
+
+        VEvent event = parseEvent(testee.build(request, BookingAttendee.from("Alice\rOwner", "owner@example.com"),
+            List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options).block());
+
+        assertThat(event.getProperties(Property.TRANSP)).hasSize(1);
+        assertThat(event.getProperties(Property.CLASS)).hasSize(1);
+        assertThat(event.getProperty(Property.URL)).isEmpty();
+        assertThat(event.getLocation().getValue()).isEqualTo("Room\n3");
+        assertThat(event.getAttendees().stream()
+            .map(attendee -> attendee.getParameter(Parameter.CN).map(Parameter::getValue).orElse(null))
+            .toList())
+            .containsExactly("Alice Owner", "BOB  TRANSP:TRANSPARENT", "Nguyen  CLASS:PRIVATE", "Projector URL:https://evil.example.com");
+    }
+
+    private VEvent parseEvent(BuildResult result) {
+        Calendar calendar = CalendarUtil.parseIcs(result.icsBytes());
+        return (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
     }
 
     private BookingRequest bookingRequest() {
