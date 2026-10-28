@@ -19,7 +19,11 @@
 package com.linagora.calendar.smtp.template;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
+
+import com.google.common.escape.Escaper;
+import com.google.common.net.PercentEscaper;
 
 import de.neuland.pug4j.Pug4J;
 import de.neuland.pug4j.PugConfiguration;
@@ -28,6 +32,7 @@ import de.neuland.pug4j.template.PugTemplate;
 
 public class HtmlBodyRenderer {
     private static final String TEMPLATE_FILE_NAME = "html.pug";
+    private static final Escaper URI_COMPONENT_ESCAPER = new PercentEscaper("-._~", false);
 
     public static HtmlBodyRenderer forPath(String templatePath) throws IOException {
         return new HtmlBodyRenderer(loadTemplate(templatePath, TEMPLATE_FILE_NAME));
@@ -50,6 +55,9 @@ public class HtmlBodyRenderer {
     }
 
     public String render(Map<String, Object> scopedValue) {
-        return Pug4J.render(template, scopedValue);
+        // Pug4j uses JEXL, so templates need an explicit URI component encoder.
+        Map<String, Object> model = new HashMap<>(scopedValue);
+        model.put("uriComponentEscaper", URI_COMPONENT_ESCAPER);
+        return Pug4J.render(template, model);
     }
 }
