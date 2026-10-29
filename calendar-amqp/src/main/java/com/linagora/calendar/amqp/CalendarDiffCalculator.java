@@ -256,6 +256,10 @@ public class CalendarDiffCalculator {
     }
 
     private static boolean organizerAcceptedTransition(VEvent previousEvent, VEvent currentEvent) {
+        if (previousEvent == null) {
+            return false;
+        }
+
         return EventParseUtils.getOrganizer(previousEvent)
             .map(organizer -> {
                 boolean wasDeclinedOrNeedAction = EventParseUtils.getAttendees(previousEvent)
@@ -284,7 +288,7 @@ public class CalendarDiffCalculator {
      * previous behaviour and notifies nobody, so ordinary meetings are unaffected.
      */
     private static boolean organizerDeclinedBookingTransition(VEvent previousEvent, VEvent currentEvent) {
-        if (!publiclyCreated(currentEvent)) {
+        if (previousEvent == null || !publiclyCreated(currentEvent)) {
             return false;
         }
 
