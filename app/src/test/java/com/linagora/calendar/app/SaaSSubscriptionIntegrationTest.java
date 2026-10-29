@@ -59,6 +59,7 @@ import com.linagora.calendar.dav.DockerSabreDavSetup;
 import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.saas.TWPCalendarSubscriptionModule;
+import com.linagora.calendar.saas.TWPUserCreationConsumer;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSDomainSubscriptionConsumer;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSSubscriptionConsumer;
@@ -166,6 +167,8 @@ class SaaSSubscriptionIntegrationTest {
             rabbitMQManagementAPI.purgeQueue("/", TWPCalendarSubscriptionModule.DOMAIN_SUBSCRIPTION_CONSUMER_CONFIG.deadLetterQueue());
             // The Sabre stack is shared: other test classes leave address book list notifications for unknown users behind
             rabbitMQManagementAPI.purgeQueue("/", AddressBookListNotificationConsumer.DEAD_LETTER_QUEUE);
+            // ... and TWPUserCreationIntegrationTest dead letters an invalid user.created message
+            rabbitMQManagementAPI.purgeQueue("/", TWPUserCreationConsumer.DEAD_LETTER_QUEUE);
         } catch (Exception e) {
             throw new RuntimeException("Unable to purge SaaS subscription dead letter queues before test", e);
         }
