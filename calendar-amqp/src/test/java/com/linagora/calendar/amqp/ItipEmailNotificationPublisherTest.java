@@ -1070,6 +1070,48 @@ class ItipEmailNotificationPublisherTest {
                 });
         }
 
+        @Test
+        void unchangedDateExDateOnTimedMasterShouldNotNotifyAnybody() {
+            String ics = withDateExDate(RECURRING_OLD_NO_EXDATE, "20260408");
+
+            assertThat(request(ics, ics)).isEmpty();
+        }
+
+        @Test
+        void addedDateExDateOnTimedMasterShouldCancelTheOccurrenceOfThatDay() {
+            String current = withDateExDate(RECURRING_OLD_NO_EXDATE, "20260408");
+
+            List<NotificationEmailDTO> notifications = request(current, RECURRING_OLD_NO_EXDATE);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_CANCEL);
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z");
+                });
+        }
+
+        @Test
+        void removedDateExDateOnTimedMasterShouldInviteAttendeeToTheRestoredOccurrence() {
+            String previous = withDateExDate(RECURRING_OLD_NO_EXDATE, "20260408");
+
+            List<NotificationEmailDTO> notifications = request(RECURRING_OLD_NO_EXDATE, previous);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z", "DTSTART:20260408T100000Z");
+                });
+        }
+
+        @Test
+        void dateExDateOnTimedMasterShouldMatchTheEquivalentDateTimeExDate() {
+            String previous = withDateExDate(RECURRING_OLD_NO_EXDATE, "20260408");
+            String current = withExDate(RECURRING_OLD_NO_EXDATE, "20260408T100000Z");
+
+            assertThat(request(current, previous)).isEmpty();
+        }
+
         private List<NotificationEmailDTO> request(String current, String previous) {
             return testee.buildNotificationMessages(dto(Method.VALUE_REQUEST, current, Optional.of(previous)), EVENT_PATH,
                 Optional.of(parseIcs(previous)));
@@ -1077,6 +1119,10 @@ class ItipEmailNotificationPublisherTest {
 
         private String withExDate(String ics, String exDate) {
             return ics.replaceFirst("(RRULE:[^\\n]+\\n)", "$1EXDATE:" + exDate + "\n");
+        }
+
+        private String withDateExDate(String ics, String exDate) {
+            return ics.replaceFirst("(RRULE:[^\\n]+\\n)", "$1EXDATE;VALUE=DATE:" + exDate + "\n");
         }
 
     }

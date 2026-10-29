@@ -23,6 +23,7 @@ import static com.linagora.calendar.storage.event.EventParseUtils.createInstance
 import java.net.URI;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.ZonedDateTime;
 import java.time.chrono.ChronoZonedDateTime;
 import java.time.temporal.Temporal;
 import java.util.LinkedHashMap;
@@ -362,18 +363,38 @@ class ItipEmailNotificationPublisher {
             return masterEvent.getProperties(Property.EXDATE).stream()
                 .map(exDate -> (ExDate<?>) exDate)
                 .flatMap(exDate -> exDate.getDates().stream().map(Temporal.class::cast))
-                .map(temporal -> normalizeExDate(temporal, masterEvent))
+                .flatMap(temporal -> normalizeExDate(temporal, masterEvent).stream())
                 .collect(Collectors.toSet());
         }
 
-        private Temporal normalizeExDate(Temporal temporal, VEvent masterEvent) {
-            if (EventParseUtils.isAllDay(masterEvent) && (temporal instanceof LocalDate localDate)) {
-                return localDate;
+        private Optional<Temporal> normalizeExDate(Temporal temporal, VEvent masterEvent) {
+            if (temporal instanceof LocalDate localDate) {
+                return normalizeDateExDate(localDate, masterEvent);
             }
             // Independent parses of VTIMEZONE can assign different ZoneIds to the same instant.
-            return EventParseUtils.temporalToZonedDateTime(temporal)
-                .map(ChronoZonedDateTime::toInstant)
-                .orElseThrow(() -> new IllegalStateException("Cannot convert EXDATE: " + temporal));
+            Optional<Temporal> instant = EventParseUtils.temporalToZonedDateTime(temporal)
+                .map(ChronoZonedDateTime::toInstant);
+            if (instant.isEmpty()) {
+                LOGGER.warn("Ignoring EXDATE {} that cannot be converted to an instant", temporal);
+            }
+            return instant;
+        }
+
+        /**
+         * A date-only EXDATE on a timed series excludes the occurrence of that day: it is anchored at the master's
+         * start time, in the master's zone.
+         */
+        private Optional<Temporal> normalizeDateExDate(LocalDate exDate, VEvent masterEvent) {
+            if (EventParseUtils.isAllDay(masterEvent)) {
+                return Optional.of(exDate);
+            }
+            try {
+                ZonedDateTime masterStart = EventParseUtils.getStartTime(masterEvent);
+                return Optional.of(exDate.atTime(masterStart.toLocalTime()).atZone(masterStart.getZone()).toInstant());
+            } catch (IllegalStateException exception) {
+                LOGGER.warn("Ignoring date EXDATE {} of a series without a valid DTSTART", exDate, exception);
+                return Optional.empty();
+            }
         }
 
         private boolean shouldSendRequest(EventDiff diff, Set<Temporal> excludedRecurrenceIds) {
@@ -385,13 +406,16 @@ class ItipEmailNotificationPublisher {
         private Optional<Temporal> recurrenceKey(VEvent vevent) {
             return Optional.ofNullable(vevent.getRecurrenceId())
                 .map(DateProperty::getDate)
-                .map(temporal -> {
+                .flatMap(temporal -> {
                     if (temporal instanceof LocalDate localDate) {
-                        return localDate;
+                        return Optional.of(localDate);
                     }
-                    return EventParseUtils.temporalToZonedDateTime(temporal)
-                        .map(ChronoZonedDateTime::toInstant)
-                        .orElseThrow(() -> new IllegalStateException("Cannot convert recurrence temporal: " + temporal));
+                    Optional<Temporal> instant = EventParseUtils.temporalToZonedDateTime(temporal)
+                        .map(ChronoZonedDateTime::toInstant);
+                    if (instant.isEmpty()) {
+                        LOGGER.warn("Ignoring RECURRENCE-ID {} that cannot be converted to an instant", temporal);
+                    }
+                    return instant;
                 });
         }
     }
