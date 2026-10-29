@@ -154,6 +154,22 @@ public class CalendarUtil {
     }
 
     /**
+     * Returns a deep copy of the given calendar.
+     *
+     * <p>Unlike {@link Calendar#copy()}, which re-creates every property through its factory and thus fails on
+     * properties kept by relaxed parsing (unknown properties, malformed values), this re-parses the serialized calendar.
+     *
+     * @throws IllegalArgumentException when the calendar cannot be copied
+     */
+    public static Calendar copyOf(Calendar calendar) {
+        try {
+            return parseIcs(calendar.toString());
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("Could not copy calendar: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * Returns a copy of the given calendar carrying the supplied iTIP METHOD.
      *
      * <p>Calendar objects stored on the CalDAV server must not carry a METHOD property, thus it needs to be

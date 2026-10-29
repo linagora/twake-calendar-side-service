@@ -27,6 +27,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.api.CalendarUtil;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.component.VEvent;
@@ -57,7 +58,7 @@ public class CalendarEventModifier {
     }
 
     public Calendar apply(Calendar calendar) {
-        Calendar newCalendar = calendar.copy();
+        Calendar newCalendar = CalendarUtil.copyOf(calendar);
         validator.ifPresent(v -> v.accept(newCalendar));
 
         VEvent vEventToUpdate = firstVEvent(newCalendar);
