@@ -130,4 +130,51 @@ class WeeklyAvailabilityRuleTest {
         assertThat(actual).containsExactly(
             Range.closedOpen(Instant.parse("2026-02-23T08:00:00Z"), Instant.parse("2026-02-23T10:00:00Z")));
     }
+
+    @Test
+    void availabilityRangesShouldSkipDayWhenRangeIsSwallowedByADstGap() {
+        WeeklyAvailabilityRule rule = new WeeklyAvailabilityRule(
+            DayOfWeek.SUNDAY,
+            LocalTime.parse("02:30"),
+            LocalTime.parse("03:00"),
+            ZoneId.of("Europe/Paris"));
+
+        List<Range<Instant>> actual = rule.availabilityRanges(
+            Instant.parse("2024-03-25T00:00:00Z"),
+            Instant.parse("2024-04-09T00:00:00Z"));
+
+        assertThat(actual).containsExactly(
+            Range.closedOpen(Instant.parse("2024-04-07T00:30:00Z"), Instant.parse("2024-04-07T01:00:00Z")));
+    }
+
+    @Test
+    void availabilityRangesShouldSkipDayWhenRangeEndsAtTheEndOfADstGap() {
+        WeeklyAvailabilityRule rule = new WeeklyAvailabilityRule(
+            DayOfWeek.SUNDAY,
+            LocalTime.parse("02:00"),
+            LocalTime.parse("03:00"),
+            ZoneId.of("Europe/Paris"));
+
+        List<Range<Instant>> actual = rule.availabilityRanges(
+            Instant.parse("2024-03-30T00:00:00Z"),
+            Instant.parse("2024-04-01T00:00:00Z"));
+
+        assertThat(actual).isEmpty();
+    }
+
+    @Test
+    void availabilityRangesShouldKeepTheExistingPartOfARangeStartingInADstGap() {
+        WeeklyAvailabilityRule rule = new WeeklyAvailabilityRule(
+            DayOfWeek.SUNDAY,
+            LocalTime.parse("02:30"),
+            LocalTime.parse("05:00"),
+            ZoneId.of("Europe/Paris"));
+
+        List<Range<Instant>> actual = rule.availabilityRanges(
+            Instant.parse("2024-03-30T00:00:00Z"),
+            Instant.parse("2024-04-01T00:00:00Z"));
+
+        assertThat(actual).containsExactly(
+            Range.closedOpen(Instant.parse("2024-03-31T01:30:00Z"), Instant.parse("2024-03-31T03:00:00Z")));
+    }
 }
