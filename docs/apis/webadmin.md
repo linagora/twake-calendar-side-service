@@ -2336,6 +2336,7 @@ The deletion task executes the following steps in priority order:
 |-----------|----------|-------------|
 | `DavCalendarDeletionTaskStep` | 1 | Deletes user's calendars and calendar events |
 | `DavContactDeletionTaskStep` | 2 | Deletes user's contacts and address books |
+| `DavDomainMemberDeletionTaskStep` | 3 | Deletes user's cards from the domain member address book of their domain |
 | `CalendarSearchDeletionTaskStep` | 10 | Removes indexed calendar events from OpenSearch |
 | `OpenPaaSUserDeletionTaskStep` | 1000 | Deletes user from the OpenPaaS user database |
 
@@ -2347,7 +2348,7 @@ To skip certain deletion steps, use the `fromStep` parameter:
 POST /users/james@linagora.com?action=deleteData&fromStep=CalendarSearchDeletionTaskStep
 ```
 
-This will skip `DavCalendarDeletionTaskStep` and `DavContactDeletionTaskStep`, starting directly from `CalendarSearchDeletionTaskStep`.
+This will skip `DavCalendarDeletionTaskStep`, `DavContactDeletionTaskStep` and `DavDomainMemberDeletionTaskStep`, starting directly from `CalendarSearchDeletionTaskStep`.
 
 ## Unsent mails routes
 

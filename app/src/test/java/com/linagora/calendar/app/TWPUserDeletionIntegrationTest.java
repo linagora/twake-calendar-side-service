@@ -30,6 +30,7 @@ import static org.hamcrest.Matchers.equalTo;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 
 import javax.net.ssl.SSLException;
@@ -40,6 +41,7 @@ import org.apache.james.backends.rabbitmq.RabbitMQManagementAPI;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
 import org.apache.james.core.Domain;
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
 import org.apache.james.metrics.tests.RecordingMetricFactory;
@@ -55,14 +57,17 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.CardDavClient.DomainMemberCard;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.saas.TWPCalendarUserDeletionModule;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.tmail.saas.rabbitmq.deletion.TWPUserDeletionConsumer;
 import com.linagora.tmail.saas.rabbitmq.deletion.TWPUserDeletionRabbitMQConfiguration;
@@ -222,6 +227,29 @@ class TWPUserDeletionIntegrationTest {
     }
 
     @Test
+    void shouldDeleteUserCardFromDomainMemberAddressBookWhenReceivingUserDeletionEvent(TwakeCalendarGuiceServer server) throws Exception {
+        // Given Bob and Alice both have a card in the domain member address book of their domain
+        Domain domain = Domain.of("domain-" + UUID.randomUUID() + ".tld");
+        CalendarDataProbe probe = server.getProbe(CalendarDataProbe.class).addDomain(domain);
+        OpenPaaSId domainId = probe.domainId(domain);
+        MailAddress bob = new MailAddress("bob@" + domain.asString());
+        MailAddress alice = new MailAddress("alice@" + domain.asString());
+        AddressBookContact aliceContact = AddressBookContact.builder().uid("alice").displayName("Alice").mail(alice).build();
+        cardDavClient.upsertContactDomainMembers(domainId, "bob",
+            AddressBookContact.builder().uid("bob").displayName("Bob").mail(bob).build().toVcardBytes()).block();
+        cardDavClient.upsertContactDomainMembers(domainId, "alice", aliceContact.toVcardBytes()).block();
+
+        // When a deletion event of Bob is received
+        publish(TWPUserDeletionRabbitMQConfiguration.TWP_USER_DELETION_B2B_EXCHANGE_DEFAULT,
+            TWPUserDeletionRabbitMQConfiguration.TWP_USER_DELETION_B2B_ROUTING_KEY_DEFAULT,
+            userDeletionMessage(Username.fromMailAddress(bob)));
+
+        // Then Bob's card is removed from the domain member address book, and Alice's card is kept
+        awaitAtMost.untilAsserted(() -> assertThat(findDomainMemberCards(domainId, bob)).isEmpty());
+        assertThat(findDomainMemberCards(domainId, alice)).containsExactly(new DomainMemberCard("alice", aliceContact));
+    }
+
+    @Test
     void shouldNotDeleteOtherUsers(TwakeCalendarGuiceServer server) {
         Username deletedUser = provisionUser(server);
         Username otherUser = provisionUser(server);
@@ -269,6 +297,10 @@ class TWPUserDeletionIntegrationTest {
             .addDomain(domain)
             .addUser(username, PASSWORD);
         return username;
+    }
+
+    private List<DomainMemberCard> findDomainMemberCards(OpenPaaSId domainId, MailAddress mail) {
+        return cardDavClient.findContactsDomainMembersByEmail(domainId, mail).collectList().block();
     }
 
     private void purgeUserDeletionDeadLetterQueue() {
