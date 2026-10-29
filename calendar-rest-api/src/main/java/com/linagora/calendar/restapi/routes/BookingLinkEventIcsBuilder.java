@@ -32,6 +32,7 @@ import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
 
+import com.google.common.base.CharMatcher;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -84,6 +85,8 @@ public class BookingLinkEventIcsBuilder {
     private static final String VISIO_DESCRIPTION_NOTICE = "Please do not edit this section.";
     private static final XProperty X_PROPERTY_PUBLIC = new XProperty("X-PUBLICLY-CREATED", "TRUE").add(Value.BOOLEAN);
     private static final String MAIL_TO_PREFIX = "mailto:";
+    private static final CharMatcher TEXT_FORBIDDEN_CHARACTERS = CharMatcher.javaIsoControl().and(CharMatcher.noneOf("\n\t"));
+    private static final CharMatcher PARAMETER_FORBIDDEN_CHARACTERS = CharMatcher.javaIsoControl().or(CharMatcher.is('"'));
 
     private final Clock clock;
     private final MeetingConferenceLinkGenerator meetingLinkGenerator;
@@ -173,7 +176,7 @@ public class BookingLinkEventIcsBuilder {
             .add(eventUid)
             .add(transp)
             .add(clazz)
-            .add(new Summary(request.title()))
+            .add(new Summary(sanitizeText(request.title()).orElseThrow()))
             .add(new DtStamp(clock.instant()))
             .add(new Sequence(0))
             .add(new DtStart<>(request.slotStartUtc()))
@@ -190,11 +193,12 @@ public class BookingLinkEventIcsBuilder {
                 .map(this::buildResourceAttendee)
                 .toList());
 
-        buildDescription(request.notes(), maybeMeetingLink)
+        buildDescription(sanitizeText(request.notes()), maybeMeetingLink)
             .map(Description::new)
             .ifPresent(properties::add);
 
         options.location()
+            .flatMap(BookingLinkEventIcsBuilder::sanitizeText)
             .map(Location::new)
             .ifPresent(properties::add);
 
@@ -248,16 +252,14 @@ public class BookingLinkEventIcsBuilder {
             .withParameter(PartStat.NEEDS_ACTION)
             .getFluentTarget();
 
-        if (StringUtils.isNotBlank(resource.name())) {
-            builtAttendee.withParameter(new Cn(resource.name()));
-        }
+        cn(resource.name()).ifPresent(builtAttendee::withParameter);
         return builtAttendee;
     }
 
-    private Optional<String> buildDescription(String notes, Optional<URL> maybeMeetingLink) {
+    private Optional<String> buildDescription(Optional<String> notes, Optional<URL> maybeMeetingLink) {
         return Optional.ofNullable(StringUtils.trimToNull(Joiner.on("\n\n")
             .skipNulls()
-            .join(StringUtils.trimToNull(notes), maybeMeetingLink
+            .join(notes.map(StringUtils::trimToNull).orElse(null), maybeMeetingLink
                 .map(BookingLinkEventIcsBuilder::visioSection)
                 .orElse(null))));
     }
@@ -305,9 +307,7 @@ public class BookingLinkEventIcsBuilder {
             .withParameter(partStat)
             .getFluentTarget();
 
-        if (StringUtils.isNotBlank(attendee.name())) {
-            builtAttendee.withParameter(new Cn(attendee.name()));
-        }
+        cn(attendee.name()).ifPresent(builtAttendee::withParameter);
         return builtAttendee;
     }
 
@@ -321,11 +321,31 @@ public class BookingLinkEventIcsBuilder {
             .withParameter(autoAccept ? PartStat.ACCEPTED : PartStat.NEEDS_ACTION)
             .getFluentTarget();
 
-        if (StringUtils.isNotBlank(attendee.name())) {
-            organizer.withParameter(new Cn(attendee.name()));
-            builtAttendee.withParameter(new Cn(attendee.name()));
-        }
+        cn(attendee.name()).ifPresent(cnParameter -> {
+            organizer.withParameter(cnParameter);
+            builtAttendee.withParameter(cnParameter);
+        });
         return List.of(organizer, builtAttendee);
+    }
+
+    /**
+     * ical4j escapes LF in TEXT values but not a lone CR, which parsers then read as a line break: free text from
+     * the booker would otherwise inject properties or components into the event.
+     */
+    private static Optional<String> sanitizeText(String value) {
+        return Optional.ofNullable(value)
+            .map(text -> text.replace("\r\n", "\n").replace('\r', '\n'))
+            .map(TEXT_FORBIDDEN_CHARACTERS::removeFrom);
+    }
+
+    /**
+     * Parameter values are written verbatim, and a quoted value cannot hold a DQUOTE (RFC 5545 3.1).
+     */
+    private static Optional<Cn> cn(String name) {
+        return Optional.ofNullable(name)
+            .map(value -> PARAMETER_FORBIDDEN_CHARACTERS.replaceFrom(value, ' '))
+            .filter(StringUtils::isNotBlank)
+            .map(Cn::new);
     }
 
     public record BuildResult(Uid eventId, Calendar calendar,
