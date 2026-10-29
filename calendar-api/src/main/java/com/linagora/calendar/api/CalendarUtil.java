@@ -34,6 +34,7 @@ import java.time.ZoneId;
 import java.time.zone.ZoneRules;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import net.fortuna.ical4j.data.CalendarBuilder;
 import net.fortuna.ical4j.data.CalendarParserFactory;
@@ -41,10 +42,12 @@ import net.fortuna.ical4j.data.ContentHandlerContext;
 import net.fortuna.ical4j.data.ParserException;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.ComponentList;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.TimeZoneRegistry;
 import net.fortuna.ical4j.model.TimeZoneRegistryImpl;
+import net.fortuna.ical4j.model.component.CalendarComponent;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.util.CompatibilityHints;
@@ -159,9 +162,11 @@ public class CalendarUtil {
      * <p>Calendar objects stored on the CalDAV server must not carry a METHOD property, thus it needs to be
      * added back when the very same calendar is turned into an iTIP message (eg a {@code text/calendar} MIME part).
      * Mail clients rely on it to display the event invitation widget.
+     *
+     * <p>The supplied calendar is left untouched: its property and component lists are immutable and shared.
      */
     public static Calendar withMethod(Calendar calendar, Method method) {
-        Calendar copiedCalendar = calendar.copy();
+        Calendar copiedCalendar = new Calendar(calendar.getPropertyList(), calendar.getComponentList());
         copiedCalendar.removeAll(Property.METHOD);
         copiedCalendar.add(method);
         return copiedCalendar;
@@ -175,14 +180,16 @@ public class CalendarUtil {
      * Returns a copy of the given calendar whose VEVENTs are replaced by the supplied ones.
      *
      * <p>Calendar level properties and time zones of the template are kept, as VEVENTs reference them.
+     *
+     * <p>The template and the supplied VEVENTs are shared rather than deep copied: ical4j's {@code copy()}
+     * re-creates each property through its factory, which fails on unknown properties and on some leniently
+     * parsed values.
      */
     public static Calendar withVEvents(Calendar template, List<VEvent> vEvents) {
-        Calendar copiedCalendar = template.copy();
-        copiedCalendar.getComponents(Component.VEVENT).stream()
-            .map(VEvent.class::cast)
-            .toList()
-            .forEach(copiedCalendar::remove);
-        vEvents.forEach(vEvent -> copiedCalendar.add(vEvent.copy()));
-        return copiedCalendar;
+        Stream<CalendarComponent> nonVEventComponents = template.getComponents().stream()
+            .filter(component -> !Component.VEVENT.equals(component.getName()));
+        List<CalendarComponent> components = Stream.concat(nonVEventComponents, vEvents.stream())
+            .toList();
+        return new Calendar(template.getPropertyList(), new ComponentList<>(components));
     }
 }

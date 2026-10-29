@@ -80,6 +80,22 @@ class CalendarUtilTest {
         END:VCALENDAR
         """;
 
+    private static final String ICS_WITH_UNKNOWN_PROPERTY = """
+        BEGIN:VCALENDAR
+        VERSION:2.0
+        BEGIN:VEVENT
+        UID:event-1
+        DTSTART:20251020T100000Z
+        MSUMARY:All day
+        END:VEVENT
+        BEGIN:VEVENT
+        UID:event-2
+        DTSTART:20251021T100000Z
+        SUMMARY:Other
+        END:VEVENT
+        END:VCALENDAR
+        """;
+
     private static String icsWithTimezone(String tzId) {
         return ICS_WITH_TIMEZONE_TEMPLATE.formatted(tzId, tzId, tzId);
     }
@@ -148,6 +164,49 @@ class CalendarUtilTest {
         CalendarUtil.withMethod(calendar, ImmutableMethod.REQUEST);
 
         assertThat(calendar.toString())
+            .doesNotContain("METHOD:");
+    }
+
+    @Test
+    void withMethodShouldSupportUnknownProperties() {
+        Calendar calendar = CalendarUtil.parseIcs(ICS_WITH_UNKNOWN_PROPERTY);
+
+        assertThat(CalendarUtil.withMethod(calendar, ImmutableMethod.REQUEST).toString())
+            .contains("METHOD:REQUEST")
+            .contains("MSUMARY:All day");
+    }
+
+    @Test
+    void withVEventsShouldSupportUnknownProperties() {
+        Calendar calendar = CalendarUtil.parseIcs(ICS_WITH_UNKNOWN_PROPERTY);
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
+
+        assertThat(CalendarUtil.withSingleVEvent(calendar, vEvent).toString())
+            .contains("UID:event-1")
+            .contains("MSUMARY:All day")
+            .doesNotContain("UID:event-2");
+    }
+
+    @Test
+    void withVEventsShouldKeepTimezones() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithTimezone("Custom Linagora Time"));
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
+
+        assertThat(CalendarUtil.withSingleVEvent(calendar, vEvent).toString())
+            .contains("BEGIN:VTIMEZONE")
+            .contains("TZID:Custom Linagora Time");
+    }
+
+    @Test
+    void withVEventsShouldNotMutateTemplate() {
+        Calendar calendar = CalendarUtil.parseIcs(ICS_WITH_UNKNOWN_PROPERTY);
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
+
+        Calendar result = CalendarUtil.withSingleVEvent(calendar, vEvent);
+        result.add(ImmutableMethod.CANCEL);
+
+        assertThat(calendar.toString())
+            .contains("UID:event-2")
             .doesNotContain("METHOD:");
     }
 }
