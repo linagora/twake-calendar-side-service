@@ -82,30 +82,25 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
 
     private Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay, CalendarEventNotificationEmailDTO.Changes changes) {
         ImmutableMap.Builder<String, Object> changesBuilder = ImmutableMap.builder();
-        changes.summary().ifPresent(summaryChange -> {
-            changesBuilder.put("summary", ImmutableMap.of(
-                "previous", summaryChange.previous()
-            ));
-        });
+        changes.summary().ifPresent(summaryChange -> changesBuilder.put("summary", toPugModel(summaryChange)));
         changes.dtstart().ifPresent(dtstartChange -> changesBuilder.put("dtstart", ImmutableMap.of(
             "previous", toEventTimeModel(dtstartChange).toPugModel(locale, zoneToDisplay)
         )));
         changes.dtend().ifPresent(dtendChange -> changesBuilder.put("dtend", ImmutableMap.of(
             "previous", toEventTimeModel(dtendChange).toPugModel(locale, zoneToDisplay)
         )));
-        changes.location().ifPresent(locationChange ->
-            changesBuilder.put("location", ImmutableMap.of(
-                "previous", locationChange.previous()
-        )));
-        changes.description().ifPresent(descriptionChange ->
-            changesBuilder.put("description", ImmutableMap.of(
-                "previous", descriptionChange.previous()
-        )));
+        changes.location().ifPresent(locationChange -> changesBuilder.put("location", toPugModel(locationChange)));
+        changes.description().ifPresent(descriptionChange -> changesBuilder.put("description", toPugModel(descriptionChange)));
         boolean isOldEventAllDay = changes.dtstart().map(dtstartChange -> dtstartChange.previous().isAllDay())
             .orElse(changes.dtend().map(dtendChange -> dtendChange.previous().isAllDay())
                 .orElse(false));
         changesBuilder.put("isOldEventAllDay", isOldEventAllDay);
         return changesBuilder.build();
+    }
+
+    private Map<String, Object> toPugModel(CalendarEventNotificationEmailDTO.StringChange stringChange) {
+        // An added property may come with an absent previous value: render it as empty (the template then tags it as added)
+        return ImmutableMap.of("previous", StringUtils.defaultString(stringChange.previous()));
     }
 
     private EventTimeModel toEventTimeModel(CalendarEventNotificationEmailDTO.DateTimeChange dateTimeChange) {
