@@ -779,6 +779,86 @@ class CalendarDiffCalculatorTest {
                                 }
                             }"""));
         }
+
+        private static final String OLD_UTC = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Linagora//Twake-Calendar//EN
+            BEGIN:VEVENT
+            UID:event-uid@test
+            DTSTART:20261013T120000Z
+            DTEND:20261013T130000Z
+            RRULE:FREQ=WEEKLY;BYDAY=TU
+            SUMMARY:Weekly meeting
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE:mailto:bob@example.com
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:event-uid@test
+            RECURRENCE-ID:20261020T120000Z
+            DTSTART:20261020T130000Z
+            DTEND:20261020T140000Z
+            SUMMARY:Weekly meeting moved
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        private static final String NEW_PARIS = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Linagora//Twake-Calendar//EN
+            BEGIN:VEVENT
+            UID:event-uid@test
+            DTSTART;TZID=Europe/Paris:20261013T140000
+            DTEND;TZID=Europe/Paris:20261013T150000
+            RRULE:FREQ=WEEKLY;BYDAY=TU
+            SUMMARY:Weekly meeting
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE:mailto:bob@example.com
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:event-uid@test
+            RECURRENCE-ID;TZID=Europe/Paris:20261020T140000
+            DTSTART;TZID=Europe/Paris:20261020T160000
+            DTEND;TZID=Europe/Paris:20261020T170000
+            SUMMARY:Weekly meeting moved
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        @Test
+        void calculateShouldNotifyAnOverrideOnceWhenItsRecurrenceIdChangesForm() {
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(NEW_PARIS), parse(OLD_UTC));
+
+            assertThat(diffs)
+                .filteredOn(diff -> diff.vevent().getRecurrenceId() != null)
+                .singleElement()
+                .satisfies(diff -> assertThat(diff.isNewEvent()).isFalse());
+        }
+
+        @Test
+        void calculateShouldNotNotifyTheMasterWhenOnlyItsTimezoneRepresentationChanges() {
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(NEW_PARIS), parse(OLD_UTC));
+
+            assertThat(diffs)
+                .filteredOn(diff -> diff.vevent().getRecurrenceId() == null)
+                .isEmpty();
+        }
+
+        @Test
+        void calculateShouldNotNotifyWhenOnlyTheTimezoneRepresentationChanges() {
+            String sameInstantsInParis = NEW_PARIS
+                .replace("DTSTART;TZID=Europe/Paris:20261020T160000", "DTSTART;TZID=Europe/Paris:20261020T150000")
+                .replace("DTEND;TZID=Europe/Paris:20261020T170000", "DTEND;TZID=Europe/Paris:20261020T160000");
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(sameInstantsInParis), parse(OLD_UTC));
+
+            assertThat(diffs).isEmpty();
+        }
     }
 
     @Nested
