@@ -209,4 +209,34 @@ class CalendarUtilTest {
             .contains("UID:event-2")
             .doesNotContain("METHOD:");
     }
+
+    @Test
+    void withSingleVEventShouldIgnoreUnparsableTemplateVEvents() {
+        Calendar template = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Calendar//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:event-uid@test
+            DTSTART;TZID=Europe/Paris:20261013T140000
+            RRULE:FREQ=WEEKLY;BYDAY=TU
+            SUMMARY:Weekly meeting
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:event-uid@test
+            RECURRENCE-ID;TZID=Europe/Paris:20261340T140000
+            DTSTART;TZID=Europe/Paris:20261020T160000
+            SUMMARY:Weekly meeting moved
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        VEvent master = (VEvent) template.getComponents(Component.VEVENT).getFirst();
+
+        Calendar calendar = CalendarUtil.withSingleVEvent(template, master);
+
+        assertThat(calendar.toString())
+            .contains("METHOD:REQUEST", "SUMMARY:Weekly meeting")
+            .doesNotContain("RECURRENCE-ID", "Weekly meeting moved");
+    }
 }

@@ -417,30 +417,34 @@ class ItipEmailNotificationPublisher {
 
         private Optional<Temporal> recurrenceKey(VEvent vevent) {
             return Optional.ofNullable(vevent.getRecurrenceId())
-                .flatMap(this::recurrenceDate)
-                .flatMap(temporal -> {
-                    if (temporal instanceof LocalDate localDate) {
-                        return Optional.of(localDate);
-                    }
-                    Optional<Temporal> instant = EventParseUtils.temporalToZonedDateTime(temporal)
-                        .map(ChronoZonedDateTime::toInstant);
-                    if (instant.isEmpty()) {
-                        LOGGER.warn("Ignoring RECURRENCE-ID {} that cannot be converted to an instant", temporal);
-                    }
-                    return instant;
-                });
+                .flatMap(recurrenceId -> recurrenceDate(vevent, recurrenceId))
+                .flatMap(this::toRecurrenceKey);
         }
 
         /**
          * An unparsable RECURRENCE-ID must not prevent notifying the other occurrences: such an override is not keyed.
          */
-        private Optional<Temporal> recurrenceDate(DateProperty<?> recurrenceId) {
+        private Optional<Temporal> recurrenceDate(VEvent vevent, DateProperty<?> recurrenceId) {
             try {
                 return Optional.of(recurrenceId.getDate());
             } catch (DateTimeException exception) {
-                LOGGER.warn("Ignoring unparsable RECURRENCE-ID {}", recurrenceId.getValue(), exception);
+                // getValue() would trigger the same failing parse: log the UID instead
+                LOGGER.warn("Ignoring override with unparsable RECURRENCE-ID for event {}",
+                    vevent.getUid().map(Property::getValue).orElse(null), exception);
                 return Optional.empty();
             }
+        }
+
+        private Optional<Temporal> toRecurrenceKey(Temporal temporal) {
+            if (temporal instanceof LocalDate localDate) {
+                return Optional.of(localDate);
+            }
+            Optional<Temporal> recurrenceKey = EventParseUtils.temporalToZonedDateTime(temporal)
+                .map(ChronoZonedDateTime::toInstant);
+            if (recurrenceKey.isEmpty()) {
+                LOGGER.warn("Ignoring override with unsupported RECURRENCE-ID {}", temporal);
+            }
+            return recurrenceKey;
         }
     }
 
