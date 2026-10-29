@@ -258,21 +258,25 @@ public class CalendarDiffCalculator {
     private static boolean organizerAcceptedTransition(VEvent previousEvent, VEvent currentEvent) {
         return EventParseUtils.getOrganizer(previousEvent)
             .map(organizer -> {
-                boolean wasDeclinedOrNeedAction = EventParseUtils.getAttendees(previousEvent)
-                    .stream()
-                    .filter(person -> person.email().equals(organizer.email()))
-                    .flatMap(person -> person.partStat().stream())
-                    .anyMatch(stat -> stat.equals(PartStat.NEEDS_ACTION) || stat.equals(PartStat.DECLINED));
+                boolean wasDeclinedOrNeedAction = organizerPartStat(previousEvent, organizer)
+                    .filter(stat -> stat.equals(PartStat.NEEDS_ACTION) || stat.equals(PartStat.DECLINED))
+                    .isPresent();
 
-                boolean isNowAccepted = EventParseUtils.getAttendees(currentEvent)
-                    .stream()
-                    .filter(person -> person.email().equals(organizer.email()))
-                    .flatMap(person -> person.partStat().stream())
-                    .anyMatch(stat -> stat.equals(PartStat.ACCEPTED) || stat.equals(PartStat.TENTATIVE));
+                boolean isNowAccepted = organizerPartStat(currentEvent, organizer)
+                    .filter(stat -> stat.equals(PartStat.ACCEPTED) || stat.equals(PartStat.TENTATIVE))
+                    .isPresent();
 
                 return wasDeclinedOrNeedAction && isNowAccepted;
             })
             .orElse(false);
+    }
+
+    /**
+     * The PARTSTAT of the first ATTENDEE entry of the organizer: a duplicated entry must not make one version
+     * look both unanswered and accepted.
+     */
+    private static Optional<PartStat> organizerPartStat(VEvent event, Person organizer) {
+        return EventParseUtils.findAttendeePartStat(event, organizer.email());
     }
 
     /**
@@ -291,17 +295,13 @@ public class CalendarDiffCalculator {
         return EventParseUtils.getOrganizer(previousEvent)
             .map(organizer -> {
                 // Only from NEEDS-ACTION: DECLINED -> DECLINED is a no-op, not an answer.
-                boolean wasNotDeclined = EventParseUtils.getAttendees(previousEvent)
-                    .stream()
-                    .filter(person -> person.email().equals(organizer.email()))
-                    .flatMap(person -> person.partStat().stream())
-                    .noneMatch(stat -> stat.equals(PartStat.DECLINED));
+                boolean wasNotDeclined = organizerPartStat(previousEvent, organizer)
+                    .filter(PartStat.DECLINED::equals)
+                    .isEmpty();
 
-                boolean isNowDeclined = EventParseUtils.getAttendees(currentEvent)
-                    .stream()
-                    .filter(person -> person.email().equals(organizer.email()))
-                    .flatMap(person -> person.partStat().stream())
-                    .anyMatch(stat -> stat.equals(PartStat.DECLINED));
+                boolean isNowDeclined = organizerPartStat(currentEvent, organizer)
+                    .filter(PartStat.DECLINED::equals)
+                    .isPresent();
 
                 return wasNotDeclined && isNowDeclined;
             })
