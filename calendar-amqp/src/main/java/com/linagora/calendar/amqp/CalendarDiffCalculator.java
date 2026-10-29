@@ -323,9 +323,8 @@ public class CalendarDiffCalculator {
     }
 
     private static boolean attends(String recipient, VEvent vEvent) {
-        return vEvent != null && vEvent.getProperties(Property.ATTENDEE).stream()
-            .map(Property::getValue)
-            .anyMatch(attendee -> Strings.CI.contains(attendee, recipient));
+        return vEvent != null && Stream.concat(EventParseUtils.getAttendees(vEvent).stream(), EventParseUtils.getResources(vEvent).stream())
+            .anyMatch(person -> Strings.CI.equals(person.email().asString(), recipient));
     }
 
     private static Optional<List<PropertyChange>> computePropertyChanges(VEvent previous, VEvent current) {

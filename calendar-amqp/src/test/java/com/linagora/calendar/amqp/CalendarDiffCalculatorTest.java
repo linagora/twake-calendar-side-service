@@ -1068,4 +1068,47 @@ class CalendarDiffCalculatorTest {
         assertThat(diffs).singleElement()
             .satisfies(diff -> assertThat(diff.serializeChanges().orElseThrow().toString()).contains("summary"));
     }
+
+    @Test
+    void calculateShouldNotTreatASimilarAddressAsTheRecipient() {
+        String template = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-1
+            DTSTART:20350925T090000Z
+            DTEND:20350925T100000Z
+            SUMMARY:%s
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bigjohn@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:john@example.com.other.org
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        assertThat(CalendarDiffCalculator.calculate("john@example.com",
+            parse(template.formatted("New title")), parse(template.formatted("Old title"))))
+            .isEmpty();
+    }
+
+    @Test
+    void calculateShouldMatchTheRecipientCaseInsensitively() {
+        String template = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-1
+            DTSTART:20350925T090000Z
+            DTEND:20350925T100000Z
+            SUMMARY:%s
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:MAILTO:John@Example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        assertThat(CalendarDiffCalculator.calculate("john@example.com",
+            parse(template.formatted("New title")), parse(template.formatted("Old title"))))
+            .hasSize(1);
+    }
 }
