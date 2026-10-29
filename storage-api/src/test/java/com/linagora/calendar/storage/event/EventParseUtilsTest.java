@@ -40,6 +40,7 @@ import com.linagora.calendar.storage.OpenPaaSId;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
@@ -563,6 +564,71 @@ class EventParseUtilsTest {
 
             assertThat(EventParseUtils.getStartTime(instance))
                 .isEqualTo(ZonedDateTime.parse("2025-04-11T10:00:00Z"));
+        }
+
+        @Test
+        void shouldKeepUnknownProperties() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:recurring-event
+                DTSTART:20250829T100000Z
+                DTEND:20250829T110000Z
+                RRULE:FREQ=DAILY;COUNT=2
+                FOOBAR;FOO=bar:baz
+                END:VEVENT
+                END:VCALENDAR
+                """);
+            VEvent master = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, Instant.parse("2025-08-30T10:00:00Z"));
+
+            assertSoftly(softly -> {
+                softly.assertThat(instance.getProperty("FOOBAR").map(Property::getValue)).contains("baz");
+                softly.assertThat(instance.getProperty("FOOBAR").flatMap(property -> property.<Parameter>getParameter("FOO"))
+                    .map(Parameter::getValue)).contains("bar");
+            });
+        }
+
+        @Test
+        void shouldKeepAlarmsWithUnknownProperties() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:recurring-event
+                DTSTART:20250829T100000Z
+                DTEND:20250829T110000Z
+                RRULE:FREQ=DAILY;COUNT=2
+                BEGIN:VALARM
+                TRIGGER:-PT15M
+                ACTION:EMAIL
+                ATTENDEE:mailto:bob@example.com
+                DESCRIPTION:Reminder
+                FOOBAR:baz
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """);
+            VEvent master = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, Instant.parse("2025-08-30T10:00:00Z"));
+
+            assertThat(instance.getAlarms())
+                .singleElement()
+                .satisfies(alarm -> assertThat(alarm.getProperty("FOOBAR").map(Property::getValue)).contains("baz"));
+        }
+
+        @Test
+        void shouldNotModifyMaster() {
+            Calendar calendar = CalendarUtil.parseIcs(WEEKLY_UTC_ICS.replace("EXDATE:20250418T090000Z", "FOOBAR:baz"));
+            VEvent master = (VEvent) calendar.getComponent(Component.VEVENT).get();
+            String masterBefore = master.toString();
+
+            EventParseUtils.createInstanceVEvent(master, ZonedDateTime.parse("2025-04-11T09:00:00Z"));
+
+            assertThat(master.toString()).isEqualTo(masterBefore);
         }
 
         @Test
