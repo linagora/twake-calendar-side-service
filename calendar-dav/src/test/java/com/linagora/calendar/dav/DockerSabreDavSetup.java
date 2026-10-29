@@ -102,7 +102,8 @@ public class DockerSabreDavSetup {
     private static final Duration MONGO_HEALTH_CHECK_POLL_INTERVAL = Duration.ofMillis(500);
     private static final Duration MONGO_PING_ATTEMPT_TIMEOUT = Duration.ofSeconds(2);
 
-    private final ComposeContainer environment;
+    private final Path dockerfilePath;
+    private ComposeContainer environment;
     private SabreDavProvisioningService sabreDavProvisioningService;
     private MockServerClient mockServerClient;
     private MongoClient mongoClient;
@@ -115,22 +116,25 @@ public class DockerSabreDavSetup {
     public DockerSabreDavSetup() {
         try {
             Path parentDirectory = Files.createTempDirectory("davIntegrationTests");
-            Path dockerfilePath = Files.createTempFile(parentDirectory, "docker-sabre-dav-setup.yml", "");
+            this.dockerfilePath = Files.createTempFile(parentDirectory, "docker-sabre-dav-setup.yml", "");
             Files.copy(Objects.requireNonNull(DockerSabreDavSetup.class.getResourceAsStream("/" + "docker-sabre-dav-setup.yml")), dockerfilePath, StandardCopyOption.REPLACE_EXISTING);
-
-            this.environment = new ComposeContainer(dockerfilePath.toFile())
-                .withExposedService(DockerService.MOCK_ESN.serviceName(), DockerService.MOCK_ESN.port())
-                .withExposedService(DockerService.RABBITMQ.serviceName(), DockerService.RABBITMQ.port())
-                .withExposedService(DockerService.RABBITMQ_ADMIN.serviceName(), DockerService.RABBITMQ_ADMIN.port())
-                .withExposedService(DockerService.SABRE_DAV.serviceName(), DockerService.SABRE_DAV.port())
-                .withExposedService(DockerService.MONGO.serviceName(), DockerService.MONGO.port())
-                .withLogConsumer(DockerService.RABBITMQ.serviceName(), frame -> LOGGER.debug("[{}] {}", DockerService.RABBITMQ.serviceName(), frame.getUtf8String().stripTrailing()))
-                .withLogConsumer(DockerService.SABRE_DAV.serviceName(), frame -> LOGGER.debug("[{}] {}", DockerService.SABRE_DAV.serviceName(), frame.getUtf8String().stripTrailing()))
-                .waitingFor(DockerService.SABRE_DAV.serviceName(), Wait.forLogMessage(".*ready to handle connections.*", 1)
-                    .withStartupTimeout(Duration.ofMinutes(5)));
+            this.environment = createEnvironment();
         } catch (IOException e) {
             throw new RuntimeException("Failed to load or create temporary docker-compose file", e);
         }
+    }
+
+    private ComposeContainer createEnvironment() {
+        return new ComposeContainer(dockerfilePath.toFile())
+            .withExposedService(DockerService.MOCK_ESN.serviceName(), DockerService.MOCK_ESN.port())
+            .withExposedService(DockerService.RABBITMQ.serviceName(), DockerService.RABBITMQ.port())
+            .withExposedService(DockerService.RABBITMQ_ADMIN.serviceName(), DockerService.RABBITMQ_ADMIN.port())
+            .withExposedService(DockerService.SABRE_DAV.serviceName(), DockerService.SABRE_DAV.port())
+            .withExposedService(DockerService.MONGO.serviceName(), DockerService.MONGO.port())
+            .withLogConsumer(DockerService.RABBITMQ.serviceName(), frame -> LOGGER.debug("[{}] {}", DockerService.RABBITMQ.serviceName(), frame.getUtf8String().stripTrailing()))
+            .withLogConsumer(DockerService.SABRE_DAV.serviceName(), frame -> LOGGER.debug("[{}] {}", DockerService.SABRE_DAV.serviceName(), frame.getUtf8String().stripTrailing()))
+            .waitingFor(DockerService.SABRE_DAV.serviceName(), Wait.forLogMessage(".*ready to handle connections.*", 1)
+                .withStartupTimeout(Duration.ofMinutes(5)));
     }
 
     public synchronized void start() {
@@ -152,7 +156,9 @@ public class DockerSabreDavSetup {
             sabreDavProvisioningService = new SabreDavProvisioningService(mongoDatabase);
             started = true;
         } catch (RuntimeException e) {
-            stopNow();
+            // A failed start (e.g. docker compose being killed) must not poison the shared stack: allow a later retry
+            releaseResources();
+            environment = createEnvironment();
             throw e;
         }
     }
@@ -162,6 +168,11 @@ public class DockerSabreDavSetup {
     }
 
     private synchronized void stopNow() {
+        releaseResources();
+        stopped = true;
+    }
+
+    private void releaseResources() {
         if (mockServerClient != null) {
             mockServerClient.close();
             mockServerClient = null;
@@ -175,7 +186,6 @@ public class DockerSabreDavSetup {
         environment.stop();
         sabreDavProvisioningService = null;
         started = false;
-        stopped = true;
     }
 
     synchronized void stopOnJvmExit() {
