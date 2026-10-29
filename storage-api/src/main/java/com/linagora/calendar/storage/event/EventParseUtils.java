@@ -57,6 +57,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.linagora.calendar.api.CalendarUtil;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
@@ -451,7 +452,7 @@ public class EventParseUtils {
     }
 
     public static VEvent createInstanceVEvent(VEvent master, Temporal recurrenceDate) {
-        VEvent instance = master.copy();
+        VEvent instance = CalendarUtil.copy(master);
         Period actualPeriod = calculateRecurrenceSet(master, recurrenceDate);
 
         removeProperties(instance, Property.RRULE, Property.EXDATE, Property.DTSTART, Property.DTEND, Property.DURATION);
