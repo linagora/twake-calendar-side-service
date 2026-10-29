@@ -20,10 +20,12 @@ package com.linagora.calendar.dav;
 
 import static com.linagora.calendar.dav.CalendarEventUpdatePatch.addProperties;
 
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import com.google.common.base.Preconditions;
@@ -58,7 +60,7 @@ public class CalendarEventModifier {
     }
 
     public Calendar apply(Calendar calendar) {
-        Calendar newCalendar = CalendarUtil.copyOf(calendar);
+        Calendar newCalendar = rejectingUnparsableDates(() -> CalendarUtil.copyOf(calendar));
         validator.ifPresent(v -> v.accept(newCalendar));
 
         VEvent vEventToUpdate = firstVEvent(newCalendar);
@@ -84,12 +86,25 @@ public class CalendarEventModifier {
     }
 
     public static void validateAfterUpdate(Calendar calendar) {
-        ValidationResult result = calendar.validate();
+        ValidationResult result = validate(calendar);
 
         Preconditions.checkArgument(!result.hasErrors(),
             "Invalid calendar event: " + result.getEntries().stream()
                 .map(entry -> entry.getContext() + " : " + entry.getMessage())
                 .collect(Collectors.joining("; ")));
+    }
+
+    private static ValidationResult validate(Calendar calendar) {
+        return rejectingUnparsableDates(calendar::validate);
+    }
+
+    // ical4j lazily parses date values kept by relaxed parsing: copy and validation throw on unparsable ones
+    private static <T> T rejectingUnparsableDates(Supplier<T> operation) {
+        try {
+            return operation.get();
+        } catch (DateTimeException | NullPointerException e) {
+            throw new IllegalArgumentException("Invalid calendar event: " + e.getMessage(), e);
+        }
     }
 
     private VEvent firstVEvent(Calendar calendar) {
