@@ -226,4 +226,88 @@ public class CalendarEventModifierTest {
             .apply(noVEventCalendar))
             .isInstanceOf(IllegalStateException.class);
     }
+
+    @Test
+    void applyShouldSupportUnknownProperties() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Example Corp//NONSGML Event//EN
+            BEGIN:VEVENT
+            UID:rsvp-1
+            DTSTAMP:20251001T100000Z
+            DTSTART:20251020T100000Z
+            DURATION:PT1H
+            FOOBAR:baz
+            ORGANIZER:mailto:organizer@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """);
+
+        Calendar updated = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED))
+            .apply(calendar);
+
+        assertThat(updated.toString()).contains("PARTSTAT=ACCEPTED", "FOOBAR:baz");
+    }
+
+    @Test
+    void applyShouldNotModifyTheOriginalCalendarWhenItHasUnknownProperties() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Example Corp//NONSGML Event//EN
+            BEGIN:VEVENT
+            UID:rsvp-1
+            DTSTAMP:20251001T100000Z
+            DTSTART:20251020T100000Z
+            DURATION:PT1H
+            FOOBAR:baz
+            ORGANIZER:mailto:organizer@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """);
+
+        CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED))
+            .apply(calendar);
+
+        assertThat(calendar.toString()).contains("PARTSTAT=NEEDS-ACTION")
+            .doesNotContain("PARTSTAT=ACCEPTED");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"2.0", ";"})
+    void applyShouldSupportVersionPropertyInsideVEvent(String version) {
+        Calendar updated = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED))
+            .apply(calendarWithVEventVersion(version));
+
+        assertThat(updated.toString()).contains("PARTSTAT=ACCEPTED");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"1.0;2.0", "abc", ""})
+    void applyShouldRejectInvalidVersionPropertyInsideVEventWithIllegalArgumentException(String version) {
+        assertThatThrownBy(() -> CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED))
+            .apply(calendarWithVEventVersion(version)))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static Calendar calendarWithVEventVersion(String version) {
+        return CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Example Corp//NONSGML Event//EN
+            BEGIN:VEVENT
+            UID:rsvp-1
+            DTSTAMP:20251001T100000Z
+            DTSTART:20251020T100000Z
+            DURATION:PT1H
+            VERSION:%s
+            ORGANIZER:mailto:organizer@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(version));
+    }
 }
