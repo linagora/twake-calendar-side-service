@@ -18,15 +18,22 @@
 
 package com.linagora.calendar.amqp.model;
 
+import java.time.DateTimeException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Stream;
 
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
@@ -41,7 +48,18 @@ import net.fortuna.ical4j.model.component.VEvent;
 public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmail base,
                                                    Optional<CalendarEventNotificationEmailDTO.Changes> maybeChanges) {
 
-    public static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS");
+    // Lenient on purpose: 'T' or space separator, optional fraction of second (0 to 9 digits)
+    public static final DateTimeFormatter DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
+        .append(DateTimeFormatter.ISO_LOCAL_DATE)
+        .optionalStart().appendLiteral(' ').optionalEnd()
+        .optionalStart().appendLiteral('T').optionalEnd()
+        .appendPattern("HH:mm:ss")
+        .optionalStart()
+        .appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true)
+        .optionalEnd()
+        .toFormatter();
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CalendarEventUpdateNotificationEmail.class);
 
     public static CalendarEventUpdateNotificationEmail from(CalendarEventNotificationEmailDTO dto) {
         return new CalendarEventUpdateNotificationEmail(
@@ -83,17 +101,13 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
     private Map<String, Object> toPugModel(Locale locale, ZoneId zoneToDisplay, CalendarEventNotificationEmailDTO.Changes changes) {
         ImmutableMap.Builder<String, Object> changesBuilder = ImmutableMap.builder();
         changes.summary().ifPresent(summaryChange -> changesBuilder.put("summary", toPugModel(summaryChange)));
-        changes.dtstart().ifPresent(dtstartChange -> changesBuilder.put("dtstart", ImmutableMap.of(
-            "previous", toEventTimeModel(dtstartChange).toPugModel(locale, zoneToDisplay)
-        )));
-        changes.dtend().ifPresent(dtendChange -> changesBuilder.put("dtend", ImmutableMap.of(
-            "previous", toEventTimeModel(dtendChange).toPugModel(locale, zoneToDisplay)
-        )));
+        putPreviousTimes(changesBuilder, locale, zoneToDisplay, changes);
         changes.location().ifPresent(locationChange -> changesBuilder.put("location", toPugModel(locationChange)));
         changes.description().ifPresent(descriptionChange -> changesBuilder.put("description", toPugModel(descriptionChange)));
-        boolean isOldEventAllDay = changes.dtstart().map(dtstartChange -> dtstartChange.previous().isAllDay())
-            .orElse(changes.dtend().map(dtendChange -> dtendChange.previous().isAllDay())
-                .orElse(false));
+        boolean isOldEventAllDay = changes.dtstart().or(changes::dtend)
+            .map(CalendarEventNotificationEmailDTO.DateTimeChange::previous)
+            .map(CalendarEventNotificationEmailDTO.DateTimeValue::isAllDay)
+            .orElse(false);
         changesBuilder.put("isOldEventAllDay", isOldEventAllDay);
         return changesBuilder.build();
     }
@@ -103,10 +117,37 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
         return ImmutableMap.of("previous", StringUtils.defaultString(stringChange.previous()));
     }
 
-    private EventTimeModel toEventTimeModel(CalendarEventNotificationEmailDTO.DateTimeChange dateTimeChange) {
-        LocalDateTime ldt = LocalDateTime.parse(dateTimeChange.previous().date(), DATE_TIME_FORMATTER);
-        ZoneId zoneId = ZoneId.of(dateTimeChange.previous().timezone());
-        ZonedDateTime zonedDateTime = ldt.atZone(zoneId);
-        return new EventTimeModel(zonedDateTime);
+    // An unreadable previous start or end omits the whole "previous time" line rather than rendering a misleading half of it
+    private void putPreviousTimes(ImmutableMap.Builder<String, Object> changesBuilder, Locale locale, ZoneId zoneToDisplay,
+                                  CalendarEventNotificationEmailDTO.Changes changes) {
+        Optional<Optional<EventTimeModel>> previousStart = changes.dtstart().map(this::toEventTimeModel);
+        Optional<Optional<EventTimeModel>> previousEnd = changes.dtend().map(this::toEventTimeModel);
+        boolean anyUnreadable = Stream.of(previousStart, previousEnd)
+            .flatMap(Optional::stream)
+            .anyMatch(Optional::isEmpty);
+        if (anyUnreadable) {
+            return;
+        }
+        previousStart.flatMap(Function.identity()).ifPresent(start -> changesBuilder.put("dtstart", ImmutableMap.of(
+            "previous", start.toPugModel(locale, zoneToDisplay))));
+        previousEnd.flatMap(Function.identity()).ifPresent(end -> changesBuilder.put("dtend", ImmutableMap.of(
+            "previous", end.toPugModel(locale, zoneToDisplay))));
+    }
+
+    private Optional<EventTimeModel> toEventTimeModel(CalendarEventNotificationEmailDTO.DateTimeChange dateTimeChange) {
+        return Optional.ofNullable(dateTimeChange.previous())
+            .filter(previous -> previous.date() != null && previous.timezone() != null)
+            .flatMap(this::toEventTimeModel);
+    }
+
+    private Optional<EventTimeModel> toEventTimeModel(CalendarEventNotificationEmailDTO.DateTimeValue previous) {
+        try {
+            LocalDateTime localDateTime = LocalDateTime.parse(previous.date().trim(), DATE_TIME_FORMATTER);
+            return Optional.of(new EventTimeModel(localDateTime.atZone(ZoneId.of(previous.timezone()))));
+        } catch (DateTimeException e) {
+            LOGGER.warn("Unreadable previous date time '{}' with timezone '{}', omitting it from the update mail",
+                previous.date(), previous.timezone(), e);
+            return Optional.empty();
+        }
     }
 }
