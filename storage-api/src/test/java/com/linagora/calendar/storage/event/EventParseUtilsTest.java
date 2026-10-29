@@ -648,6 +648,31 @@ class EventParseUtilsTest {
         }
 
         @Test
+        void shouldPickTheOccurrenceOfTheDayForOverlappingAllDaySeries() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:allday-uid@test
+                DTSTART;VALUE=DATE:20260401
+                DTEND;VALUE=DATE:20260404
+                RRULE:FREQ=DAILY;COUNT=5
+                SUMMARY:Off site
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            Calendar calendar = CalendarUtil.parseIcs(ics);
+            VEvent master = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, LocalDate.of(2026, 4, 2));
+
+            assertThat(instance.toString())
+                .contains("RECURRENCE-ID;VALUE=DATE:20260402",
+                    "DTSTART;VALUE=DATE:20260402",
+                    "DTEND;VALUE=DATE:20260405");
+        }
+
+        @Test
         void shouldHandleTimezoneDateTime() {
             String ics = """
                 BEGIN:VCALENDAR
