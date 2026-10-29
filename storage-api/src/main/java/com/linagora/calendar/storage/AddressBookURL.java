@@ -61,6 +61,8 @@ public record AddressBookURL(OpenPaaSId baseId, String addressBookId) {
     public AddressBookURL {
         Preconditions.checkArgument(baseId != null, "baseId must not be null");
         Preconditions.checkArgument(StringUtils.isNoneEmpty(addressBookId), "addressBookId must not be empty");
+        DavPathSegment.validate(baseId.value(), "baseId");
+        DavPathSegment.validate(addressBookId, "addressBookId");
     }
 
     public URI asUri() {
