@@ -183,14 +183,17 @@ public class BookingLinkCreateRoute extends CalendarRoute {
     }
 
     private CreateBookingLinkRequestDTO parseRequest(byte[] body) {
+        CreateBookingLinkRequestDTO dto;
         try {
-            return OBJECT_MAPPER_DEFAULT.readValue(body, CreateBookingLinkRequestDTO.class);
+            dto = OBJECT_MAPPER_DEFAULT.readValue(body, CreateBookingLinkRequestDTO.class);
         } catch (Exception e) {
             if (e.getCause() instanceof IllegalArgumentException) {
                 throw (IllegalArgumentException) e.getCause();
             }
             throw new IllegalArgumentException("Invalid request body", e);
         }
+        Preconditions.checkArgument(dto != null, "Invalid request body");
+        return dto;
     }
 
     private Optional<AvailabilityRules> getDefaultAvailabilityRules(SettingsBasedResolver.ResolvedSettings resolvedSettings) {

@@ -153,11 +153,14 @@ public class BookingLinkReservationRoute extends PublicRoute {
         private static final int MAX_NOTES_LENGTH = 2000;
 
         public static ReservationRequestDTO parse(byte[] bytes) {
+            ReservationRequestDTO dto;
             try {
-                return OBJECT_MAPPER.readValue(bytes, ReservationRequestDTO.class);
+                dto = OBJECT_MAPPER.readValue(bytes, ReservationRequestDTO.class);
             } catch (Exception e) {
                 throw new IllegalArgumentException("Missing or invalid request body", e);
             }
+            Preconditions.checkArgument(dto != null, "Missing or invalid request body");
+            return dto;
         }
 
         void validate() {
@@ -176,6 +179,8 @@ public class BookingLinkReservationRoute extends PublicRoute {
         private void validateAdditionalAttendees() {
             Set<String> set = new HashSet<>();
             for (AttendeeDTO attendeeDTO : Optional.ofNullable(additionalAttendees).orElse(Set.of())) {
+                Preconditions.checkArgument(attendeeDTO != null, "'additional_attendees' must not contain null items");
+                Preconditions.checkArgument(StringUtils.isNotBlank(attendeeDTO.email()), "'additional_attendees[].email' must not be blank");
                 Preconditions.checkArgument(!Strings.CI.equals(attendeeDTO.email(), creator.email()),
                     "'additional_attendees' must not contain creator email");
                 Preconditions.checkArgument(set.add(attendeeDTO.email().toLowerCase(Locale.US)),
