@@ -198,6 +198,33 @@ public interface OpenPaaSUserDAOContract {
     }
 
     @Test
+    default void searchShouldFindVietnameseNames() {
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser user = testee().add(USERNAME, "Minh", "Nguyễn").block();
+
+        assertThat(testee().search(domain, "Nguyễn", 10).collectList().block()).contains(user);
+        assertThat(testee().search(domain, "nguyen", 10).collectList().block()).contains(user);
+    }
+
+    @Test
+    default void searchShouldFindNonLatinNamesTypedAsStored() {
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser user = testee().add(USERNAME, "민준", "Ёлкин").block();
+
+        assertThat(testee().search(domain, "민준", 10).collectList().block()).contains(user);
+        assertThat(testee().search(domain, "Ёлкин", 10).collectList().block()).contains(user);
+    }
+
+    @Test
+    default void searchShouldFindDecomposedNames() {
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser user = testee().add(USERNAME, "Hélène", "Dupont").block();
+
+        assertThat(testee().search(domain, "Hélène", 10).collectList().block()).contains(user);
+        assertThat(testee().search(domain, "helene", 10).collectList().block()).contains(user);
+    }
+
+    @Test
     default void searchShouldNotMatchDifferentLetters() {
         Domain domain = Domain.of("domain.tld");
         testee().add(USERNAME, "Théo", "Lefèvre").block();
