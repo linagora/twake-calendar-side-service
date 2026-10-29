@@ -24,6 +24,7 @@ import java.util.UUID;
 import java.util.function.Function;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 
 import com.google.common.base.Preconditions;
@@ -93,9 +94,10 @@ public interface BookedEventTokenSigner {
         private final JwtSigner jwtSigner;
         private final JwtVerifier jwtVerifier;
 
+        // Booked event links are sent by email and stay usable until the event happens: they must not expire.
         @Inject
         @Singleton
-        public Default(JwtSigner jwtSigner, JwtVerifier jwtVerifier) {
+        public Default(@Named("participationActionLinks") JwtSigner jwtSigner, JwtVerifier jwtVerifier) {
             this.jwtSigner = jwtSigner;
             this.jwtVerifier = jwtVerifier;
         }

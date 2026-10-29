@@ -33,7 +33,9 @@ import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -53,6 +55,7 @@ import org.apache.james.core.Domain;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.utils.GuiceProbe;
+import org.apache.james.utils.UpdatableTickingClock;
 import org.apache.james.utils.WebAdminGuiceProbe;
 import org.assertj.core.groups.Tuple;
 import org.awaitility.Awaitility;
@@ -121,6 +124,8 @@ class BookingLinkReservationRouteTest {
         .and().pollDelay(ONE_HUNDRED_MILLISECONDS)
         .await();
 
+    static final UpdatableTickingClock clock = new UpdatableTickingClock(Instant.now());
+
     @RegisterExtension
     @Order(1)
     static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
@@ -143,6 +148,7 @@ class BookingLinkReservationRouteTest {
                 MaybeSender.getMailSender("no-reply@twake.app"))),
         binder -> binder.bind(MailSenderConfiguration.class)
             .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension)),
+        binder -> binder.bind(Clock.class).toInstance(clock),
         binder -> {
             Multibinder.newSetBinder(binder, GuiceProbe.class)
                 .addBinding()
@@ -171,6 +177,8 @@ class BookingLinkReservationRouteTest {
 
     @BeforeEach
     void setUp(TwakeCalendarGuiceServer server) throws Exception {
+        clock.setInstant(Instant.now());
+
         CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
         Username ownerUsername = Username.fromLocalPartWithDomain("owner-" + UUID.randomUUID(), Domain.of("open-paas.org"));
         calendarDataProbe.addDomain(ownerUsername.getDomainPart().orElseThrow());
@@ -520,6 +528,50 @@ class BookingLinkReservationRouteTest {
             .get("/api/booked-event")
         .then()
             .statusCode(HttpStatus.SC_OK);
+    }
+
+    @Test
+    void reservationLinksShouldRemainValidLongAfterTheBooking(TwakeCalendarGuiceServer server) {
+        // Given: an active booking link with an available slot.
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .availabilityRules(AVAILABILITY_RULE)
+            .name("Intro call")
+            .build();
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class)
+            .insert(openPaaSUser.username(), insertRequest);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        // When: the booking request was submitted a few days ago (longer than any session JWT validity).
+        clock.setInstant(Instant.now().minus(Duration.ofDays(3)));
+        String bookingConfirmationToken = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body(bodyRequest(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract()
+            .jsonPath()
+            .getString("bookingConfirmationToken");
+
+        String html = getHtml(messageForRecipient(awaitBookingEmails(), "creator@example.com"));
+        String mailToken = extractLinksStartingWith(html, BOOKING_CONFIRMED_LINK_PREFIX).getFirst()
+            .substring(BOOKING_CONFIRMED_LINK_PREFIX.length());
+
+        // Then: both the token returned to the booker and the link of the acknowledgement email still grant access.
+        assertSoftly(softly -> List.of(bookingConfirmationToken, mailToken)
+            .forEach(token -> softly.assertThat(given()
+                    .auth().none()
+                    .queryParam("bookingConfirmationToken", token)
+                .when()
+                    .get("/api/booked-event")
+                .then()
+                    .extract()
+                    .statusCode())
+                .describedAs("booked event retrieval with token " + token)
+                .isEqualTo(HttpStatus.SC_OK)));
     }
 
     @Test
