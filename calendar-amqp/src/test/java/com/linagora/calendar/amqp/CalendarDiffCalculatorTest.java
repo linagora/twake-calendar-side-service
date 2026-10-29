@@ -93,6 +93,53 @@ class CalendarDiffCalculatorTest {
         }
 
         @Test
+        void unparsableRecurrenceIdShouldBeSkipped() {
+            String oldIcs = MASTER_AND_EXCEPTION_OLD.replace("RECURRENCE-ID:20260408T100000Z", "RECURRENCE-ID;TZID=Unknown/Zone:00");
+            String newIcs = oldIcs.replace("SUMMARY:Weekly sync (moved)", "SUMMARY:Weekly sync (renamed)");
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(newIcs), parse(oldIcs));
+
+            assertThat(diffs).isEmpty();
+        }
+
+        @Test
+        void unparsableRecurrenceIdShouldNotShadowTheMaster() {
+            String exceptionFirstOld = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                BEGIN:VEVENT
+                UID:uid-recur@test
+                RECURRENCE-ID;TZID=Unknown/Zone:00
+                DTSTART:20260408T120000Z
+                DTEND:20260408T130000Z
+                SUMMARY:Weekly sync (moved)
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:uid-recur@test
+                DTSTART:20260401T100000Z
+                DTEND:20260401T110000Z
+                RRULE:FREQ=WEEKLY
+                SUMMARY:Weekly sync
+                ATTENDEE:mailto:bob@example.com
+                ORGANIZER:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            String newIcs = exceptionFirstOld.replace("SUMMARY:Weekly sync\n", "SUMMARY:Weekly sync (renamed)\n");
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(newIcs), parse(exceptionFirstOld));
+
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> {
+                    assertThat(diff.vevent().getRecurrenceId()).isNull();
+                    assertThat(diff.vevent().getProperty(Property.SUMMARY).map(Property::getValue)).contains("Weekly sync (renamed)");
+                });
+        }
+
+        @Test
         void singleEventBecomingRecurringShouldBeANewEvent() {
             String singleOld = """
                 BEGIN:VCALENDAR

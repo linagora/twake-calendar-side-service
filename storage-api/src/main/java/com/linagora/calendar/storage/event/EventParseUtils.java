@@ -22,6 +22,7 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -443,7 +444,21 @@ public class EventParseUtils {
 
     public static Optional<String> getRecurrenceId(VEvent vEvent) {
         return vEvent.getProperty(Property.RECURRENCE_ID)
-            .map(Content::getValue);
+            .flatMap(EventParseUtils::readRecurrenceIdValue);
+    }
+
+    public static boolean hasUnparsableRecurrenceId(VEvent vEvent) {
+        return vEvent.getProperty(Property.RECURRENCE_ID).isPresent()
+            && getRecurrenceId(vEvent).isEmpty();
+    }
+
+    private static Optional<String> readRecurrenceIdValue(Property recurrenceId) {
+        try {
+            return Optional.ofNullable(recurrenceId.getValue());
+        } catch (DateTimeException e) {
+            LOGGER.info("Ignoring unparsable RECURRENCE-ID: {}", e.getMessage());
+            return Optional.empty();
+        }
     }
 
     private static MailAddress getEmail(Property property) throws MalformedURLException, AddressException {

@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -326,6 +327,7 @@ public class CalendarDiffCalculator {
     private static Map<String, VEvent> indexByRecurrenceId(Calendar calendar) {
         return calendar.getComponents(Component.VEVENT).stream()
             .map(VEvent.class::cast)
+            .filter(Predicate.not(EventParseUtils::hasUnparsableRecurrenceId))
             .collect(Collectors.toMap(
                 vevent -> EventParseUtils.getRecurrenceId(vevent).orElse(MASTER_RECURRENCE_ID),
                 Function.identity(), (first, second) -> first, LinkedHashMap::new));

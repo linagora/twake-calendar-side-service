@@ -798,4 +798,66 @@ class EventParseUtilsTest {
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("invite-1");
     }
+
+    @Nested
+    class GetRecurrenceId {
+        @Test
+        void shouldReturnValueWhenParsable() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:event-1
+                RECURRENCE-ID:20350926T090000Z
+                DTSTART:20350926T090000Z
+                END:VEVENT
+                END:VCALENDAR
+                """);
+            VEvent event = EventParseUtils.getFirstEvent(calendar);
+
+            assertSoftly(softly -> {
+                softly.assertThat(EventParseUtils.getRecurrenceId(event)).contains("20350926T090000Z");
+                softly.assertThat(EventParseUtils.hasUnparsableRecurrenceId(event)).isFalse();
+            });
+        }
+
+        @Test
+        void shouldReturnEmptyWhenAbsent() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:event-1
+                DTSTART:20350926T090000Z
+                END:VEVENT
+                END:VCALENDAR
+                """);
+            VEvent event = EventParseUtils.getFirstEvent(calendar);
+
+            assertSoftly(softly -> {
+                softly.assertThat(EventParseUtils.getRecurrenceId(event)).isEmpty();
+                softly.assertThat(EventParseUtils.hasUnparsableRecurrenceId(event)).isFalse();
+            });
+        }
+
+        @Test
+        void shouldReturnEmptyWhenUnparsable() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:event-1
+                RECURRENCE-ID;TZID=Unknown/Zone:00
+                DTSTART:20350926T090000Z
+                END:VEVENT
+                END:VCALENDAR
+                """);
+            VEvent event = EventParseUtils.getFirstEvent(calendar);
+
+            assertSoftly(softly -> {
+                softly.assertThat(EventParseUtils.getRecurrenceId(event)).isEmpty();
+                softly.assertThat(EventParseUtils.hasUnparsableRecurrenceId(event)).isTrue();
+            });
+        }
+    }
 }
