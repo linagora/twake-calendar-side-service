@@ -255,6 +255,66 @@ class ResourceRoutesTest {
     }
 
     @Test
+    void getResourcesShouldIncludeResourceWhenCreatorWasDeleted() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser creator = userDAO.add(Username.of("creator@linagora.com")).block();
+        OpenPaaSUser administrator = userDAO.add(Username.of("admin@linagora.com")).block();
+        ResourceId resourceId = createResource(domain, creator, administrator);
+        userDAO.delete(creator.username()).block();
+
+        String response = when()
+            .get("/domains/linagora.com/resources")
+        .then()
+            .contentType(ContentType.JSON)
+            .statusCode(200)
+            .extract().asString();
+
+        assertThatJson(response).isEqualTo("""
+            [{
+                "name": "Resource name",
+                "deleted": false,
+                "description": "Descripting",
+                "id": "%s",
+                "icon": "laptop",
+                "domain": "linagora.com",
+                "creator": null,
+                "administrators": [{"email": "admin@linagora.com", "davRight": "dav:administration"}]
+            }]
+            """.formatted(resourceId.value()));
+        assertThat(resourceDAO.findById(resourceId).block().creator()).isEqualTo(creator.id());
+    }
+
+    @Test
+    void getResourceShouldReturnResourceWhenCreatorWasDeleted() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser creator = userDAO.add(Username.of("creator@linagora.com")).block();
+        OpenPaaSUser administrator = userDAO.add(Username.of("admin@linagora.com")).block();
+        ResourceId resourceId = createResource(domain, creator, administrator);
+        userDAO.delete(creator.username()).block();
+
+        String response = when()
+            .get("/domains/linagora.com/resources/" + resourceId.value())
+        .then()
+            .contentType(ContentType.JSON)
+            .statusCode(200)
+            .extract().asString();
+
+        assertThatJson(response).isEqualTo("""
+            {
+                "name": "Resource name",
+                "deleted": false,
+                "description": "Descripting",
+                "id": "%s",
+                "icon": "laptop",
+                "domain": "linagora.com",
+                "creator": null,
+                "administrators": [{"email": "admin@linagora.com", "davRight": "dav:administration"}]
+            }
+            """.formatted(resourceId.value()));
+        assertThat(resourceDAO.findById(resourceId).block().creator()).isEqualTo(creator.id());
+    }
+
+    @Test
     void patchShouldUpdateTheResource() {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
