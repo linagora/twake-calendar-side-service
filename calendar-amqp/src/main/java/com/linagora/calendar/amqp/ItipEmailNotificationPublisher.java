@@ -363,7 +363,7 @@ class ItipEmailNotificationPublisher {
         private Set<Temporal> indexExDates(VEvent masterEvent) {
             return masterEvent.getProperties(Property.EXDATE).stream()
                 .map(exDate -> (ExDate<?>) exDate)
-                .flatMap(exDate -> exDate.getDates().stream().map(Temporal.class::cast))
+                .flatMap(CalendarEventUtils::readableDates)
                 .flatMap(temporal -> normalizeExDate(temporal, masterEvent).stream())
                 .collect(Collectors.toSet());
         }

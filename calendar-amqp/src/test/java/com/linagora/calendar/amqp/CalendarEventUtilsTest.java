@@ -273,6 +273,49 @@ class CalendarEventUtilsTest {
     }
 
     @Test
+    void shouldIgnoreUnparsableExDate() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:event-uid@test
+            DTSTART;TZID=Europe/Paris:20261013T140000
+            RRULE:FREQ=WEEKLY;BYDAY=TU;COUNT=10
+            EXDATE;TZID=Europe/Paris:20261340T140000
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isFalse();
+    }
+
+    @Test
+    void shouldStillApplyReadableExDateWhenAnotherExDateIsUnparsable() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:rrule-future-excluded-with-garbage@test
+            DTSTART:20251230T100000Z
+            RRULE:FREQ=DAILY;COUNT=3
+            EXDATE:FREQ=YEARLY00
+            EXDATE:20260101T100000Z
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isTrue();
+    }
+
+    @Test
+    void shouldIgnoreUnparsableRDate() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:rdate-garbage@test
+            DTSTART:20251220T100000Z
+            RDATE:14505207T140000
+            RDATE:20260110T100000Z
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isFalse();
+    }
+
+    @Test
     void shouldNotBeExpiredWhenDtStartMissing() {
         VEvent vEvent = parseSingleVEvent("""
             BEGIN:VEVENT

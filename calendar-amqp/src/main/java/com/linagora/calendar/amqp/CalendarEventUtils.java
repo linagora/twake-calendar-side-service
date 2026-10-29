@@ -19,6 +19,7 @@
 package com.linagora.calendar.amqp;
 
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -28,17 +29,23 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.Recur;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.property.DateListProperty;
 import net.fortuna.ical4j.model.property.ExDate;
 import net.fortuna.ical4j.model.property.RDate;
 import net.fortuna.ical4j.model.property.RRule;
 
 public class CalendarEventUtils {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CalendarEventUtils.class);
 
     public static boolean vEventExpired(VEvent vevent, Clock clock) {
         Optional<ZonedDateTime> startDateTime = vevent.getProperty(Property.DTSTART)
@@ -72,7 +79,7 @@ public class CalendarEventUtils {
         return vevent.getProperties(Property.RDATE).stream()
             .filter(RDate.class::isInstance)
             .map(RDate.class::cast)
-            .flatMap(rDate -> ((List<Temporal>) rDate.getDates()).stream())
+            .flatMap(CalendarEventUtils::readableDates)
             .flatMap(date -> toInstant(date).stream())
             .anyMatch(instant -> !excludedDates.contains(instant) && !instant.isBefore(now));
     }
@@ -119,9 +126,23 @@ public class CalendarEventUtils {
     private static Set<Instant> extractExcludedDates(VEvent vevent) {
         return vevent.getProperties(Property.EXDATE).stream()
             .map(ExDate.class::cast)
-            .flatMap(exDate -> ((List<Temporal>) exDate.getDates()).stream()
-                .flatMap(date -> toInstant(date).stream()))
+            .flatMap(CalendarEventUtils::readableDates)
+            .flatMap(date -> toInstant(date).stream())
             .collect(Collectors.toSet());
+    }
+
+    /**
+     * ical4j parses date lists lazily: an unreadable value only fails on {@link DateListProperty#getDates()}.
+     * Such a property is skipped, as it designates no date.
+     */
+    public static Stream<Temporal> readableDates(DateListProperty<?> property) {
+        try {
+            return ((List<Temporal>) property.getDates()).stream();
+        } catch (DateTimeException e) {
+            // getValue() would parse again: the cause message carries the faulty text
+            LOGGER.warn("Ignoring unreadable {} property", property.getName(), e);
+            return Stream.empty();
+        }
     }
 
     private static Optional<Instant> toInstant(Temporal temporal) {
