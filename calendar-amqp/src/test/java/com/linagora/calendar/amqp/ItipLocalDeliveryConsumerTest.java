@@ -118,10 +118,10 @@ public class ItipLocalDeliveryConsumerTest {
     static RabbitMQExtension rabbitMQExtension = RabbitMQExtension.singletonRabbitMQ()
         .isolationPolicy(RabbitMQExtension.IsolationPolicy.STRONG);
 
-    private static ReactorRabbitMQChannelPool channelPool;
-    private static SimpleConnectionPool connectionPool;
     private static WireMockServer wireMockServer;
 
+    private ReactorRabbitMQChannelPool channelPool;
+    private SimpleConnectionPool connectionPool;
     private ItipLocalDeliveryConsumer consumer;
     private LocalRecipientResolver localRecipientResolver;
     private Channel channel;
@@ -130,37 +130,21 @@ public class ItipLocalDeliveryConsumerTest {
     private String testEmailQueue;
 
     @BeforeAll
-    static void beforeAll() throws Exception {
+    static void beforeAll() {
         wireMockServer = new WireMockServer(WireMockConfiguration.options().dynamicPort());
         wireMockServer.start();
         WireMock.configureFor("localhost", wireMockServer.port());
-
-        RabbitMQConfiguration rabbitMQConfiguration = rabbitMQExtension.getRabbitMQ().getConfiguration();
-        RabbitMQConnectionFactory connectionFactory = new RabbitMQConnectionFactory(rabbitMQConfiguration);
-        connectionPool = new SimpleConnectionPool(connectionFactory,
-            SimpleConnectionPool.Configuration.builder()
-                .retries(2)
-                .initialDelay(Duration.ofMillis(5)));
-        channelPool = new ReactorRabbitMQChannelPool(connectionPool.getResilientConnection(),
-            ReactorRabbitMQChannelPool.Configuration.builder()
-                .retries(2)
-                .maxBorrowDelay(Duration.ofMillis(250))
-                .maxChannel(10),
-            new RecordingMetricFactory(),
-            new NoopGaugeRegistry());
-        channelPool.start();
     }
 
     @AfterAll
     static void afterAll() {
-        channelPool.close();
-        connectionPool.close();
         wireMockServer.stop();
     }
 
     @BeforeEach
     void setUp() throws Exception {
         wireMockServer.resetAll();
+        startRabbitMQPools();
 
         String testId = String.valueOf(System.nanoTime());
         testFanoutQueue = "test:itip:localDelivery:fanout:" + testId;
@@ -202,6 +186,27 @@ public class ItipLocalDeliveryConsumerTest {
         if (channel != null && channel.isOpen()) {
             channel.close();
         }
+        // STRONG isolation resets RabbitMQ after each test: connections must not outlive the test, otherwise their
+        // automatic recovery races with the next test and re-registers stale consumers (530 reuse consumer tag).
+        channelPool.close();
+        connectionPool.close();
+    }
+
+    private void startRabbitMQPools() throws Exception {
+        RabbitMQConfiguration rabbitMQConfiguration = rabbitMQExtension.getRabbitMQ().getConfiguration();
+        RabbitMQConnectionFactory connectionFactory = new RabbitMQConnectionFactory(rabbitMQConfiguration);
+        connectionPool = new SimpleConnectionPool(connectionFactory,
+            SimpleConnectionPool.Configuration.builder()
+                .retries(2)
+                .initialDelay(Duration.ofMillis(5)));
+        channelPool = new ReactorRabbitMQChannelPool(connectionPool.getResilientConnection(),
+            ReactorRabbitMQChannelPool.Configuration.builder()
+                .retries(2)
+                .maxBorrowDelay(Duration.ofMillis(250))
+                .maxChannel(10),
+            new RecordingMetricFactory(),
+            new NoopGaugeRegistry());
+        channelPool.start();
     }
 
     @Test
