@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.Optional;
 
 import jakarta.mail.internet.AddressException;
@@ -44,6 +45,7 @@ import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
+import net.fortuna.ical4j.model.property.RecurrenceId;
 
 class EventParseUtilsTest {
 
@@ -842,17 +844,16 @@ class EventParseUtilsTest {
 
         @Test
         void shouldReturnEmptyWhenUnparsable() {
-            Calendar calendar = CalendarUtil.parseIcs("""
-                BEGIN:VCALENDAR
-                VERSION:2.0
-                BEGIN:VEVENT
-                UID:event-1
-                RECURRENCE-ID;TZID=Unknown/Zone:00
-                DTSTART:20350926T090000Z
-                END:VEVENT
-                END:VCALENDAR
-                """);
-            VEvent event = EventParseUtils.getFirstEvent(calendar);
+            // Whether ical4j parses an invalid RECURRENCE-ID eagerly or lazily depends on the environment:
+            // simulate the lazy parsing failure deterministically.
+            RecurrenceId<Instant> unparsableRecurrenceId = new RecurrenceId<>(Instant.parse("2035-09-26T09:00:00Z")) {
+                @Override
+                public String getValue() {
+                    throw new DateTimeParseException("Text '00' could not be parsed at index 0", "00", 0);
+                }
+            };
+            VEvent event = new VEvent();
+            event.add(unparsableRecurrenceId);
 
             assertSoftly(softly -> {
                 softly.assertThat(EventParseUtils.getRecurrenceId(event)).isEmpty();
