@@ -18,8 +18,11 @@
 
 package com.linagora.calendar.amqp.model;
 
+import java.util.List;
+
 import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
 import com.linagora.calendar.smtp.template.content.model.ReplyContentModelBuilder;
+import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.component.VEvent;
@@ -33,6 +36,15 @@ public record CalendarEventReplyNotificationEmail(CalendarEventNotificationEmail
     public ReplyContentModelBuilder.LocaleStep toReplyContentModelBuilder() {
         VEvent vEvent = base.getFirstVEvent();
 
-        return ReplyContentModelBuilder.from(vEvent, EventParseUtils.getAttendees(vEvent).getFirst());
+        return ReplyContentModelBuilder.from(vEvent, replyingAttendee(vEvent));
+    }
+
+    private EventFields.Person replyingAttendee(VEvent vEvent) {
+        List<EventFields.Person> attendees = EventParseUtils.getAttendees(vEvent);
+        return attendees.stream()
+            .filter(attendee -> attendee.email().equals(base.senderEmail()))
+            .findFirst()
+            .or(() -> attendees.stream().findFirst())
+            .orElseThrow(() -> new IllegalStateException("No attendee in REPLY"));
     }
 }
