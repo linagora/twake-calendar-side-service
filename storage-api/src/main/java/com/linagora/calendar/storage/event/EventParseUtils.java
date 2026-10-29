@@ -352,7 +352,7 @@ public class EventParseUtils {
             .flatMap(EventParseUtils::extractZoneId);
     }
 
-    private static Optional<ZoneId> extractZoneId(String value) {
+    public static Optional<ZoneId> extractZoneId(String value) {
         // Try IANA zone
         try {
             return Optional.of(ZoneId.of(value));

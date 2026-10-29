@@ -112,13 +112,32 @@ class CalendarEventUpdateNotificationEmailTest {
         assertThat(changesModel).doesNotContainKey("dtstart");
     }
 
-    @Test
-    void toPugModelShouldOmitAnUnknownPreviousTimezone() throws Exception {
-        DateTimeChange dtstart = new DateTimeChange(new DateTimeValue(false, "2026-04-01 10:00:00", 3, "Not/AZone"), CURRENT);
+    @ParameterizedTest
+    @ValueSource(strings = {"Not/AZone", "Europe/+14:00Paris", "CEST"})
+    void toPugModelShouldFallBackToTheDisplayZoneForAnUnknownPreviousTimezone(String timezone) throws Exception {
+        DateTimeChange dtstart = new DateTimeChange(new DateTimeValue(false, "2026-04-01 10:00:00", 3, timezone), CURRENT);
 
         Map<String, Object> changesModel = changesModel(changes(Optional.of(dtstart), Optional.empty()));
 
-        assertThat(changesModel).doesNotContainKey("dtstart");
+        assertThat(previousTime(changesModel, "dtstart", "time")).isEqualTo("10:00");
+    }
+
+    @Test
+    void toPugModelShouldFallBackToTheDisplayZoneForAMissingPreviousTimezone() throws Exception {
+        DateTimeChange dtstart = new DateTimeChange(new DateTimeValue(false, "2026-04-01 10:00:00", 3, null), CURRENT);
+
+        Map<String, Object> changesModel = changesModel(changes(Optional.of(dtstart), Optional.empty()));
+
+        assertThat(previousTime(changesModel, "dtstart", "time")).isEqualTo("10:00");
+    }
+
+    @Test
+    void toPugModelShouldResolveAWindowsPreviousTimezone() throws Exception {
+        DateTimeChange dtstart = new DateTimeChange(new DateTimeValue(false, "2026-04-01 10:00:00", 3, "W. Europe Standard Time"), CURRENT);
+
+        Map<String, Object> changesModel = changesModel(changes(Optional.of(dtstart), Optional.empty()));
+
+        assertThat(previousTime(changesModel, "dtstart", "time")).isEqualTo("08:00");
     }
 
     @Test
