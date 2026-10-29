@@ -764,4 +764,38 @@ class EventParseUtilsTest {
                     "DTEND;TZID=Asia/Ho_Chi_Minh:20250411T100000");
         }
     }
+
+    @Test
+    void getStartTimeShouldThrowIllegalStateExceptionOnUnparsableDtStart() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:invite-1
+            DTSTART;TZID=Unknown/Zone;VALUE=DATE:his section.
+            END:VEVENT
+            END:VCALENDAR
+            """);
+
+        assertThatThrownBy(() -> EventParseUtils.getStartTime(EventParseUtils.getFirstEvent(calendar)))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("invite-1");
+    }
+
+    @Test
+    void getStartTimeShouldThrowIllegalStateExceptionOnMissingDtStart() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:invite-1
+            SUMMARY:No start
+            END:VEVENT
+            END:VCALENDAR
+            """);
+
+        assertThatThrownBy(() -> EventParseUtils.getStartTime(EventParseUtils.getFirstEvent(calendar)))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("invite-1");
+    }
 }

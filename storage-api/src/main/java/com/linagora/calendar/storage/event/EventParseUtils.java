@@ -310,7 +310,13 @@ public class EventParseUtils {
     public static ZonedDateTime getStartTime(VEvent vEvent) {
         return vEvent.getProperty(Property.DTSTART)
             .flatMap(EventParseUtils::parseTime)
-            .orElseThrow(() -> new IllegalStateException("DTSTART property is missing or invalid:\n" + vEvent));
+            .orElseThrow(() -> new IllegalStateException("DTSTART property is missing or invalid for event with UID " + describeUid(vEvent)));
+    }
+
+    private static String describeUid(VEvent vEvent) {
+        return vEvent.getUid()
+            .map(Uid::getValue)
+            .orElse("<none>");
     }
 
     public static Optional<ZonedDateTime> getEndTime(VEvent vEvent) {
