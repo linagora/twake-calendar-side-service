@@ -50,4 +50,24 @@ class AddressBookURLTest {
         assertThatThrownBy(() -> AddressBookURL.parse(""))
             .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/addressbooks/ac/..", "/addressbooks/c/.", "/addressbooks/a?b/c", "/addressbooks/a#b/c", "/addressbooks/%/c", "/addressbooks/a b/c", "/addressbooks/e/#", "/addressbooks/a\\b/c"})
+    void parseShouldRejectIdsThatAreNotSinglePathSegments(String rawValue) {
+        assertThatThrownBy(() -> AddressBookURL.parse(rawValue))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/addressbooks/base1/a.b", "/addressbooks/base1/a%20b", "/addressbooks/base1/user@domain.tld", "/addressbooks/base1/a-b_c~d+e"})
+    void parseShouldAcceptIdsThatAreSinglePathSegments(String rawValue) {
+        assertThat(AddressBookURL.parse(rawValue).asUri().getRawPath())
+            .isEqualTo(rawValue);
+    }
+
+    @Test
+    void constructorShouldRejectDotSegments() {
+        assertThatThrownBy(() -> new AddressBookURL(new OpenPaaSId("base1"), ".."))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
 }

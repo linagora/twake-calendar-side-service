@@ -51,4 +51,24 @@ class CalendarURLTest {
         assertThatThrownBy(() -> CalendarURL.parse(""))
             .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/calendars/ac/..", "/calendars/c/.", "/calendars/a?b/c", "/calendars/a#b/c", "/calendars/%/c", "/calendars/a b/c", "/calendars/e/#", "/calendars/a\\b/c"})
+    void parseShouldRejectIdsThatAreNotSinglePathSegments(String rawValue) {
+        assertThatThrownBy(() -> CalendarURL.parse(rawValue))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/calendars/base1/a.b", "/calendars/base1/a%20b", "/calendars/base1/user@domain.tld", "/calendars/base1/a-b_c~d+e"})
+    void parseShouldAcceptIdsThatAreSinglePathSegments(String rawValue) {
+        assertThat(CalendarURL.parse(rawValue).asUri().getRawPath())
+            .isEqualTo(rawValue);
+    }
+
+    @Test
+    void constructorShouldRejectDotSegments() {
+        assertThatThrownBy(() -> new CalendarURL(new OpenPaaSId("base1"), new OpenPaaSId("..")))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
 }

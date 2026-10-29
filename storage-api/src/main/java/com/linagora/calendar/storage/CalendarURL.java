@@ -68,6 +68,8 @@ public record CalendarURL(OpenPaaSId base, OpenPaaSId calendarId) {
     public CalendarURL {
         Preconditions.checkArgument(base != null, "baseCalendarId must not be null");
         Preconditions.checkArgument(calendarId != null, "calendarId must not be null");
+        DavPathSegment.validate(base.value(), "baseCalendarId");
+        DavPathSegment.validate(calendarId.value(), "calendarId");
     }
 
     public URI asUri() {
