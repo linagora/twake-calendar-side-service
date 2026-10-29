@@ -1026,6 +1026,40 @@ class CalendarDiffCalculatorTest {
 
             assertThat(diffs).isEmpty();
         }
+
+        @Test
+        void duplicatedDeclinedOrganizerAttendeeAfterTheFirstOneReturnsNoDiff() {
+            String newIcs = ics("ACCEPTED", "X-PUBLICLY-CREATED:true")
+                .replace("ORGANIZER:", "ATTENDEE;PARTSTAT=DECLINED:mailto:alice@example.com\nORGANIZER:");
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT,
+                parse(newIcs),
+                parse(ics("ACCEPTED", "X-PUBLICLY-CREATED:true")));
+
+            assertThat(diffs).isEmpty();
+        }
+    }
+
+    @Test
+    void calculateShouldReturnNothingForAnUnchangedEventWithDuplicatedOrganizerAttendee() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-uid@test
+            DTSTART:20260401T103000Z
+            DTEND:20260401T113000Z
+            SUMMARY:Sprint sync
+            ORGANIZER;CN=Bob:mailto:bob@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Alice:mailto:alice@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        assertThat(CalendarDiffCalculator.calculate("alice@example.com", parse(ics), parse(ics)))
+            .isEmpty();
     }
 
     @Test
