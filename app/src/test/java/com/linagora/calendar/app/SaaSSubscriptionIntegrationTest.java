@@ -52,6 +52,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.inject.Inject;
 import com.google.inject.multibindings.Multibinder;
+import com.linagora.calendar.amqp.AddressBookListNotificationConsumer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
@@ -163,6 +164,8 @@ class SaaSSubscriptionIntegrationTest {
             RabbitMQManagementAPI rabbitMQManagementAPI = RabbitMQManagementAPI.from(sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration());
             rabbitMQManagementAPI.purgeQueue("/", TWPCalendarSubscriptionModule.SUBSCRIPTION_CONSUMER_CONFIG.deadLetterQueue());
             rabbitMQManagementAPI.purgeQueue("/", TWPCalendarSubscriptionModule.DOMAIN_SUBSCRIPTION_CONSUMER_CONFIG.deadLetterQueue());
+            // The Sabre stack is shared: other test classes leave address book list notifications for unknown users behind
+            rabbitMQManagementAPI.purgeQueue("/", AddressBookListNotificationConsumer.DEAD_LETTER_QUEUE);
         } catch (Exception e) {
             throw new RuntimeException("Unable to purge SaaS subscription dead letter queues before test", e);
         }
