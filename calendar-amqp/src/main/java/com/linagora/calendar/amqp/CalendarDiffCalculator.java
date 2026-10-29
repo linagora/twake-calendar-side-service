@@ -20,6 +20,7 @@ package com.linagora.calendar.amqp;
 
 import static com.linagora.calendar.amqp.CalendarDiffCalculator.DateTimePropertyChange.DateTimeValue;
 
+import java.time.DateTimeException;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
@@ -252,7 +253,11 @@ public class CalendarDiffCalculator {
     }
 
     private static VEvent occurrenceFromMaster(VEvent masterEvent, VEvent occurrence) {
-        return EventParseUtils.createInstanceVEvent(masterEvent, occurrence.getRecurrenceId().getDate());
+        try {
+            return EventParseUtils.createInstanceVEvent(masterEvent, occurrence.getRecurrenceId().getDate());
+        } catch (DateTimeException exception) {
+            throw new IllegalArgumentException("Unparsable RECURRENCE-ID", exception);
+        }
     }
 
     private static boolean organizerAcceptedTransition(VEvent previousEvent, VEvent currentEvent) {
