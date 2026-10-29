@@ -49,6 +49,7 @@ import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.utils.GuiceProbe;
 import org.apache.james.utils.WebAdminGuiceProbe;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
@@ -144,6 +145,12 @@ class TWPUserCreationIntegrationTest {
                 equalTo("healthy")));
     }
 
+    @AfterEach
+    void tearDown() {
+        // The Sabre stack is shared: do not leave the invalid message behind, it degrades other test classes DLQ healthcheck
+        purgeUserCreationDeadLetterQueue();
+    }
+
     @Test
     void shouldAddMemberToDomainAddressBookWhenReceivingUserCreatedEvent(TwakeCalendarGuiceServer server) throws Exception {
         // Given a domain known to the side service, and a new member of it
@@ -207,7 +214,7 @@ class TWPUserCreationIntegrationTest {
             RabbitMQManagementAPI.from(sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration())
                 .purgeQueue("/", TWPUserCreationConsumer.DEAD_LETTER_QUEUE);
         } catch (Exception e) {
-            throw new RuntimeException("Unable to purge TWP user creation dead letter queue before test", e);
+            throw new RuntimeException("Unable to purge TWP user creation dead letter queue", e);
         }
     }
 
