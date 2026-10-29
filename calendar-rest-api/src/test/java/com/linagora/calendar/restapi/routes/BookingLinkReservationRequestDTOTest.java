@@ -300,6 +300,28 @@ public class BookingLinkReservationRequestDTOTest {
         });
     }
 
+    @Test
+    void nullAdditionalAttendeeEmailShouldBeRejectedAsBadRequest() {
+        assertThatThrownBy(() -> parse("""
+            {"startUtc":"2036-01-26T09:30:00Z","creator":{"name":"BOB","email":"creator@example.com"},
+             "additional_attendees":[{"name":"No mail","email":null}],"eventTitle":"Intro"}""").toBookingRequest())
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void nullAdditionalAttendeeShouldBeRejectedAsBadRequest() {
+        assertThatThrownBy(() -> parse("""
+            {"startUtc":"2036-01-26T09:30:00Z","creator":{"name":"BOB","email":"creator@example.com"},
+             "additional_attendees":[null],"eventTitle":"Intro"}""").toBookingRequest())
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void nullBodyShouldBeRejectedAsBadRequest() {
+        assertThatThrownBy(() -> parse("null"))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private ReservationRequestDTO parse(String payload) {
         return ReservationRequestDTO.parse(payload.getBytes(StandardCharsets.UTF_8));
     }
