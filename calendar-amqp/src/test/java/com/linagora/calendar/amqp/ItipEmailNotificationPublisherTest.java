@@ -21,6 +21,7 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.api.CalendarUtil.parseIcs;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -934,6 +935,50 @@ class ItipEmailNotificationPublisherTest {
                 assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
                 assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z");
             });
+        }
+
+        @Test
+        void requestShouldIgnoreUnparsableExDate() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Calendar//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:event-uid@test
+                DTSTART;TZID=Europe/Paris:20261013T140000
+                DTEND;TZID=Europe/Paris:20261013T150000
+                RRULE:FREQ=WEEKLY;BYDAY=TU
+                EXDATE;TZID=Europe/Paris:20261340T140000
+                SUMMARY:Weekly meeting
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            ItipLocalDeliveryDTO dto = dto(Method.VALUE_REQUEST, ics, Optional.of(ics));
+
+            assertThatCode(() -> testee.buildNotificationMessages(dto, EVENT_PATH, Optional.of(parseIcs(ics))))
+                .doesNotThrowAnyException();
+        }
+
+        @Test
+        void unparsableExDateShouldNotPreventProcessingTheReadableOnes() {
+            String previous = withExDate(withExDate(RECURRING_OLD_NO_EXDATE, "20260408T100000Z"), "20261340T100000Z");
+            String current = withExDate(withExDate(RECURRING_OLD_NO_EXDATE, "20260415T100000Z"), "20261340T100000Z");
+
+            List<NotificationEmailDTO> notifications = request(current, previous);
+
+            assertThat(notifications).hasSize(2)
+                .anySatisfy(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_CANCEL);
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260415T100000Z");
+                })
+                .anySatisfy(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z");
+                });
         }
 
         @Test
