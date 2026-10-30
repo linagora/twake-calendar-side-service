@@ -514,6 +514,9 @@ public class EventParseUtils {
     }
 
     private static boolean startsAt(Period<Temporal> occurrence, Temporal recurrenceDate) {
+        if (recurrenceDate instanceof LocalDate) {
+            return recurrenceDate.equals(occurrence.getStart());
+        }
         return temporalToZonedDateTime(occurrence.getStart())
             .map(ZonedDateTime::toInstant)
             .equals(temporalToZonedDateTime(recurrenceDate).map(ZonedDateTime::toInstant));
