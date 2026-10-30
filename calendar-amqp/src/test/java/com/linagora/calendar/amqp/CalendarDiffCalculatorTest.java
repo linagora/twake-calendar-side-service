@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
+import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.Temporal;
 import java.util.List;
@@ -35,9 +36,11 @@ import org.junit.jupiter.params.provider.ValueSource;
 import com.linagora.calendar.amqp.CalendarDiffCalculator.EventDiff;
 import com.linagora.calendar.amqp.CalendarDiffCalculator.StringPropertyChange;
 import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Period;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.RecurrenceId;
@@ -52,6 +55,61 @@ class CalendarDiffCalculatorTest {
 
     @Nested
     class RecurringRequestUpdate {
+
+        private static final String UTC_SERIES_ACROSS_DST = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Test//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:weekly-dst@test
+            DTSTART:20261013T120000Z
+            DTEND:20261013T130000Z
+            RRULE:FREQ=WEEKLY;COUNT=3;BYDAY=TU
+            SUMMARY:Weekly meeting
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        private static final String PARIS_SERIES_ACROSS_DST = UTC_SERIES_ACROSS_DST
+            .replace("DTSTART:20261013T120000Z", "DTSTART;TZID=Europe/Paris:20261013T140000")
+            .replace("DTEND:20261013T130000Z", "DTEND;TZID=Europe/Paris:20261013T150000");
+
+        @Test
+        void timezoneChangeShiftsFutureOccurrencesAfterDaylightSavingEnds() {
+            assertThat(occurrenceStartInstants(parse(UTC_SERIES_ACROSS_DST)))
+                .containsExactly(
+                    Instant.parse("2026-10-13T12:00:00Z"),
+                    Instant.parse("2026-10-20T12:00:00Z"),
+                    Instant.parse("2026-10-27T12:00:00Z"));
+            assertThat(occurrenceStartInstants(parse(PARIS_SERIES_ACROSS_DST)))
+                .containsExactly(
+                    Instant.parse("2026-10-13T12:00:00Z"),
+                    Instant.parse("2026-10-20T12:00:00Z"),
+                    Instant.parse("2026-10-27T13:00:00Z"));
+        }
+
+        @Test
+        void calculateShouldNotifyMasterWhenTimezoneChangeShiftsFutureOccurrences() {
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(
+                RECIPIENT, parse(PARIS_SERIES_ACROSS_DST), parse(UTC_SERIES_ACROSS_DST));
+
+            assertThat(diffs)
+                .as("The series shifts by one hour after Paris ends daylight saving time on 2026-10-25")
+                .singleElement()
+                .satisfies(diff -> assertThat(diff.vevent().getRecurrenceId()).isNull());
+        }
+
+        private static List<Instant> occurrenceStartInstants(Calendar calendar) {
+            Period<Instant> window = new Period<>(
+                Instant.parse("2026-10-13T00:00:00Z"), Instant.parse("2026-11-01T00:00:00Z"));
+            return EventParseUtils.getFirstEvent(calendar).<Temporal>calculateRecurrenceSet(window).stream()
+                .map(period -> EventParseUtils.temporalToZonedDateTime(period.getStart()).orElseThrow().toInstant())
+                .sorted()
+                .toList();
+        }
 
         private static final String MASTER_AND_EXCEPTION_OLD = """
             BEGIN:VCALENDAR
@@ -778,6 +836,86 @@ class CalendarDiffCalculatorTest {
                                     }
                                 }
                             }"""));
+        }
+
+        private static final String OLD_UTC = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Linagora//Twake-Calendar//EN
+            BEGIN:VEVENT
+            UID:event-uid@test
+            DTSTART:20261013T120000Z
+            DTEND:20261013T130000Z
+            RRULE:FREQ=WEEKLY;BYDAY=TU
+            SUMMARY:Weekly meeting
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE:mailto:bob@example.com
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:event-uid@test
+            RECURRENCE-ID:20261020T120000Z
+            DTSTART:20261020T130000Z
+            DTEND:20261020T140000Z
+            SUMMARY:Weekly meeting moved
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        private static final String NEW_PARIS = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Linagora//Twake-Calendar//EN
+            BEGIN:VEVENT
+            UID:event-uid@test
+            DTSTART:20261013T120000Z
+            DTEND:20261013T130000Z
+            RRULE:FREQ=WEEKLY;BYDAY=TU
+            SUMMARY:Weekly meeting
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE:mailto:bob@example.com
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:event-uid@test
+            RECURRENCE-ID;TZID=Europe/Paris:20261020T140000
+            DTSTART;TZID=Europe/Paris:20261020T160000
+            DTEND;TZID=Europe/Paris:20261020T170000
+            SUMMARY:Weekly meeting moved
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        @Test
+        void calculateShouldNotifyAnOverrideOnceWhenItsRecurrenceIdChangesForm() {
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(NEW_PARIS), parse(OLD_UTC));
+
+            assertThat(diffs)
+                .filteredOn(diff -> diff.vevent().getRecurrenceId() != null)
+                .singleElement()
+                .satisfies(diff -> assertThat(diff.isNewEvent()).isFalse());
+        }
+
+        @Test
+        void calculateShouldNotNotifyTheUnchangedMasterWhenAnOverrideRecurrenceIdChangesForm() {
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(NEW_PARIS), parse(OLD_UTC));
+
+            assertThat(diffs)
+                .filteredOn(diff -> diff.vevent().getRecurrenceId() == null)
+                .isEmpty();
+        }
+
+        @Test
+        void calculateShouldNotNotifyWhenOnlyTheOverrideTimezoneRepresentationChanges() {
+            String sameInstantsInParis = NEW_PARIS
+                .replace("DTSTART;TZID=Europe/Paris:20261020T160000", "DTSTART;TZID=Europe/Paris:20261020T150000")
+                .replace("DTEND;TZID=Europe/Paris:20261020T170000", "DTEND;TZID=Europe/Paris:20261020T160000");
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(sameInstantsInParis), parse(OLD_UTC));
+
+            assertThat(diffs).isEmpty();
         }
     }
 

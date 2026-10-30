@@ -21,12 +21,14 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.amqp.CalendarDiffCalculator.DateTimePropertyChange.DateTimeValue;
 
 import java.time.DateTimeException;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.Temporal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -49,6 +51,7 @@ import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
+import net.fortuna.ical4j.model.property.RecurrenceId;
 
 public class CalendarDiffCalculator {
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarDiffCalculator.class);
@@ -327,8 +330,38 @@ public class CalendarDiffCalculator {
         return calendar.getComponents(Component.VEVENT).stream()
             .map(VEvent.class::cast)
             .collect(Collectors.toMap(
-                vevent -> EventParseUtils.getRecurrenceId(vevent).orElse(MASTER_RECURRENCE_ID),
+                CalendarDiffCalculator::recurrenceKey,
                 Function.identity(), (first, second) -> first, LinkedHashMap::new));
+    }
+
+    /**
+     * Keyed by instant (date for all-day occurrences): the same RECURRENCE-ID can be written in UTC on one side and
+     * with a TZID on the other. Falls back to the raw value when it cannot be converted.
+     */
+    private static String recurrenceKey(VEvent vevent) {
+        RecurrenceId<Temporal> recurrenceId = vevent.getRecurrenceId();
+        if (recurrenceId == null) {
+            return MASTER_RECURRENCE_ID;
+        }
+        return normalizedRecurrenceId(recurrenceId)
+            .orElseGet(recurrenceId::getValue);
+    }
+
+    private static Optional<String> normalizedRecurrenceId(RecurrenceId<Temporal> recurrenceId) {
+        try {
+            return normalizedRecurrenceId(recurrenceId.getDate());
+        } catch (DateTimeException exception) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<String> normalizedRecurrenceId(Temporal temporal) {
+        if (temporal instanceof LocalDate localDate) {
+            return Optional.of(localDate.toString());
+        }
+        return EventParseUtils.temporalToZonedDateTime(temporal)
+            .map(ZonedDateTime::toInstant)
+            .map(Instant::toString);
     }
 
     private static boolean attends(String recipient, VEvent vEvent) {
@@ -364,7 +397,7 @@ public class CalendarDiffCalculator {
         ZonedDateTime previousStart = EventParseUtils.getStartTime(previous);
         ZonedDateTime currentStart = EventParseUtils.getStartTime(current);
 
-        if (!Objects.equals(previousStart, currentStart)) {
+        if (!sameDateTime(previous, previousStart, currentStart)) {
             changes.add(new DateTimePropertyChange(
                 Property.DTSTART,
                 DateTimeValue.from(previous, previousStart),
@@ -374,7 +407,7 @@ public class CalendarDiffCalculator {
         Optional<ZonedDateTime> previousEnd = EventParseUtils.getEndTime(previous);
         Optional<ZonedDateTime> currentEnd = EventParseUtils.getEndTime(current);
 
-        if (!Objects.equals(previousEnd, currentEnd)) {
+        if (!sameOptionalDateTime(previous, previousEnd, currentEnd)) {
             changes.add(new DateTimePropertyChange(
                 Property.DTEND,
                 previousEnd.map(time -> DateTimeValue.from(previous, time)).orElse(null),
@@ -382,6 +415,21 @@ public class CalendarDiffCalculator {
         }
 
         return changes.build();
+    }
+
+    private static boolean sameOptionalDateTime(VEvent event, Optional<ZonedDateTime> previous, Optional<ZonedDateTime> current) {
+        return previous.map(previousTime -> current.filter(currentTime -> sameDateTime(event, previousTime, currentTime)).isPresent())
+            .orElse(current.isEmpty());
+    }
+
+    /**
+     * Same instant, regardless of how it is written. For a series master the time zone also drives the future
+     * occurrences (e.g. across DST), so its rules must match too.
+     */
+    private static boolean sameDateTime(VEvent event, ZonedDateTime previous, ZonedDateTime current) {
+        return previous.toInstant().equals(current.toInstant())
+            && (event.getProperty(Property.RRULE).isEmpty()
+                || previous.getZone().getRules().equals(current.getZone().getRules()));
     }
 
 }
