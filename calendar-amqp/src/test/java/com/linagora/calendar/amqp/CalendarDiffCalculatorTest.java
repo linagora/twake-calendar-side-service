@@ -20,8 +20,11 @@ package com.linagora.calendar.amqp;
 
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
+import java.time.format.DateTimeParseException;
+import java.time.temporal.Temporal;
 import java.util.List;
 
 import org.junit.jupiter.api.Nested;
@@ -34,7 +37,10 @@ import com.linagora.calendar.amqp.CalendarDiffCalculator.StringPropertyChange;
 import com.linagora.calendar.api.CalendarUtil;
 
 import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.property.RecurrenceId;
 
 class CalendarDiffCalculatorTest {
 
@@ -348,6 +354,82 @@ class CalendarDiffCalculatorTest {
                     assertThat(diff.isNewEvent()).isFalse();
                     assertThat(diff.changes()).isPresent();
                 });
+        }
+
+        private static final String MASTER_WITH_OVERRIDE = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:uid-recur-unparsable@test
+            DTSTART:20350925T090000Z
+            DTEND:20350925T100000Z
+            RRULE:FREQ=WEEKLY
+            SUMMARY:Weekly sync
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:uid-recur-unparsable@test
+            RECURRENCE-ID:20350926T090000Z
+            DTSTART:20350926T110000Z
+            DTEND:20350926T120000Z
+            SUMMARY:Weekly sync moved
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        private static final String MASTER_ONLY = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:uid-recur-unparsable@test
+            DTSTART:20350925T090000Z
+            DTEND:20350925T100000Z
+            RRULE:FREQ=WEEKLY
+            SUMMARY:Weekly sync
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        static class UnparsableRecurrenceId extends RecurrenceId<Temporal> {
+            UnparsableRecurrenceId(String value) {
+                super(value);
+            }
+
+            @Override
+            public Temporal getDate() {
+                throw new DateTimeParseException("Unparsable RECURRENCE-ID", "mailto:john@example.com", 0);
+            }
+        }
+
+        private static Calendar withUnparsableOverrideRecurrenceId(Calendar calendar) {
+            VEvent override = calendar.<VEvent>getComponents(Component.VEVENT).getLast();
+            override.remove(override.getRecurrenceId());
+            override.add(new UnparsableRecurrenceId("20350926T090000Z"));
+            return calendar;
+        }
+
+        @Test
+        void droppedOverrideWithUnparsableRecurrenceIdShouldBeIgnored() {
+            Calendar oldCalendar = withUnparsableOverrideRecurrenceId(parse(MASTER_WITH_OVERRIDE));
+            Calendar newCalendar = parse(MASTER_ONLY);
+
+            assertThat(CalendarDiffCalculator.calculate(RECIPIENT, newCalendar, oldCalendar)).isEmpty();
+        }
+
+        @Test
+        void newOverrideWithUnparsableRecurrenceIdShouldBeDiffedAgainstMaster() {
+            Calendar oldCalendar = parse(MASTER_ONLY);
+            Calendar newCalendar = withUnparsableOverrideRecurrenceId(parse(MASTER_WITH_OVERRIDE));
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, newCalendar, oldCalendar);
+
+            assertThat(diffs).singleElement()
+                .satisfies(diff -> assertThat(diff.serializeChanges().orElseThrow().toString()).contains("summary"));
         }
 
         @Test

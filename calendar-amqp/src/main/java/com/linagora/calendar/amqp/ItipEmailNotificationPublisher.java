@@ -22,6 +22,7 @@ import static com.linagora.calendar.storage.event.EventParseUtils.createInstance
 
 import java.net.URI;
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.time.chrono.ChronoZonedDateTime;
@@ -405,7 +406,7 @@ class ItipEmailNotificationPublisher {
 
         private Optional<Temporal> recurrenceKey(VEvent vevent) {
             return Optional.ofNullable(vevent.getRecurrenceId())
-                .map(DateProperty::getDate)
+                .flatMap(this::recurrenceDate)
                 .flatMap(temporal -> {
                     if (temporal instanceof LocalDate localDate) {
                         return Optional.of(localDate);
@@ -417,6 +418,18 @@ class ItipEmailNotificationPublisher {
                     }
                     return instant;
                 });
+        }
+
+        /**
+         * An unparsable RECURRENCE-ID must not prevent notifying the other occurrences: such an override is not keyed.
+         */
+        private Optional<Temporal> recurrenceDate(DateProperty<?> recurrenceId) {
+            try {
+                return Optional.of(recurrenceId.getDate());
+            } catch (DateTimeException exception) {
+                LOGGER.warn("Ignoring unparsable RECURRENCE-ID {}", recurrenceId.getValue(), exception);
+                return Optional.empty();
+            }
         }
     }
 
