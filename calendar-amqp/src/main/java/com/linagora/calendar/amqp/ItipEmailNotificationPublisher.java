@@ -243,6 +243,7 @@ class ItipEmailNotificationPublisher {
                                                                        Calendar oldCalendar) {
             return CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
                 .stream()
+                .filter(this::isNotifiable)
                 .map(diff -> buildChangedOccurrenceNotification(
                     NotificationEmailDTO.builder(localDelivery).withEventPath(eventPath), newCalendar, diff))
                 .toList();
@@ -410,9 +411,20 @@ class ItipEmailNotificationPublisher {
         }
 
         private boolean shouldSendRequest(EventDiff diff, Set<Temporal> excludedRecurrenceIds) {
-            return recurrenceKey(diff.vevent())
-                .map(recurrenceId -> !excludedRecurrenceIds.contains(recurrenceId))
-                .orElse(true);
+            return isMaster(diff) || recurrenceKey(diff.vevent())
+                .filter(recurrenceId -> !excludedRecurrenceIds.contains(recurrenceId))
+                .isPresent();
+        }
+
+        /**
+         * An override whose RECURRENCE-ID cannot be read cannot be rendered: only the other occurrences are notified.
+         */
+        private boolean isNotifiable(EventDiff diff) {
+            return isMaster(diff) || recurrenceKey(diff.vevent()).isPresent();
+        }
+
+        private boolean isMaster(EventDiff diff) {
+            return diff.vevent().getRecurrenceId() == null;
         }
 
         private Optional<Temporal> recurrenceKey(VEvent vevent) {
