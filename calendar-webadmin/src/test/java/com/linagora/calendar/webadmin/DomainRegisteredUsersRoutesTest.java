@@ -50,7 +50,7 @@ class DomainRegisteredUsersRoutesTest {
         userDAO = new MemoryOpenPaaSUserDAO();
 
         webAdminServer = WebAdminUtils.createWebAdminServer(
-            new DomainRegisteredUsersRoutes(userDAO, domainDAO, new JsonTransformer())).start();
+            new DomainRegisteredUsersRoutes(userDAO, domainDAO, CalendarUserRoutesTest.userDeletionService(userDAO), new JsonTransformer())).start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer).build();
     }

@@ -81,6 +81,10 @@ DELETE /registeredUsers?email=james@linagora.com
 
 Deletes the registered user matching the given email.
 
+The user is first removed from the sharees of every calendar delegated to them (user, team and resource calendars),
+so that these calendars stay writable once the user is gone. The delegations the user granted on their own calendars
+are revoked too, so that their delegates do not keep a copy of a calendar whose owner no longer exists.
+
 Status codes:
 - 204 if deleted
 - 400 if the email query parameter is missing
@@ -1093,6 +1097,10 @@ DELETE /domains/linagora.com/registeredUsers?email=james@linagora.com
 ```
 
 Deletes the registered user matching the given email when the user belongs to the domain in the URL.
+
+The user is first removed from the sharees of every calendar delegated to them (user, team and resource calendars),
+so that these calendars stay writable once the user is gone. The delegations the user granted on their own calendars
+are revoked too, so that their delegates do not keep a copy of a calendar whose owner no longer exists.
 
 Status codes:
 - 204 if deleted

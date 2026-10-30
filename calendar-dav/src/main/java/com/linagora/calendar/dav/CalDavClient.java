@@ -50,7 +50,9 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.dav.CalendarSharingUpdate.RemoveSharee;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse;
+import com.linagora.calendar.dav.dto.CalendarDetailsResponse.CalendarInvite;
 import com.linagora.calendar.dav.dto.CalendarListResponse;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
@@ -58,6 +60,7 @@ import com.linagora.calendar.dav.dto.FreeBusyBulkResponse;
 import com.linagora.calendar.dav.dto.FreeBusyBulkResponse.BusyInterval;
 import com.linagora.calendar.dav.model.CalendarQuery;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.MailtoUri;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.TechnicalTokenService;
@@ -757,6 +760,24 @@ public class CalDavClient extends DavClient {
 
     public Mono<Void> updateCalendarShares(OpenPaaSId domainId, CalendarURL calendarURL, CalendarSharingUpdate sharingUpdate) {
         return updateCalendarShares(httpClientWithTechnicalToken(domainId), calendarURL, sharingUpdate);
+    }
+
+    /**
+     * Sharees keep a mirror of the calendar in their own calendar home: revoking their rights is what tears those mirrors down.
+     */
+    public Mono<Void> revokeAllSharees(Username owner, CalendarURL calendarURL) {
+        return fetchCalendarDetails(owner, calendarURL, Map.of("withRights", "true"))
+            .map(calendarDetails -> calendarDetails.invites().stream()
+                .filter(CalDavClient::isSharee)
+                .map(invite -> RemoveSharee.of(Username.of(MailtoUri.stripMailtoPrefix(invite.href()))))
+                .toList())
+            .filter(sharees -> !sharees.isEmpty())
+            .flatMap(sharees -> updateCalendarShares(owner, calendarURL, CalendarSharingUpdate.builder().revokeAll(sharees).build()));
+    }
+
+    private static boolean isSharee(CalendarInvite invite) {
+        return MailtoUri.hasMailtoPrefix(invite.href())
+            && invite.access().flatMap(DavRight::fromAccess).isPresent();
     }
 
     public Mono<Void> updateCalendarShares(Mono<HttpClient> httpClientPublisher,

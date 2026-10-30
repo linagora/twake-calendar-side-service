@@ -40,6 +40,7 @@ import org.eclipse.jetty.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.DavRight;
@@ -95,7 +96,7 @@ public class ResourceRoutes implements Routes {
 
     public record ResourceDTO(String name, boolean deleted, String description, String id, String icon, String domain,
                               List<AdministratorDTO> administrators,
-                              String creator) {
+                              @JsonInclude(JsonInclude.Include.ALWAYS) String creator) {
         public static ResourceDTO from(Resource resource, Domain domain, List<ResourceAdministrator> administrators, String creator) {
             return new ResourceDTO(resource.name(), resource.deleted(), resource.description(), resource.id().value(),
                 resource.icon(), domain.asString(), administrators.stream().map(AdministratorDTO::from).toList(), creator);
@@ -311,10 +312,14 @@ public class ResourceRoutes implements Routes {
     }
 
     private Mono<ResourceDTO> resolveResourceDTO(Resource resource, Domain domain) {
+        Mono<Optional<String>> creator = userDAO.retrieve(resource.creator())
+            .map(user -> user.username().asString())
+            .map(Optional::of)
+            .defaultIfEmpty(Optional.empty());
         return Mono.zip(
-                userDAO.retrieve(resource.creator()),
+                creator,
                 resourceService.listAdministrators(resource))
-            .map(tuple -> ResourceDTO.from(resource, domain, tuple.getT2(), tuple.getT1().username().asString()));
+            .map(tuple -> ResourceDTO.from(resource, domain, tuple.getT2(), tuple.getT1().orElse(null)));
     }
 
     private Mono<OpenPaaSUser> retrieveExistingUser(Username username) {

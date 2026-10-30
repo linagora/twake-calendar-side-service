@@ -24,7 +24,12 @@ import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import java.util.Map;
 import java.util.UUID;
 
 import org.apache.james.core.Username;
@@ -43,14 +48,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.google.common.collect.ImmutableSet;
+import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.dto.CalendarListResponse;
+import com.linagora.calendar.storage.MemoryOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.webadmin.service.RegisteredUserDeletionService;
 import com.linagora.calendar.webadmin.task.AddMissingFieldsTaskAdditionalInformationDTO;
 
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
 import net.javacrumbs.jsonunit.core.Option;
+import reactor.core.publisher.Mono;
 
 class CalendarUserRoutesTest {
 
@@ -62,7 +72,7 @@ class CalendarUserRoutesTest {
     void setUp() {
         userDAO = new MemoryOpenPaaSUserDAO();
         taskManager = new MemoryTaskManager(Hostname.fromLocalHostname());
-        webAdminServer = WebAdminUtils.createWebAdminServer(new CalendarUserRoutes(userDAO, taskManager, new JsonTransformer()),
+        webAdminServer = WebAdminUtils.createWebAdminServer(new CalendarUserRoutes(userDAO, userDeletionService(userDAO), taskManager, new JsonTransformer()),
             new TasksRoutes(taskManager, new JsonTransformer(),
                 new DTOConverter<>(ImmutableSet.<AdditionalInformationDTOModule<? extends TaskExecutionDetails.AdditionalInformation, ? extends AdditionalInformationDTO>>builder()
                     .add(AddMissingFieldsTaskAdditionalInformationDTO.module())
@@ -501,4 +511,9 @@ class CalendarUserRoutesTest {
             .body("message", is("Invalid action: 'invalidAction'. Supported actions are: addMissingFields"));
     }
 
+    static RegisteredUserDeletionService userDeletionService(OpenPaaSUserDAO userDAO) {
+        CalDavClient calDavClient = mock(CalDavClient.class);
+        when(calDavClient.findUserCalendars(any(), any(), anyMap())).thenReturn(Mono.just(new CalendarListResponse(Map.of())));
+        return new RegisteredUserDeletionService(userDAO, new MemoryOpenPaaSDomainDAO(), calDavClient);
+    }
 }

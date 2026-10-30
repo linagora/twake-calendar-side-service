@@ -41,6 +41,7 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
 import com.linagora.calendar.storage.exception.UserConflictException;
 import com.linagora.calendar.storage.exception.UserNotFoundException;
+import com.linagora.calendar.webadmin.service.RegisteredUserDeletionService;
 import com.linagora.calendar.webadmin.task.AddMissingFieldsTask;
 
 import reactor.core.publisher.Mono;
@@ -97,13 +98,16 @@ public class CalendarUserRoutes implements Routes {
     private static final String ADD_MISSING_FIELDS_ACTION = "addMissingFields";
 
     private final OpenPaaSUserDAO userDAO;
+    private final RegisteredUserDeletionService userDeletionService;
     private final TaskManager taskManager;
     private final JsonTransformer jsonTransformer;
     private final JsonExtractor<CalendarUserDTO> jsonExtractor;
 
     @Inject
-    public CalendarUserRoutes(OpenPaaSUserDAO userDAO, TaskManager taskManager, JsonTransformer jsonTransformer) {
+    public CalendarUserRoutes(OpenPaaSUserDAO userDAO, RegisteredUserDeletionService userDeletionService,
+                              TaskManager taskManager, JsonTransformer jsonTransformer) {
         this.userDAO = userDAO;
+        this.userDeletionService = userDeletionService;
         this.taskManager = taskManager;
         this.jsonTransformer = jsonTransformer;
         this.jsonExtractor = new JsonExtractor<>(CalendarUserDTO.class);
@@ -237,7 +241,7 @@ public class CalendarUserRoutes implements Routes {
                 .type(ErrorResponder.ErrorType.NOT_FOUND)
                 .message("User does not exist")
                 .haltError()))
-            .then(userDAO.delete(deletedUser))
+            .flatMap(userDeletionService::delete)
             .doOnSuccess(any -> response.status(HttpStatus.NO_CONTENT_204))
             .thenReturn(Constants.EMPTY_BODY)
             .block();
