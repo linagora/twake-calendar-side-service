@@ -307,7 +307,18 @@ class ItipEmailNotificationPublisher {
 
             return new ExDateChanges(previousMaster, currentMaster,
                 Sets.difference(currentExDates, previousExDates),
-                Sets.difference(Sets.difference(previousExDates, currentExDates), overriddenRecurrences));
+                removedExDates(previousExDates, currentMaster, currentExDates, overriddenRecurrences));
+        }
+
+        /**
+         * An unreadable EXDATE in the current master may still exclude a previous EXDATE: restoring it is uncertain.
+         */
+        private Set<Temporal> removedExDates(Set<Temporal> previousExDates, VEvent currentMaster,
+                                             Set<Temporal> currentExDates, Set<Temporal> overriddenRecurrences) {
+            if (CalendarEventUtils.hasUnreadableDates(currentMaster, Property.EXDATE)) {
+                return Set.of();
+            }
+            return Sets.difference(Sets.difference(previousExDates, currentExDates), overriddenRecurrences);
         }
 
         private Set<Temporal> overriddenRecurrences(Calendar calendar) {
@@ -363,7 +374,7 @@ class ItipEmailNotificationPublisher {
         private Set<Temporal> indexExDates(VEvent masterEvent) {
             return masterEvent.getProperties(Property.EXDATE).stream()
                 .map(exDate -> (ExDate<?>) exDate)
-                .flatMap(exDate -> exDate.getDates().stream().map(Temporal.class::cast))
+                .flatMap(CalendarEventUtils::readableDates)
                 .flatMap(temporal -> normalizeExDate(temporal, masterEvent).stream())
                 .collect(Collectors.toSet());
         }
