@@ -869,8 +869,8 @@ class CalendarDiffCalculatorTest {
             PRODID:-//Linagora//Twake-Calendar//EN
             BEGIN:VEVENT
             UID:event-uid@test
-            DTSTART;TZID=Europe/Paris:20261013T140000
-            DTEND;TZID=Europe/Paris:20261013T150000
+            DTSTART:20261013T120000Z
+            DTEND:20261013T130000Z
             RRULE:FREQ=WEEKLY;BYDAY=TU
             SUMMARY:Weekly meeting
             ORGANIZER:mailto:alice@example.com
@@ -899,7 +899,7 @@ class CalendarDiffCalculatorTest {
         }
 
         @Test
-        void calculateShouldNotNotifyTheMasterWhenOnlyItsTimezoneRepresentationChanges() {
+        void calculateShouldNotNotifyTheUnchangedMasterWhenAnOverrideRecurrenceIdChangesForm() {
             List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(NEW_PARIS), parse(OLD_UTC));
 
             assertThat(diffs)
@@ -908,7 +908,7 @@ class CalendarDiffCalculatorTest {
         }
 
         @Test
-        void calculateShouldNotNotifyWhenOnlyTheTimezoneRepresentationChanges() {
+        void calculateShouldNotNotifyWhenOnlyTheOverrideTimezoneRepresentationChanges() {
             String sameInstantsInParis = NEW_PARIS
                 .replace("DTSTART;TZID=Europe/Paris:20261020T160000", "DTSTART;TZID=Europe/Paris:20261020T150000")
                 .replace("DTEND;TZID=Europe/Paris:20261020T170000", "DTEND;TZID=Europe/Paris:20261020T160000");

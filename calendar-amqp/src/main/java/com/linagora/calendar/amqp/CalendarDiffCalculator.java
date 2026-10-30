@@ -397,7 +397,7 @@ public class CalendarDiffCalculator {
         ZonedDateTime previousStart = EventParseUtils.getStartTime(previous);
         ZonedDateTime currentStart = EventParseUtils.getStartTime(current);
 
-        if (!previousStart.toInstant().equals(currentStart.toInstant())) {
+        if (!sameDateTime(previous, previousStart, currentStart)) {
             changes.add(new DateTimePropertyChange(
                 Property.DTSTART,
                 DateTimeValue.from(previous, previousStart),
@@ -407,7 +407,7 @@ public class CalendarDiffCalculator {
         Optional<ZonedDateTime> previousEnd = EventParseUtils.getEndTime(previous);
         Optional<ZonedDateTime> currentEnd = EventParseUtils.getEndTime(current);
 
-        if (!previousEnd.map(ZonedDateTime::toInstant).equals(currentEnd.map(ZonedDateTime::toInstant))) {
+        if (!sameOptionalDateTime(previous, previousEnd, currentEnd)) {
             changes.add(new DateTimePropertyChange(
                 Property.DTEND,
                 previousEnd.map(time -> DateTimeValue.from(previous, time)).orElse(null),
@@ -415,6 +415,21 @@ public class CalendarDiffCalculator {
         }
 
         return changes.build();
+    }
+
+    private static boolean sameOptionalDateTime(VEvent event, Optional<ZonedDateTime> previous, Optional<ZonedDateTime> current) {
+        return previous.map(previousTime -> current.filter(currentTime -> sameDateTime(event, previousTime, currentTime)).isPresent())
+            .orElse(current.isEmpty());
+    }
+
+    /**
+     * Same instant, regardless of how it is written. For a series master the time zone also drives the future
+     * occurrences (e.g. across DST), so its rules must match too.
+     */
+    private static boolean sameDateTime(VEvent event, ZonedDateTime previous, ZonedDateTime current) {
+        return previous.toInstant().equals(current.toInstant())
+            && (event.getProperty(Property.RRULE).isEmpty()
+                || previous.getZone().getRules().equals(current.getZone().getRules()));
     }
 
 }
