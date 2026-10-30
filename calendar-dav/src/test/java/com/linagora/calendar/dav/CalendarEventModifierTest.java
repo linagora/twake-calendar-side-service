@@ -310,4 +310,32 @@ public class CalendarEventModifierTest {
             END:VCALENDAR
             """.formatted(version));
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "20251020T1000Europe/MadridT2H",
+        "20252020T100000",
+        "20251057T100000",
+        "20251020T480000",
+        "20251020T108000",
+        "notadate"
+    })
+    void applyShouldRejectUnparsableDatesWithIllegalArgumentException(String dtStart) {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:rec@example.com
+            DTSTART;TZID=Europe/Paris:%s
+            DURATION:PT1H
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(dtStart).getBytes(StandardCharsets.UTF_8));
+
+        assertThatThrownBy(() -> CalendarEventModifier
+            .of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED))
+            .apply(calendar))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
 }

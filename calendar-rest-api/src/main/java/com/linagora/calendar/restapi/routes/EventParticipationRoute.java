@@ -112,7 +112,11 @@ public class EventParticipationRoute extends PublicRoute {
 
     protected Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
         return validateAndExtractParticipation(request)
-            .flatMap(participation -> handleValidParticipation(response, participation))
+            .flatMap(participation -> handleValidParticipation(response, participation)
+                .onErrorResume(IllegalArgumentException.class, exception -> {
+                    LOGGER.warn("Participation token refers to an invalid event", exception);
+                    return doBadRequest(response, exception);
+                }))
             .onErrorResume(Exception.class, exception -> {
                 if (exception instanceof ParticipationTokenSigner.ParticipationTokenClaimException
                     || exception instanceof IllegalArgumentException) {
@@ -240,6 +244,13 @@ public class EventParticipationRoute extends PublicRoute {
             .headers(JSON_HEADER)
             .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(404, ErrorType.NOT_FOUND, "Not found", exception.getMessage())
                 .serializeAsBytes()))
+            .then();
+    }
+
+    private Mono<Void> doBadRequest(HttpServerResponse response, IllegalArgumentException exception) {
+        return response.status(HttpResponseStatus.BAD_REQUEST)
+            .headers(JSON_HEADER)
+            .sendByteArray(Mono.fromCallable(() -> ErrorResponse.of(exception).serializeAsBytes()))
             .then();
     }
 
