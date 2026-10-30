@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
+import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.Temporal;
 import java.util.List;
@@ -48,6 +49,26 @@ class CalendarDiffCalculatorTest {
 
     private static Calendar parse(String ics) {
         return CalendarUtil.parseIcs(ics);
+    }
+
+    private static Calendar parseWithUnparsableRecurrenceIds(String ics) {
+        Calendar calendar = parse(ics);
+        calendar.getComponents(Component.VEVENT).stream()
+            .map(VEvent.class::cast)
+            .filter(vevent -> vevent.getProperty(Property.RECURRENCE_ID).isPresent())
+            .forEach(vevent -> vevent.replace(unparsableRecurrenceId()));
+        return calendar;
+    }
+
+    // Whether ical4j parses an invalid RECURRENCE-ID eagerly or lazily depends on the environment:
+    // simulate the lazy parsing failure deterministically.
+    private static RecurrenceId<Instant> unparsableRecurrenceId() {
+        return new RecurrenceId<>(Instant.parse("2026-04-08T10:00:00Z")) {
+            @Override
+            public String getValue() {
+                throw new DateTimeParseException("Text '00' could not be parsed at index 0", "00", 0);
+            }
+        };
     }
 
     @Nested
@@ -94,10 +115,10 @@ class CalendarDiffCalculatorTest {
 
         @Test
         void unparsableRecurrenceIdShouldBeSkipped() {
-            String oldIcs = MASTER_AND_EXCEPTION_OLD.replace("RECURRENCE-ID:20260408T100000Z", "RECURRENCE-ID;TZID=Unknown/Zone:00");
-            String newIcs = oldIcs.replace("SUMMARY:Weekly sync (moved)", "SUMMARY:Weekly sync (renamed)");
+            String newIcs = MASTER_AND_EXCEPTION_OLD.replace("SUMMARY:Weekly sync (moved)", "SUMMARY:Weekly sync (renamed)");
 
-            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(newIcs), parse(oldIcs));
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT,
+                parseWithUnparsableRecurrenceIds(newIcs), parseWithUnparsableRecurrenceIds(MASTER_AND_EXCEPTION_OLD));
 
             assertThat(diffs).isEmpty();
         }
@@ -110,7 +131,7 @@ class CalendarDiffCalculatorTest {
                 PRODID:-//Test//Test//EN
                 BEGIN:VEVENT
                 UID:uid-recur@test
-                RECURRENCE-ID;TZID=Unknown/Zone:00
+                RECURRENCE-ID:20260408T100000Z
                 DTSTART:20260408T120000Z
                 DTEND:20260408T130000Z
                 SUMMARY:Weekly sync (moved)
@@ -130,7 +151,8 @@ class CalendarDiffCalculatorTest {
                 """;
             String newIcs = exceptionFirstOld.replace("SUMMARY:Weekly sync\n", "SUMMARY:Weekly sync (renamed)\n");
 
-            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(newIcs), parse(exceptionFirstOld));
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT,
+                parseWithUnparsableRecurrenceIds(newIcs), parseWithUnparsableRecurrenceIds(exceptionFirstOld));
 
             assertThat(diffs).singleElement()
                 .satisfies(diff -> {
