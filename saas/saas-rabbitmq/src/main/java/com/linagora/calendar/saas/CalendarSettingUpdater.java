@@ -129,7 +129,7 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
 
     private Mono<OpenPaaSUser> resolveUser(Username username) {
         return openPaaSUserDAO.retrieve(username)
-            .flatMap(userProvisioner::reimportDisplayName)
+            .flatMap(userProvisioner::reimportFromDirectory)
             .switchIfEmpty(Mono.defer(() -> userProvisioner.provisionUser(username)));
     }
 
