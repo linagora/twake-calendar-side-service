@@ -144,13 +144,23 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
             .flatMap(this::toEventTimeModel);
     }
 
+    // Unknown timezones (e.g. abbreviations, unmapped Windows names) omit the line rather than rendering a time in a guessed zone
     private Optional<EventTimeModel> toEventTimeModel(CalendarEventNotificationEmailDTO.DateTimeValue previous) {
-        try {
-            LocalDateTime localDateTime = LocalDateTime.parse(previous.date().trim(), DATE_TIME_FORMATTER);
-            return Optional.of(new EventTimeModel(localDateTime.atZone(ZoneId.of(previous.timezone()))));
-        } catch (DateTimeException e) {
+        Optional<EventTimeModel> eventTimeModel = parsePreviousDateTime(previous)
+            .flatMap(localDateTime -> EventParseUtils.extractZoneId(previous.timezone())
+                .map(localDateTime::atZone))
+            .map(EventTimeModel::new);
+        if (eventTimeModel.isEmpty()) {
             LOGGER.warn("Unreadable previous date time '{}' with timezone '{}', omitting it from the update mail",
-                previous.date(), previous.timezone(), e);
+                previous.date(), previous.timezone());
+        }
+        return eventTimeModel;
+    }
+
+    private Optional<LocalDateTime> parsePreviousDateTime(CalendarEventNotificationEmailDTO.DateTimeValue previous) {
+        try {
+            return Optional.of(LocalDateTime.parse(previous.date().trim(), DATE_TIME_FORMATTER));
+        } catch (DateTimeException e) {
             return Optional.empty();
         }
     }
