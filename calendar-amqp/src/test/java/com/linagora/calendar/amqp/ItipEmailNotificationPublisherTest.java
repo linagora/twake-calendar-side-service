@@ -1154,7 +1154,7 @@ class ItipEmailNotificationPublisherTest {
             Calendar currentCalendar = parseIcs(current);
             VEvent override = currentCalendar.<VEvent>getComponents(Component.VEVENT).getLast();
             override.remove(override.getRecurrenceId());
-            // Match the state injected by the PR's calculator tests. Relaxed ICS parsing clears invalid values.
+            // Same state as CalendarDiffCalculatorTest: relaxed ICS parsing clears invalid values, so inject a throwing RECURRENCE-ID.
             override.add(new RecurrenceId<Temporal>("20260408T100000Z") {
                 @Override
                 public Temporal getDate() {
@@ -1162,7 +1162,7 @@ class ItipEmailNotificationPublisherTest {
                 }
             });
 
-            // The PR fix lets the calculator return both the master and override diffs.
+            // The calculator returns both the master and override diffs.
             assertThat(CalendarDiffCalculator.calculate("alice@example.com", currentCalendar, previousCalendar)).hasSize(2);
 
             // Inject the parsed calendar only at the publisher boundary; keep other CalendarUtil calls real.
