@@ -117,17 +117,9 @@ class CalendarSettingUpdaterDomainMemberCardTest {
         userContactResolver.register(alice, aliceContact().build());
         userDAO.add(alice, "Alice", "Martin").block();
         updateSettings(testee(cardDavClient), 1);
-        String vcardUid = AddressBookContact.computeUid(Optional.empty(), Optional.of(asMailAddress(alice))).orElseThrow();
         assertThat(findDomainMemberCards())
             .usingRecursiveFieldByFieldElementComparatorIgnoringFields("contact.uid")
-            .containsExactly(new DomainMemberCard(vcardUid, AddressBookContact.builder()
-                .mail(asMailAddress(alice))
-                .givenName("Alice")
-                .familyName("Martin")
-                .displayName("Alice Martin")
-                .telephoneNumber("+33600000000")
-                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
-                .build()));
+            .containsExactly(aliceCard("Martin", "Alice Martin", "+33600000000"));
 
         // When the user is renamed in the directory and a settings message of that user is received
         userContactResolver.register(alice, aliceContact()
@@ -140,14 +132,7 @@ class CalendarSettingUpdaterDomainMemberCardTest {
         // Then the single card of the user, keeping its name, carries the new names along with the other directory details
         assertThat(findDomainMemberCards())
             .usingRecursiveFieldByFieldElementComparatorIgnoringFields("contact.uid")
-            .containsExactly(new DomainMemberCard(vcardUid, AddressBookContact.builder()
-                .mail(asMailAddress(alice))
-                .givenName("Alice")
-                .familyName("Dupont")
-                .displayName("Alice Dupont")
-                .telephoneNumber("+33600000000")
-                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
-                .build()));
+            .containsExactly(aliceCard("Dupont", "Alice Dupont", "+33600000000"));
     }
 
     @Test
@@ -156,17 +141,9 @@ class CalendarSettingUpdaterDomainMemberCardTest {
         userContactResolver.register(alice, aliceContact().build());
         userDAO.add(alice, "Alice", "Martin").block();
         updateSettings(testee(cardDavClient), 1);
-        String vcardUid = AddressBookContact.computeUid(Optional.empty(), Optional.of(asMailAddress(alice))).orElseThrow();
         assertThat(findDomainMemberCards())
             .usingRecursiveFieldByFieldElementComparatorIgnoringFields("contact.uid")
-            .containsExactly(new DomainMemberCard(vcardUid, AddressBookContact.builder()
-                .mail(asMailAddress(alice))
-                .givenName("Alice")
-                .familyName("Martin")
-                .displayName("Alice Martin")
-                .telephoneNumber("+33600000000")
-                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
-                .build()));
+            .containsExactly(aliceCard("Martin", "Alice Martin", "+33600000000"));
 
         // When only the telephone number of the user changes in the directory and a settings message of that user is received
         userContactResolver.register(alice, aliceContact().telephoneNumber(Optional.of("+33611111111")).build());
@@ -175,14 +152,7 @@ class CalendarSettingUpdaterDomainMemberCardTest {
         // Then the single card of the user, keeping its name, carries the new telephone number along with the unchanged directory details
         assertThat(findDomainMemberCards())
             .usingRecursiveFieldByFieldElementComparatorIgnoringFields("contact.uid")
-            .containsExactly(new DomainMemberCard(vcardUid, AddressBookContact.builder()
-                .mail(asMailAddress(alice))
-                .givenName("Alice")
-                .familyName("Martin")
-                .displayName("Alice Martin")
-                .telephoneNumber("+33611111111")
-                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
-                .build()));
+            .containsExactly(aliceCard("Martin", "Alice Martin", "+33611111111"));
     }
 
     @Test
@@ -270,7 +240,20 @@ class CalendarSettingUpdaterDomainMemberCardTest {
             new TWPCommonSettingsMessage.Payload(alice.asString(), Optional.of("en"), Optional.empty()))).block();
     }
 
-    private UserContact.Builder aliceContact() {
+    // The card the directory details of alice are expected to be written to, under the name derived from its mail.
+    private DomainMemberCard aliceCard(String familyName, String displayName, String telephoneNumber) {
+        String vcardUid = AddressBookContact.computeUid(Optional.empty(), Optional.of(asMailAddress(alice))).orElseThrow();
+        return new DomainMemberCard(vcardUid, AddressBookContact.builder()
+            .mail(asMailAddress(alice))
+            .givenName("Alice")
+            .familyName(familyName)
+            .displayName(displayName)
+            .telephoneNumber(telephoneNumber)
+            .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
+            .build());
+    }
+
+        private UserContact.Builder aliceContact() {
         return UserContact.builder()
             .names(Optional.of(new UserNames("Alice", "Martin")))
             .givenName(Optional.of("Alice"))
