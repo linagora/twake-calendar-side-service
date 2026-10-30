@@ -20,6 +20,9 @@ package com.linagora.calendar.amqp.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.URI;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.ZoneId;
 import java.util.Locale;
 import java.util.Map;
@@ -30,10 +33,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
+import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO.Changes;
 import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO.DateTimeChange;
 import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO.DateTimeValue;
+import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
 import com.linagora.calendar.api.CalendarUtil;
+import com.linagora.calendar.smtp.i18n.I18NTranslator;
+import com.linagora.calendar.smtp.template.HtmlBodyRenderer;
+import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
 
 class CalendarEventUpdateNotificationEmailTest {
 
@@ -41,6 +49,11 @@ class CalendarEventUpdateNotificationEmailTest {
     private static final ZoneId ZONE = ZoneId.of("UTC");
     private static final DateTimeValue CURRENT = new DateTimeValue(false, "2026-04-01 10:30:00.000000", 3, "UTC");
     private static final DateTimeValue READABLE_PREVIOUS = new DateTimeValue(false, "2026-04-01 11:00:00.000000", 3, "UTC");
+
+    private static final String TEMPLATE = "event-update";
+    private static final DateTimeValue PREVIOUS_START = new DateTimeValue(false, "2026-04-01 09:30:00.000000", 3, "UTC");
+    private static final DateTimeValue CURRENT_START = new DateTimeValue(false, "2026-04-01 10:30:00.000000", 3, "UTC");
+    private static final DateTimeValue CURRENT_END = new DateTimeValue(false, "2026-04-01 11:30:00.000000", 3, "UTC");
 
     private static final String ICS = """
         BEGIN:VCALENDAR
@@ -177,5 +190,103 @@ class CalendarEventUpdateNotificationEmailTest {
 
         assertThat(previousTime(changesModel, "dtstart", "time")).isEqualTo("10:00");
         assertThat(previousTime(changesModel, "dtend", "time")).isEqualTo("11:00");
+    }
+    @Test
+    void toPugModelShouldOmitADateTimeChangeWithoutPrevious() throws Exception {
+        Map<String, Object> changes = changesModel(dtendChanges(new DateTimeChange(null, CURRENT_END)));
+
+        assertThat(changes).doesNotContainKey("dtend")
+            .containsEntry("isOldEventAllDay", false);
+    }
+
+    @Test
+    void toPugModelShouldOmitADateTimeChangeWhosePreviousHasNoDate() throws Exception {
+        Map<String, Object> changes = changesModel(dtendChanges(
+            new DateTimeChange(new DateTimeValue(false, null, 3, "UTC"), CURRENT_END)));
+
+        assertThat(changes).doesNotContainKey("dtend");
+    }
+
+    @Test
+    void toPugModelShouldOmitADateTimeChangeWhosePreviousHasNoTimezone() throws Exception {
+        Map<String, Object> changes = changesModel(dtendChanges(
+            new DateTimeChange(new DateTimeValue(false, "2026-04-01 10:30:00.000000", 3, null), CURRENT_END)));
+
+        assertThat(changes).doesNotContainKey("dtend");
+    }
+
+    @Test
+    void toPugModelShouldOmitADateTimeChangeWhosePreviousIsUnreadable() throws Exception {
+        Map<String, Object> changes = changesModel(dtendChanges(
+            new DateTimeChange(new DateTimeValue(false, "68727003T130000", 3, "Not/AZone"), CURRENT_END)));
+
+        assertThat(changes).doesNotContainKey("dtend");
+    }
+
+    @Test
+    void toPugModelShouldOmitBothPreviousTimesWhenOneIsMissing() throws Exception {
+        Changes changes = new Changes(
+            Optional.of(new DateTimeChange(PREVIOUS_START, CURRENT_START)),
+            Optional.of(new DateTimeChange(null, CURRENT_END)),
+            Optional.empty(), Optional.empty(), Optional.empty());
+
+        assertThat(changesModel(changes))
+            .doesNotContainKey("dtstart")
+            .doesNotContainKey("dtend");
+    }
+
+    @Test
+    void updateTemplateShouldRenderWhenADateTimeChangeHasNoPrevious() throws Exception {
+        Map<String, Object> pugModel = email(dtendChanges(new DateTimeChange(null, CURRENT_END)))
+            .toPugModel(LOCALE, ZONE, linkFactory(), true, Optional.empty());
+
+        assertThat(render(pugModel))
+            .isNotBlank()
+            .contains("Team Meeting")
+            .doesNotContain("null");
+    }
+
+    @Test
+    void toPugModelShouldUsePreviousEndAllDayFlagWhenPreviousStartIsMissing() throws Exception {
+        Changes changes = new Changes(
+            Optional.of(new DateTimeChange(null, CURRENT_START)),
+            Optional.of(new DateTimeChange(new DateTimeValue(true, "2026-04-01 00:00:00.000000", 3, "UTC"), CURRENT_END)),
+            Optional.empty(), Optional.empty(), Optional.empty());
+
+        assertThat(changesModel(changes)).containsEntry("isOldEventAllDay", true);
+    }
+
+    private static Changes dtendChanges(DateTimeChange dtendChange) {
+        return new Changes(Optional.empty(), Optional.of(dtendChange),
+            Optional.empty(), Optional.empty(), Optional.empty());
+    }
+
+    private static CalendarEventUpdateNotificationEmail email(Changes changes) throws Exception {
+        CalendarEventNotificationEmail base = new CalendarEventNotificationEmail(
+            new MailAddress("bob@example.com"),
+            new MailAddress("alice@example.com"),
+            CalendarUtil.parseIcs(ICS),
+            "/calendars/base/cal/event.ics");
+        return new CalendarEventUpdateNotificationEmail(base, Optional.of(changes));
+    }
+
+    private static EventInCalendarLinkFactory linkFactory() throws Exception {
+        return new EventInCalendarLinkFactory(URI.create("http://localhost").toURL());
+    }
+
+    private static Path templateDirectory() {
+        return Paths.get(Paths.get("").toAbsolutePath().getParent().toString(),
+            "app", "src", "main", "resources", "templates", TEMPLATE);
+    }
+
+    private static String render(Map<String, Object> pugModel) throws Exception {
+        I18NTranslator translator = new I18NTranslator.PropertiesI18NTranslator.Factory(
+            templateDirectory().resolve("translations").toFile())
+            .forLocale(LOCALE);
+        Map<String, Object> renderModel = ImmutableMap.<String, Object>builder()
+            .putAll(pugModel)
+            .put("translator", translator)
+            .build();
+        return HtmlBodyRenderer.forPath(templateDirectory().toAbsolutePath().toString()).render(renderModel);
     }
 }

@@ -85,10 +85,18 @@ public sealed interface AvailabilityRule permits FixedAvailabilityRule, WeeklyAv
 
             return firstDate.datesUntil(lastDate.plusDays(1))
                 .filter(localDate -> localDate.getDayOfWeek() == this.dayOfWeek)
-                .map(localDate -> Range.closedOpen(
-                    localDate.atTime(this.start).atZone(resolvedTimeZone).toInstant(),
-                    localDate.atTime(this.end).atZone(resolvedTimeZone).toInstant()))
+                .flatMap(localDate -> dailyRange(localDate, resolvedTimeZone).stream())
                 .toList();
+        }
+
+        // A start falling in a DST gap is shifted forward and may end up at or after the end: the day then has no availability
+        private Optional<Range<Instant>> dailyRange(LocalDate localDate, ZoneId zone) {
+            Instant rangeStart = localDate.atTime(this.start).atZone(zone).toInstant();
+            Instant rangeEnd = localDate.atTime(this.end).atZone(zone).toInstant();
+            if (!rangeStart.isBefore(rangeEnd)) {
+                return Optional.empty();
+            }
+            return Optional.of(Range.closedOpen(rangeStart, rangeEnd));
         }
     }
 }
