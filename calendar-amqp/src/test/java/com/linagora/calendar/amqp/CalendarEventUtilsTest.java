@@ -321,7 +321,7 @@ class CalendarEventUtilsTest {
             BEGIN:VEVENT
             UID:rdate-expiry-unknown@test
             DTSTART:20251220T100000Z
-            RDATE:20261340T100000
+            RDATE;TZID=Europe/Paris:20261340T100000
             END:VEVENT
             """);
 
@@ -329,17 +329,31 @@ class CalendarEventUtilsTest {
     }
 
     @Test
-    void shouldStillApplyReadableExDateWhenSamePropertyContainsUnparsableDate() {
+    void shouldNotBeExpiredWhenUnreadableRDateComesWithPastRDates() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:rdate-expiry-unknown-with-past@test
+            DTSTART:20251220T100000Z
+            RDATE:20251221T100000Z
+            RDATE;TZID=Europe/Paris:20261340T100000
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isFalse();
+    }
+
+    @Test
+    void shouldNotBeExpiredWhenExDatePropertyMixingReadableAndUnparsableDatesMayHideAnUpcomingOccurrence() {
         VEvent vEvent = parseSingleVEvent("""
             BEGIN:VEVENT
             UID:exdate-mixed-values@test
             DTSTART:20251230T100000Z
             RRULE:FREQ=DAILY;COUNT=3
-            EXDATE:20260101T100000Z,20261340T100000Z
+            EXDATE;TZID=Europe/Paris:20260101T110000,20261340T110000
             END:VEVENT
             """);
 
-        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isTrue();
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isFalse();
     }
 
     @Test
@@ -348,7 +362,7 @@ class CalendarEventUtilsTest {
             BEGIN:VEVENT
             UID:rdate-mixed-values@test
             DTSTART:20251220T100000Z
-            RDATE:20260110T100000Z,20261340T100000Z
+            RDATE;TZID=Europe/Paris:20260110T110000,20261340T110000
             END:VEVENT
             """);
 

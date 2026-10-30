@@ -62,7 +62,14 @@ public class CalendarEventUtils {
         return recurrenceExpired(vevent, startDateTime.get(), now);
     }
 
+    /**
+     * An unreadable RDATE may designate an upcoming occurrence: expiry is then uncertain and the event is kept.
+     * An unreadable EXDATE can only exclude more occurrences, ignoring it errs on the same safe side.
+     */
     private static boolean recurrenceExpired(VEvent vevent, ZonedDateTime startDateTime, Instant now) {
+        if (hasUnreadableDates(vevent, Property.RDATE)) {
+            return false;
+        }
         Set<Instant> excludedDates = extractExcludedDates(vevent);
         boolean hasUpcomingFromRRule = hasUpcomingFromRRule(vevent, startDateTime, excludedDates, now);
         boolean hasUpcomingFromRDate = hasUpcomingRDate(vevent, excludedDates, now);
@@ -133,15 +140,28 @@ public class CalendarEventUtils {
 
     /**
      * ical4j parses date lists lazily: an unreadable value only fails on {@link DateListProperty#getDates()}.
-     * Such a property is skipped, as it designates no date.
+     * Such a property yields no date: callers needing certainty should check {@link #hasUnreadableDates}.
      */
     public static Stream<Temporal> readableDates(DateListProperty<?> property) {
+        return parseDates(property)
+            .stream()
+            .flatMap(List::stream);
+    }
+
+    public static boolean hasUnreadableDates(VEvent vevent, String propertyName) {
+        return vevent.getProperties(propertyName).stream()
+            .filter(DateListProperty.class::isInstance)
+            .map(property -> (DateListProperty<?>) property)
+            .anyMatch(property -> parseDates(property).isEmpty());
+    }
+
+    private static Optional<List<Temporal>> parseDates(DateListProperty<?> property) {
         try {
-            return ((List<Temporal>) property.getDates()).stream();
+            return Optional.of((List<Temporal>) property.getDates());
         } catch (DateTimeException e) {
-            // getValue() would parse again: the cause message carries the faulty text
-            LOGGER.warn("Ignoring unreadable {} property", property.getName(), e);
-            return Stream.empty();
+            // getValue() would parse again: the exception message carries the faulty text
+            LOGGER.warn("Unreadable {} property", property.getName(), e);
+            return Optional.empty();
         }
     }
 

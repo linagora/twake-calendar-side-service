@@ -433,7 +433,7 @@ class ItipEmailNotificationPublisherTest {
 
         @Test
         void requestWithUnreadableRDateShouldNotBeSuppressedWhenExpiryIsUnknown() {
-            String current = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RDATE:20261340T100000");
+            String current = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RDATE;TZID=Europe/Paris:20261340T100000");
             Clock afterStart = Clock.fixed(Instant.parse("2026-04-02T00:00:00Z"), ZoneOffset.UTC);
 
             List<NotificationEmailDTO> notifications = publisherWithClock(afterStart)
@@ -926,7 +926,7 @@ class ItipEmailNotificationPublisherTest {
         @Test
         void unreadableExDateShouldNotRestorePreviouslyExcludedOccurrence() {
             String previous = withExDate(RECURRING_OLD_NO_EXDATE, "20260408T100000Z");
-            String current = withExDate(RECURRING_OLD_NO_EXDATE, "20261340T100000Z");
+            String current = RECURRING_OLD_NO_EXDATE.replaceFirst("(RRULE:[^\\n]+\\n)", "$1EXDATE;TZID=Europe/Paris:20261340T120000\n");
 
             List<NotificationEmailDTO> notifications = request(current, previous);
 
