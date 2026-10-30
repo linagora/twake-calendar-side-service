@@ -48,7 +48,6 @@ import com.linagora.calendar.storage.MemoryDomainSettingsDAO;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.UserContactResolver;
 import com.linagora.calendar.storage.UserContactResolver.UserContact;
-import com.linagora.calendar.storage.UserNameResolver;
 import com.linagora.calendar.storage.UserNameResolver.UserNames;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
@@ -99,7 +98,7 @@ class TWPUserCreationHandlerTest {
             new MemoryDomainSettingsDAO(), Set.of(searchDisabledDomain), Set.of(), new MapConfiguration(Map.of()));
         userContactResolver = new MutableUserContactResolver();
         testee = new TWPUserCreationHandler(new SaaSUserProvisioner(userDAO, domainDAO, cardDavClient, domainSettingsResolver,
-            new UserNameResolver.Noop(), userContactResolver));
+            userContactResolver));
         testDomain = domainDAO.add(randomDomain()).block();
     }
 
