@@ -177,6 +177,46 @@ class CommonContactOutboundEventConverterTest {
     }
 
     @Test
+    void shouldConvertContactDataWithRevision() throws Exception {
+        OpenPaaSUser owner = userDAO.add(Username.of("owner@linagora.com")).block();
+
+        CommonContactOutboundEvent event = testee.convert(Action.UPDATE,
+            new SabreContactNotificationDTO(CONTACT_PATH, "principals/users/" + owner.id().value(), """
+                BEGIN:VCARD
+                VERSION:4.0
+                UID:contact-uid
+                FN:Alice
+                REV:20261030T101500Z
+                END:VCARD
+                """)).block();
+
+        assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8))
+            .inPath("$.payload.updated")
+            .isEqualTo("\"2026-10-30T10:15:00Z\"");
+    }
+
+    @Test
+    void shouldConvertContactDataWithDates() throws Exception {
+        OpenPaaSUser owner = userDAO.add(Username.of("owner@linagora.com")).block();
+
+        CommonContactOutboundEvent event = testee.convert(Action.UPDATE,
+            new SabreContactNotificationDTO(CONTACT_PATH, "principals/users/" + owner.id().value(), """
+                BEGIN:VCARD
+                VERSION:4.0
+                UID:contact-uid
+                FN:Alice
+                BDAY:19850412
+                ANNIVERSARY:20100605
+                END:VCARD
+                """)).block();
+
+        assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8))
+            .inPath("$.payload.anniversaries")
+            .isObject()
+            .hasSize(2);
+    }
+
+    @Test
     void shouldThrowWhenContactDataHasNoUid() {
         OpenPaaSUser owner = userDAO.add(Username.of("owner@linagora.com")).block();
 

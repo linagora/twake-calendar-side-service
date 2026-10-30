@@ -198,9 +198,11 @@
                 <scope>test</scope>
             </dependency>
             <dependency>
+                <!-- Must match the version jscontact-tools is compiled against: ez-vcard 0.12 moved dates to java.time,
+                     jscontact-tools 2.1.0 then fails with NoSuchMethodError on REV, BDAY, ANNIVERSARY... -->
                 <groupId>com.googlecode.ez-vcard</groupId>
                 <artifactId>ez-vcard</artifactId>
-                <version>0.12.1</version>
+                <version>0.11.3</version>
             </dependency>
             <dependency>
                 <groupId>it.cnr.iit.jscontact</groupId>

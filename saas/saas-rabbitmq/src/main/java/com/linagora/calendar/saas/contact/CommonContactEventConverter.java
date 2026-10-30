@@ -73,7 +73,8 @@ public class CommonContactEventConverter {
             return new ContactChangedEvent(audience, action, URI.create(path), convertedContact.uid(), convertedContact.payload());
         } catch (CommonContactEventConversionException e) {
             throw e;
-        } catch (Exception e) {
+        } catch (Exception | LinkageError e) {
+            // Reactor drops LinkageError as JVM fatal: the delivery would never be acked nor dead-lettered
             throw new CommonContactEventConversionException("Unable to convert contact at path " + path, e);
         }
     }
