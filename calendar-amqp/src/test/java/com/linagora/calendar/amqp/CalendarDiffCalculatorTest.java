@@ -1026,6 +1026,40 @@ class CalendarDiffCalculatorTest {
 
             assertThat(diffs).isEmpty();
         }
+
+        @Test
+        void duplicatedDeclinedOrganizerAttendeeAfterTheFirstOneReturnsNoDiff() {
+            String newIcs = ics("ACCEPTED", "X-PUBLICLY-CREATED:true")
+                .replace("ORGANIZER:", "ATTENDEE;PARTSTAT=DECLINED:mailto:alice@example.com\nORGANIZER:");
+
+            List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT,
+                parse(newIcs),
+                parse(ics("ACCEPTED", "X-PUBLICLY-CREATED:true")));
+
+            assertThat(diffs).isEmpty();
+        }
+    }
+
+    @Test
+    void calculateShouldReturnNothingForAnUnchangedEventWithDuplicatedOrganizerAttendee() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-uid@test
+            DTSTART:20260401T103000Z
+            DTEND:20260401T113000Z
+            SUMMARY:Sprint sync
+            ORGANIZER;CN=Bob:mailto:bob@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Alice:mailto:alice@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        assertThat(CalendarDiffCalculator.calculate("alice@example.com", parse(ics), parse(ics)))
+            .isEmpty();
     }
 
     @Test
@@ -1110,5 +1144,51 @@ class CalendarDiffCalculatorTest {
         assertThat(CalendarDiffCalculator.calculate("john@example.com",
             parse(template.formatted("New title")), parse(template.formatted("Old title"))))
             .hasSize(1);
+    }
+
+    @Test
+    void calculateShouldHandleAPreviousVersionWithoutMaster() {
+        String oldIcs = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:series-1
+            RECURRENCE-ID:20350925T090000Z
+            DTSTART:20350925T090000Z
+            DTEND:20350925T100000Z
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+        String newIcs = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:series-1
+            RECURRENCE-ID:20350925T090000Z
+            DTSTART:20350925T090000Z
+            DTEND:20350925T100000Z
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:series-1
+            RECURRENCE-ID:20351002T090000Z
+            DTSTART:20351002T090000Z
+            DTEND:20351002T100000Z
+            ORGANIZER:mailto:alice@example.com
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        List<EventDiff> diffs = CalendarDiffCalculator.calculate(RECIPIENT, parse(newIcs), parse(oldIcs));
+
+        assertThat(diffs).singleElement()
+            .satisfies(diff -> assertThat(diff.isNewEvent()).isTrue());
     }
 }

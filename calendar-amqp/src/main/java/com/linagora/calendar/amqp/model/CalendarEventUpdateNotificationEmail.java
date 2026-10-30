@@ -27,6 +27,7 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -104,8 +105,11 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
         putPreviousTimes(changesBuilder, locale, zoneToDisplay, changes);
         changes.location().ifPresent(locationChange -> changesBuilder.put("location", toPugModel(locationChange)));
         changes.description().ifPresent(descriptionChange -> changesBuilder.put("description", toPugModel(descriptionChange)));
-        boolean isOldEventAllDay = changes.dtstart().or(changes::dtend)
+        boolean isOldEventAllDay = Stream.of(changes.dtstart(), changes.dtend())
+            .flatMap(Optional::stream)
             .map(CalendarEventNotificationEmailDTO.DateTimeChange::previous)
+            .filter(Objects::nonNull)
+            .findFirst()
             .map(CalendarEventNotificationEmailDTO.DateTimeValue::isAllDay)
             .orElse(false);
         changesBuilder.put("isOldEventAllDay", isOldEventAllDay);

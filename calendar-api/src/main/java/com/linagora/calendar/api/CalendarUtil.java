@@ -44,12 +44,15 @@ import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.ComponentList;
 import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.TimeZoneRegistry;
 import net.fortuna.ical4j.model.TimeZoneRegistryImpl;
 import net.fortuna.ical4j.model.component.CalendarComponent;
+import net.fortuna.ical4j.model.component.VAlarm;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Method;
+import net.fortuna.ical4j.model.property.XProperty;
 import net.fortuna.ical4j.util.CompatibilityHints;
 import net.fortuna.ical4j.util.MapTimeZoneCache;
 
@@ -207,5 +210,36 @@ public class CalendarUtil {
         List<CalendarComponent> components = Stream.concat(nonVEventComponents, vEvents.stream())
             .toList();
         return new Calendar(template.getPropertyList(), new ComponentList<>(components));
+    }
+
+    /**
+     * Deep copies the given VEVENT, alarms included.
+     *
+     * <p>Unlike {@link VEvent#copy()}, this does not fail on properties unknown to ical4j (eg {@code FOOBAR:baz}):
+     * relaxed parsing turns them into {@link XProperty} whose factory based copy throws an
+     * {@link UnsupportedOperationException}.
+     */
+    public static VEvent copy(VEvent vEvent) {
+        return new VEvent(copyProperties(vEvent.getPropertyList()),
+            new ComponentList<>(vEvent.getAlarms().stream()
+                .map(CalendarUtil::copy)
+                .toList()));
+    }
+
+    private static VAlarm copy(VAlarm vAlarm) {
+        return new VAlarm(copyProperties(vAlarm.getPropertyList()));
+    }
+
+    private static PropertyList copyProperties(PropertyList properties) {
+        return new PropertyList(properties.getAll().stream()
+            .map(CalendarUtil::copy)
+            .toList());
+    }
+
+    private static Property copy(Property property) {
+        if (property instanceof XProperty) {
+            return new XProperty(property.getName(), property.getParameterList(), property.getValue());
+        }
+        return property.copy();
     }
 }
