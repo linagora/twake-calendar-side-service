@@ -432,6 +432,21 @@ class ItipEmailNotificationPublisherTest {
         }
 
         @Test
+        void requestWithUnreadableRDateShouldNotBeSuppressedWhenExpiryIsUnknown() {
+            String current = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RDATE:20261340T100000");
+            Clock afterStart = Clock.fixed(Instant.parse("2026-04-02T00:00:00Z"), ZoneOffset.UTC);
+
+            List<NotificationEmailDTO> notifications = publisherWithClock(afterStart)
+                .buildNotificationMessages(dto(Method.VALUE_REQUEST, current, Optional.empty()), EVENT_PATH, Optional.empty());
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.event()).isEqualTo(current);
+                });
+        }
+
+        @Test
         void requestWithoutOldShouldSplitByOccurrenceAndMarkAsNew() {
             ItipLocalDeliveryDTO dto = dto(Method.VALUE_REQUEST, RECURRING_MASTER_AND_OVERRIDE, Optional.empty());
 
@@ -906,6 +921,19 @@ class ItipEmailNotificationPublisherTest {
                     assertThat(notification.isNewEvent()).isTrue();
                     assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z", "DTSTART:20260408T100000Z");
                 });
+        }
+
+        @Test
+        void unreadableExDateShouldNotRestorePreviouslyExcludedOccurrence() {
+            String previous = withExDate(RECURRING_OLD_NO_EXDATE, "20260408T100000Z");
+            String current = withExDate(RECURRING_OLD_NO_EXDATE, "20261340T100000Z");
+
+            List<NotificationEmailDTO> notifications = request(current, previous);
+
+            assertThat(notifications).noneSatisfy(notification -> {
+                assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z");
+            });
         }
 
         @Test

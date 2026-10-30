@@ -316,6 +316,46 @@ class CalendarEventUtilsTest {
     }
 
     @Test
+    void shouldNotBeExpiredWhenOnlyRDateIsUnreadable() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:rdate-expiry-unknown@test
+            DTSTART:20251220T100000Z
+            RDATE:20261340T100000
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isFalse();
+    }
+
+    @Test
+    void shouldStillApplyReadableExDateWhenSamePropertyContainsUnparsableDate() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:exdate-mixed-values@test
+            DTSTART:20251230T100000Z
+            RRULE:FREQ=DAILY;COUNT=3
+            EXDATE:20260101T100000Z,20261340T100000Z
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isTrue();
+    }
+
+    @Test
+    void shouldNotBeExpiredWhenSameRDatePropertyContainsFutureAndUnparsableDates() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:rdate-mixed-values@test
+            DTSTART:20251220T100000Z
+            RDATE:20260110T100000Z,20261340T100000Z
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isFalse();
+    }
+
+    @Test
     void shouldNotBeExpiredWhenDtStartMissing() {
         VEvent vEvent = parseSingleVEvent("""
             BEGIN:VEVENT
