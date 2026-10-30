@@ -124,8 +124,8 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
     // An unreadable previous start or end omits the whole "previous time" line rather than rendering a misleading half of it
     private void putPreviousTimes(ImmutableMap.Builder<String, Object> changesBuilder, Locale locale, ZoneId zoneToDisplay,
                                   CalendarEventNotificationEmailDTO.Changes changes) {
-        Optional<Optional<EventTimeModel>> previousStart = changes.dtstart().map(dtstart -> toEventTimeModel(dtstart, zoneToDisplay));
-        Optional<Optional<EventTimeModel>> previousEnd = changes.dtend().map(dtend -> toEventTimeModel(dtend, zoneToDisplay));
+        Optional<Optional<EventTimeModel>> previousStart = changes.dtstart().map(this::toEventTimeModel);
+        Optional<Optional<EventTimeModel>> previousEnd = changes.dtend().map(this::toEventTimeModel);
         boolean anyUnreadable = Stream.of(previousStart, previousEnd)
             .flatMap(Optional::stream)
             .anyMatch(Optional::isEmpty);
@@ -138,27 +138,30 @@ public record CalendarEventUpdateNotificationEmail(CalendarEventNotificationEmai
             "previous", end.toPugModel(locale, zoneToDisplay))));
     }
 
-    private Optional<EventTimeModel> toEventTimeModel(CalendarEventNotificationEmailDTO.DateTimeChange dateTimeChange, ZoneId fallbackZone) {
+    private Optional<EventTimeModel> toEventTimeModel(CalendarEventNotificationEmailDTO.DateTimeChange dateTimeChange) {
         return Optional.ofNullable(dateTimeChange.previous())
-            .filter(previous -> previous.date() != null)
-            .flatMap(previous -> toEventTimeModel(previous, fallbackZone));
+            .filter(previous -> previous.date() != null && previous.timezone() != null)
+            .flatMap(this::toEventTimeModel);
     }
 
-    private Optional<EventTimeModel> toEventTimeModel(CalendarEventNotificationEmailDTO.DateTimeValue previous, ZoneId fallbackZone) {
-        try {
-            LocalDateTime localDateTime = LocalDateTime.parse(previous.date().trim(), DATE_TIME_FORMATTER);
-            return Optional.of(new EventTimeModel(localDateTime.atZone(resolveZone(previous.timezone(), fallbackZone))));
-        } catch (DateTimeException e) {
+    // Unknown timezones (e.g. abbreviations, unmapped Windows names) omit the line rather than rendering a time in a guessed zone
+    private Optional<EventTimeModel> toEventTimeModel(CalendarEventNotificationEmailDTO.DateTimeValue previous) {
+        Optional<EventTimeModel> eventTimeModel = parsePreviousDateTime(previous)
+            .flatMap(localDateTime -> EventParseUtils.extractZoneId(previous.timezone())
+                .map(localDateTime::atZone))
+            .map(EventTimeModel::new);
+        if (eventTimeModel.isEmpty()) {
             LOGGER.warn("Unreadable previous date time '{}' with timezone '{}', omitting it from the update mail",
-                previous.date(), previous.timezone(), e);
+                previous.date(), previous.timezone());
+        }
+        return eventTimeModel;
+    }
+
+    private Optional<LocalDateTime> parsePreviousDateTime(CalendarEventNotificationEmailDTO.DateTimeValue previous) {
+        try {
+            return Optional.of(LocalDateTime.parse(previous.date().trim(), DATE_TIME_FORMATTER));
+        } catch (DateTimeException e) {
             return Optional.empty();
         }
-    }
-
-    // Unknown timezones (e.g. Windows names not mapped, abbreviations) fall back to the display zone rather than dropping the line
-    private ZoneId resolveZone(String timezone, ZoneId fallbackZone) {
-        return Optional.ofNullable(timezone)
-            .flatMap(EventParseUtils::extractZoneId)
-            .orElse(fallbackZone);
     }
 }

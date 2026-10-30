@@ -127,21 +127,21 @@ class CalendarEventUpdateNotificationEmailTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"Not/AZone", "Europe/+14:00Paris", "CEST"})
-    void toPugModelShouldFallBackToTheDisplayZoneForAnUnknownPreviousTimezone(String timezone) throws Exception {
+    void toPugModelShouldOmitAnUnknownPreviousTimezone(String timezone) throws Exception {
         DateTimeChange dtstart = new DateTimeChange(new DateTimeValue(false, "2026-04-01 10:00:00", 3, timezone), CURRENT);
 
         Map<String, Object> changesModel = changesModel(changes(Optional.of(dtstart), Optional.empty()));
 
-        assertThat(previousTime(changesModel, "dtstart", "time")).isEqualTo("10:00");
+        assertThat(changesModel).doesNotContainKey("dtstart");
     }
 
     @Test
-    void toPugModelShouldFallBackToTheDisplayZoneForAMissingPreviousTimezone() throws Exception {
+    void toPugModelShouldOmitAMissingPreviousTimezone() throws Exception {
         DateTimeChange dtstart = new DateTimeChange(new DateTimeValue(false, "2026-04-01 10:00:00", 3, null), CURRENT);
 
         Map<String, Object> changesModel = changesModel(changes(Optional.of(dtstart), Optional.empty()));
 
-        assertThat(previousTime(changesModel, "dtstart", "time")).isEqualTo("10:00");
+        assertThat(changesModel).doesNotContainKey("dtstart");
     }
 
     @Test
