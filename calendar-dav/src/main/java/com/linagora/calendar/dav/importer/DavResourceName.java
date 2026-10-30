@@ -30,7 +30,7 @@ import org.apache.commons.lang3.StringUtils;
  */
 public final class DavResourceName {
 
-    private static final Pattern SAFE_RESOURCE_NAME = Pattern.compile("[\\w.~:@%+-]{1,200}");
+    private static final Pattern SAFE_RESOURCE_NAME = Pattern.compile("[\\w.~:@+-]{1,200}");
 
     public static String fromUid(String uid) {
         return Optional.ofNullable(uid)
