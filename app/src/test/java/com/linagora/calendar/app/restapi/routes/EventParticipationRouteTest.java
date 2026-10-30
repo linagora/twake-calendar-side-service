@@ -1173,6 +1173,40 @@ class EventParticipationRouteTest {
     }
 
     @Test
+    void shouldReturn400WhenEventHasUnparsableDate(TwakeCalendarGuiceServer server) {
+        String eventUid = UUID.randomUUID().toString();
+        String calendarData = generateCalendarData(eventUid, organizer.username().asString(), attendee.username().asString())
+            .replaceFirst("DTSTART;TZID=Asia/Ho_Chi_Minh:\\w+", "DTSTART;TZID=Asia/Ho_Chi_Minh:20251000T100000");
+        davTestHelper.upsertCalendar(attendee, calendarData, eventUid);
+        awaitAtMost.until(() -> davTestHelper.findFirstEventId(attendee), Optional::isPresent);
+
+        Participation participation = getParticipation(eventUid, ParticipantAction.ACCEPTED);
+        URL participationTokenUrl = getParticipationTokenUrl(participation, server);
+
+        String response = RestAssured
+            .given()
+            .when()
+            .get(participationTokenUrl)
+            .then()
+            .statusCode(400)
+            .contentType(ContentType.JSON)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response).isEqualTo("""
+            {
+                "error": {
+                    "code": 400,
+                    "type": "BadRequest",
+                    "message": "Bad request",
+                    "details": "${json-unit.ignore}"
+                }
+            }
+            """);
+    }
+
+    @Test
     void jwtInLinkResponseShouldNotHaveExpAttribute(TwakeCalendarGuiceServer server) {
         String eventUid = UUID.randomUUID().toString();
         upsertCalendarForTest(eventUid);
