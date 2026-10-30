@@ -330,6 +330,7 @@ class TwakeCalendarGuiceServerTest  {
             .body("additionalInformation.username", is("btellier@linagora.com"))
             .body("additionalInformation.status.DavCalendarDeletionTaskStep", is("SKIPPED"))
             .body("additionalInformation.status.DavContactDeletionTaskStep", is("SKIPPED"))
+            .body("additionalInformation.status.DavDomainMemberDeletionTaskStep", is("SKIPPED"))
             .body("additionalInformation.status.CalendarSearchDeletionTaskStep", is("DONE"))
             .body("additionalInformation.status.OpenPaaSUserDeletionTaskStep", is("DONE"));
 

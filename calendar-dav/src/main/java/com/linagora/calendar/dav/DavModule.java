@@ -38,6 +38,7 @@ public class DavModule extends AbstractModule {
         Multibinder<DeleteUserDataTaskStep> multibinder = Multibinder.newSetBinder(binder(), DeleteUserDataTaskStep.class);
         multibinder.addBinding().to(DavCalendarDeletionTaskStep.class);
         multibinder.addBinding().to(DavContactDeletionTaskStep.class);
+        multibinder.addBinding().to(DavDomainMemberDeletionTaskStep.class);
     }
 
     @Singleton
