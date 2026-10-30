@@ -21,23 +21,32 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.api.CalendarUtil.parseIcs;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 
 import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.Temporal;
 import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 
 import com.linagora.calendar.amqp.ItipEmailNotificationPublisher.NotificationEmailDTO;
+import com.linagora.calendar.api.CalendarUtil;
 
+import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Method;
+import net.fortuna.ical4j.model.property.RecurrenceId;
 import reactor.rabbitmq.OutboundMessage;
 import reactor.rabbitmq.Sender;
 
@@ -393,6 +402,34 @@ class ItipEmailNotificationPublisherTest {
             END:VEVENT
             END:VCALENDAR
             """;
+
+        @Test
+        void requestWithUnparsableRecurrenceIdShouldStillNotifyChangedMaster() {
+            String current = RECURRING_MASTER_AND_OVERRIDE
+                .replace("SUMMARY:Weekly sync\n", "SUMMARY:Weekly sync updated\n");
+
+            List<NotificationEmailDTO> notifications = requestWithUnparsableRecurrenceId(current);
+
+            assertThat(notifications).anySatisfy(notification -> {
+                assertThat(notification.isNewEvent()).isFalse();
+                assertThat(notification.event()).contains("SUMMARY:Weekly sync updated")
+                    .doesNotContain("RECURRENCE-ID");
+            });
+        }
+
+        @Test
+        void requestWithChangedRuleAndUnparsableRecurrenceIdShouldStillNotifyNewSeries() {
+            String current = RECURRING_MASTER_AND_OVERRIDE
+                .replace("RRULE:FREQ=WEEKLY;COUNT=3", "RRULE:FREQ=WEEKLY;COUNT=4");
+
+            List<NotificationEmailDTO> notifications = requestWithUnparsableRecurrenceId(current);
+
+            assertThat(notifications).anySatisfy(notification -> {
+                assertThat(notification.isNewEvent()).isTrue();
+                assertThat(notification.event()).contains("RRULE:FREQ=WEEKLY;COUNT=4")
+                    .doesNotContain("RECURRENCE-ID");
+            });
+        }
 
         @Test
         void requestWithoutOldShouldSplitByOccurrenceAndMarkAsNew() {
@@ -1110,6 +1147,30 @@ class ItipEmailNotificationPublisherTest {
             String current = withExDate(RECURRING_OLD_NO_EXDATE, "20260408T100000Z");
 
             assertThat(request(current, previous)).isEmpty();
+        }
+
+        private List<NotificationEmailDTO> requestWithUnparsableRecurrenceId(String current) {
+            Calendar previousCalendar = parseIcs(RECURRING_OLD_NO_EXDATE);
+            Calendar currentCalendar = parseIcs(current);
+            VEvent override = currentCalendar.<VEvent>getComponents(Component.VEVENT).getLast();
+            override.remove(override.getRecurrenceId());
+            // Match the state injected by the PR's calculator tests. Relaxed ICS parsing clears invalid values.
+            override.add(new RecurrenceId<Temporal>("20260408T100000Z") {
+                @Override
+                public Temporal getDate() {
+                    throw new DateTimeParseException("Unparsable RECURRENCE-ID", "mailto:john@example.com", 0);
+                }
+            });
+
+            // The PR fix lets the calculator return both the master and override diffs.
+            assertThat(CalendarDiffCalculator.calculate("alice@example.com", currentCalendar, previousCalendar)).hasSize(2);
+
+            // Inject the parsed calendar only at the publisher boundary; keep other CalendarUtil calls real.
+            try (MockedStatic<CalendarUtil> calendarUtil = mockStatic(CalendarUtil.class, CALLS_REAL_METHODS)) {
+                calendarUtil.when(() -> CalendarUtil.parseIcs(current)).thenReturn(currentCalendar);
+                return testee.buildNotificationMessages(dto(Method.VALUE_REQUEST, current, Optional.of(RECURRING_OLD_NO_EXDATE)),
+                    EVENT_PATH, Optional.of(previousCalendar));
+            }
         }
 
         private List<NotificationEmailDTO> request(String current, String previous) {
