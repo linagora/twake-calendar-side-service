@@ -243,6 +243,7 @@ class ItipEmailNotificationPublisher {
                                                                        Calendar oldCalendar) {
             return CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
                 .stream()
+                .filter(this::isNotifiable)
                 .map(diff -> buildChangedOccurrenceNotification(
                     NotificationEmailDTO.builder(localDelivery).withEventPath(eventPath), newCalendar, diff))
                 .toList();
@@ -410,37 +411,52 @@ class ItipEmailNotificationPublisher {
         }
 
         private boolean shouldSendRequest(EventDiff diff, Set<Temporal> excludedRecurrenceIds) {
-            return recurrenceKey(diff.vevent())
-                .map(recurrenceId -> !excludedRecurrenceIds.contains(recurrenceId))
-                .orElse(true);
+            return isMaster(diff) || recurrenceKey(diff.vevent())
+                .filter(recurrenceId -> !excludedRecurrenceIds.contains(recurrenceId))
+                .isPresent();
+        }
+
+        /**
+         * An override whose RECURRENCE-ID cannot be read cannot be rendered: only the other occurrences are notified.
+         */
+        private boolean isNotifiable(EventDiff diff) {
+            return isMaster(diff) || recurrenceKey(diff.vevent()).isPresent();
+        }
+
+        private boolean isMaster(EventDiff diff) {
+            return diff.vevent().getRecurrenceId() == null;
         }
 
         private Optional<Temporal> recurrenceKey(VEvent vevent) {
             return Optional.ofNullable(vevent.getRecurrenceId())
-                .flatMap(this::recurrenceDate)
-                .flatMap(temporal -> {
-                    if (temporal instanceof LocalDate localDate) {
-                        return Optional.of(localDate);
-                    }
-                    Optional<Temporal> instant = EventParseUtils.temporalToZonedDateTime(temporal)
-                        .map(ChronoZonedDateTime::toInstant);
-                    if (instant.isEmpty()) {
-                        LOGGER.warn("Ignoring RECURRENCE-ID {} that cannot be converted to an instant", temporal);
-                    }
-                    return instant;
-                });
+                .flatMap(recurrenceId -> recurrenceDate(vevent, recurrenceId))
+                .flatMap(this::toRecurrenceKey);
         }
 
         /**
          * An unparsable RECURRENCE-ID must not prevent notifying the other occurrences: such an override is not keyed.
          */
-        private Optional<Temporal> recurrenceDate(DateProperty<?> recurrenceId) {
+        private Optional<Temporal> recurrenceDate(VEvent vevent, DateProperty<?> recurrenceId) {
             try {
                 return Optional.of(recurrenceId.getDate());
             } catch (DateTimeException exception) {
-                LOGGER.warn("Ignoring unparsable RECURRENCE-ID {}", recurrenceId.getValue(), exception);
+                // getValue() would trigger the same failing parse: log the UID instead
+                LOGGER.warn("Ignoring override with unparsable RECURRENCE-ID for event {}",
+                    vevent.getUid().map(Property::getValue).orElse(null), exception);
                 return Optional.empty();
             }
+        }
+
+        private Optional<Temporal> toRecurrenceKey(Temporal temporal) {
+            if (temporal instanceof LocalDate localDate) {
+                return Optional.of(localDate);
+            }
+            Optional<Temporal> recurrenceKey = EventParseUtils.temporalToZonedDateTime(temporal)
+                .map(ChronoZonedDateTime::toInstant);
+            if (recurrenceKey.isEmpty()) {
+                LOGGER.warn("Ignoring override with unsupported RECURRENCE-ID {}", temporal);
+            }
+            return recurrenceKey;
         }
     }
 

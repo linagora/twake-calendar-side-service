@@ -21,6 +21,7 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.api.CalendarUtil.parseIcs;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -1055,6 +1056,52 @@ class ItipEmailNotificationPublisherTest {
                 .satisfies(notification -> {
                     assertThat(notification.method()).isEqualTo(Method.VALUE_CANCEL);
                     assertThat(notification.event()).contains("RECURRENCE-ID:20260408T100000Z");
+                });
+        }
+
+        private static final String RECURRING_WITH_BAD_OVERRIDE = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Calendar//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:event-uid@test
+            DTSTART;TZID=Europe/Paris:20261013T140000
+            DTEND;TZID=Europe/Paris:20261013T150000
+            RRULE:FREQ=WEEKLY;BYDAY=TU
+            SUMMARY:Weekly meeting
+            ORGANIZER:mailto:bob@example.com
+            ATTENDEE:mailto:alice@example.com
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:event-uid@test
+            RECURRENCE-ID;TZID=Europe/Paris:20261340T140000
+            DTSTART;TZID=Europe/Paris:20261020T160000
+            DTEND;TZID=Europe/Paris:20261020T170000
+            SUMMARY:Weekly meeting moved
+            ORGANIZER:mailto:bob@example.com
+            ATTENDEE:mailto:alice@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        @Test
+        void requestShouldIgnoreOverrideWithUnparsableRecurrenceId() {
+            assertThatCode(() -> request(RECURRING_WITH_BAD_OVERRIDE, RECURRING_WITH_BAD_OVERRIDE))
+                .doesNotThrowAnyException();
+        }
+
+        @Test
+        void requestShouldNotifyMasterChangeDespiteOverrideWithUnparsableRecurrenceId() {
+            String current = RECURRING_WITH_BAD_OVERRIDE.replace("SUMMARY:Weekly meeting\n", "SUMMARY:Weekly meeting renamed\n");
+
+            List<NotificationEmailDTO> notifications = request(current, RECURRING_WITH_BAD_OVERRIDE);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                    assertThat(notification.event()).contains("SUMMARY:Weekly meeting renamed")
+                        .doesNotContain("RECURRENCE-ID");
                 });
         }
 
