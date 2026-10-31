@@ -39,7 +39,8 @@ class TwakeSpaceTest {
     private static final Instant T3 = T1.plusSeconds(2);
     private static final Username ALICE = Username.of("alice@space.tld");
     private static final Username BOB = Username.of("bob@space.tld");
-    private static final TwakeSpace SPACE = TwakeSpace.of(new SpaceId("space-1"), Optional.of(new OrganizationId("org")), Optional.of(Domain.of("space.tld")));
+    private static final TwakeSpace SPACE = TwakeSpace.of(new SpaceId("space-1"), Optional.of(new OrganizationId("org")),
+        Optional.of(TwakeSpace.SpaceDomain.organization(Domain.of("space.tld"), T1)));
 
     private static final List<TwakeSpace> EVENTS = List.of(
         SPACE.withName(new TwakeSpace.Name("Marketing", T1))
@@ -82,5 +83,46 @@ class TwakeSpaceTest {
         TwakeSpace unknown = TwakeSpace.of(SPACE.id(), Optional.empty(), Optional.empty());
 
         assertThat(unknown.merge(SPACE)).isEqualTo(SPACE);
+    }
+
+    @Test
+    void mergingAdminDerivedDomainsShouldNotDependOnTheOrder() {
+        TwakeSpace alice = spaceWithDomain(TwakeSpace.SpaceDomain.admin(Domain.of("space.tld"), T1))
+            .withMembers(Map.of(ALICE, TwakeSpace.Membership.role("admin", T1)));
+        TwakeSpace carol = spaceWithDomain(TwakeSpace.SpaceDomain.admin(Domain.of("other.tld"), T2))
+            .withMembers(Map.of(Username.of("carol@other.tld"), TwakeSpace.Membership.role("admin", T2)));
+
+        assertThat(alice.merge(carol)).isEqualTo(carol.merge(alice));
+    }
+
+    @Test
+    void adminDomainOfTheEarliestEventShouldWin() {
+        TwakeSpace earliest = spaceWithDomain(TwakeSpace.SpaceDomain.admin(Domain.of("space.tld"), T1));
+        TwakeSpace latest = spaceWithDomain(TwakeSpace.SpaceDomain.admin(Domain.of("other.tld"), T2));
+
+        assertThat(latest.merge(earliest)).isEqualTo(earliest);
+        assertThat(earliest.merge(latest)).isEqualTo(earliest);
+    }
+
+    @Test
+    void alphabeticallyFirstAdminDomainShouldWinOnEqualTimestamps() {
+        TwakeSpace first = spaceWithDomain(TwakeSpace.SpaceDomain.admin(Domain.of("other.tld"), T1));
+        TwakeSpace second = spaceWithDomain(TwakeSpace.SpaceDomain.admin(Domain.of("space.tld"), T1));
+
+        assertThat(second.merge(first)).isEqualTo(first);
+        assertThat(first.merge(second)).isEqualTo(first);
+    }
+
+    @Test
+    void organizationDomainShouldWinOverAnEarlierAdminDomain() {
+        TwakeSpace admin = spaceWithDomain(TwakeSpace.SpaceDomain.admin(Domain.of("other.tld"), T1));
+        TwakeSpace organization = spaceWithDomain(TwakeSpace.SpaceDomain.organization(Domain.of("space.tld"), T2));
+
+        assertThat(admin.merge(organization)).isEqualTo(organization);
+        assertThat(organization.merge(admin)).isEqualTo(organization);
+    }
+
+    private static TwakeSpace spaceWithDomain(TwakeSpace.SpaceDomain domain) {
+        return TwakeSpace.of(SPACE.id(), SPACE.organization(), Optional.of(domain));
     }
 }

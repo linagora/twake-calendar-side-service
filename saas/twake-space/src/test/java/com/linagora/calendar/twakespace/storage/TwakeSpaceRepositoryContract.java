@@ -41,7 +41,7 @@ public interface TwakeSpaceRepositoryContract {
     Domain DOMAIN = Domain.of("space.tld");
     Username ALICE = Username.of("alice@space.tld");
     Username BOB = Username.of("bob@space.tld");
-    TwakeSpace SPACE = TwakeSpace.of(SPACE_ID, Optional.of(ORGANIZATION), Optional.of(DOMAIN));
+    TwakeSpace SPACE = TwakeSpace.of(SPACE_ID, Optional.of(ORGANIZATION), Optional.of(TwakeSpace.SpaceDomain.organization(DOMAIN, NOW)));
 
     TwakeSpaceRepository testee();
 
@@ -77,6 +77,16 @@ public interface TwakeSpaceRepositoryContract {
         testee().merge(SPACE.withName(new TwakeSpace.Name("Marketing", NOW))).block();
 
         assertThat(testee().retrieve(SPACE_ID).block().name()).contains(new TwakeSpace.Name("Sales", NOW.plusSeconds(1)));
+    }
+
+    @Test
+    default void mergeShouldKeepTheAdminDomainOfTheEarliestEvent() {
+        TwakeSpace.SpaceDomain earliest = TwakeSpace.SpaceDomain.admin(DOMAIN, NOW);
+        testee().merge(TwakeSpace.of(SPACE_ID, Optional.empty(), Optional.of(TwakeSpace.SpaceDomain.admin(Domain.of("other.tld"), NOW.plusSeconds(1))))).block();
+
+        testee().merge(TwakeSpace.of(SPACE_ID, Optional.empty(), Optional.of(earliest))).block();
+
+        assertThat(testee().retrieve(SPACE_ID).block().domain()).contains(earliest);
     }
 
     @Test

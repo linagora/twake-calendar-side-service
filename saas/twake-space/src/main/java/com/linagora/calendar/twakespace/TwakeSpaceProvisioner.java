@@ -101,7 +101,7 @@ public class TwakeSpaceProvisioner {
             LOGGER.info("Space {} has no known domain yet: its team calendar waits for an event naming one", space.id());
             return Mono.empty();
         }
-        Domain domain = space.domain().get();
+        Domain domain = space.domain().get().value();
         Mono<TeamCalendar> teamCalendar = space.isDeleted()
             ? teamCalendars.find(domain, space.id())
             : teamCalendars.findOrCreate(domain, space.id(), space.name().map(TwakeSpace.Name::value));
@@ -137,13 +137,14 @@ public class TwakeSpaceProvisioner {
     }
 
     // organizationDomain is absent when the organization has none: the domain of an admin stands for it.
-    private static Optional<Domain> domain(SpaceEvent event) {
+    private static Optional<TwakeSpace.SpaceDomain> domain(SpaceEvent event) {
         if (event.organizationDomain() != null) {
-            return Optional.of(Domain.of(event.organizationDomain()));
+            return Optional.of(TwakeSpace.SpaceDomain.organization(Domain.of(event.organizationDomain()), event.timestamp()));
         }
         return event.members().stream()
             .filter(member -> ADMIN.equals(member.role()))
             .findFirst()
-            .flatMap(admin -> Username.of(admin.email()).getDomainPart());
+            .flatMap(admin -> Username.of(admin.email()).getDomainPart())
+            .map(domain -> TwakeSpace.SpaceDomain.admin(domain, event.timestamp()));
     }
 }

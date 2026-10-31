@@ -33,8 +33,30 @@ import com.google.common.collect.ImmutableMap;
 
 // What the events of a space say about it. Merging keeps the latest value of each field, by event timestamp,
 // so that the events of a space give the same space whatever order they are handled in.
-public record TwakeSpace(SpaceId id, Optional<OrganizationId> organization, Optional<Domain> domain, Optional<Name> name,
+public record TwakeSpace(SpaceId id, Optional<OrganizationId> organization, Optional<SpaceDomain> domain, Optional<Name> name,
                          Map<Username, Membership> members, Optional<Instant> deletion) {
+    // The domain of the organization wins over the domain of an admin, which only stands for it. Events may name
+    // different admins: between their domains the earliest event wins, then the alphabetically first domain.
+    public record SpaceDomain(Domain value, Source source, Instant timestamp) {
+        // From the least to the most authoritative.
+        public enum Source {
+            ADMIN,
+            ORGANIZATION
+        }
+
+        private static final Comparator<SpaceDomain> PREFERRED = Comparator.comparing(SpaceDomain::source)
+            .thenComparing(SpaceDomain::timestamp, Comparator.reverseOrder())
+            .thenComparing(spaceDomain -> spaceDomain.value().asString(), Comparator.reverseOrder());
+
+        public static SpaceDomain organization(Domain value, Instant timestamp) {
+            return new SpaceDomain(value, Source.ORGANIZATION, timestamp);
+        }
+
+        public static SpaceDomain admin(Domain value, Instant timestamp) {
+            return new SpaceDomain(value, Source.ADMIN, timestamp);
+        }
+    }
+
     public record Name(String value, Instant timestamp) {
         private static final Comparator<Name> LATEST = Comparator.comparing(Name::timestamp)
             .thenComparing(Name::value);
@@ -55,7 +77,7 @@ public record TwakeSpace(SpaceId id, Optional<OrganizationId> organization, Opti
         }
     }
 
-    public static TwakeSpace of(SpaceId id, Optional<OrganizationId> organization, Optional<Domain> domain) {
+    public static TwakeSpace of(SpaceId id, Optional<OrganizationId> organization, Optional<SpaceDomain> domain) {
         return new TwakeSpace(id, organization, domain, Optional.empty(), Map.of(), Optional.empty());
     }
 
@@ -75,13 +97,13 @@ public record TwakeSpace(SpaceId id, Optional<OrganizationId> organization, Opti
         return new TwakeSpace(id, organization, domain, name, members, Optional.of(deletion));
     }
 
-    // The organization and domain of a space do not change: the first known stays.
+    // The organization of a space does not change: the first known stays.
     public TwakeSpace merge(TwakeSpace other) {
         Map<Username, Membership> mergedMembers = new HashMap<>(members);
         other.members.forEach((username, membership) -> mergedMembers.merge(username, membership, BinaryOperator.maxBy(Membership.LATEST)));
         return new TwakeSpace(id,
             organization.or(other::organization),
-            domain.or(other::domain),
+            latest(domain, other.domain, SpaceDomain.PREFERRED),
             latest(name, other.name, Name.LATEST),
             mergedMembers,
             latest(deletion, other.deletion, Comparator.<Instant>reverseOrder()));
