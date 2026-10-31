@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.restapi.auth;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Optional;
 
@@ -49,19 +50,18 @@ public class BasicAuthenticationStrategy implements AuthenticationStrategy {
 
     }
 
-    private static CharMatcher CHAR_MATCHER = CharMatcher.inRange('a', 'z')
+    private static final CharMatcher CHAR_MATCHER = CharMatcher.inRange('a', 'z')
         .or(CharMatcher.inRange('0', '9'))
         .or(CharMatcher.inRange('A', 'Z'))
-        .or(CharMatcher.is('_'))
-        .or(CharMatcher.is('='))
-        .or(CharMatcher.is('-'))
-        .or(CharMatcher.is('#'));
+        .or(CharMatcher.is('+'))
+        .or(CharMatcher.is('/'))
+        .or(CharMatcher.is('='));
 
     private static Optional<UserCredentials> parseUserCredentials(String authHeader) {
         if (authHeader.startsWith("Basic ")) {
             String base64 = authHeader.substring(6);
             Preconditions.checkArgument(CHAR_MATCHER.matchesAllOf(base64), "Invalid char in basic auth string");
-            String decoded = new String(Base64.getDecoder().decode(base64));
+            String decoded = new String(Base64.getDecoder().decode(base64), StandardCharsets.UTF_8);
             Preconditions.checkArgument(decoded.contains(":"), "Invalid decoded basic auth token: it must contain ':'");
             int partSeparatorIndex = decoded.indexOf(':');
             String usernameString = decoded.substring(0, partSeparatorIndex);
