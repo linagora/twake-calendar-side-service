@@ -31,6 +31,7 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.twakespace.model.ActivityEvent;
 import com.linagora.calendar.twakespace.model.SpaceEvent;
@@ -46,6 +47,7 @@ import reactor.core.publisher.Mono;
 public class TwakeSpaceProvisioner {
     private static final Logger LOGGER = LoggerFactory.getLogger(TwakeSpaceProvisioner.class);
     static final String ADMIN = "admin";
+    static final String VIEWER = "viewer";
     private static final int MAX_APPLY_ATTEMPTS = 10;
 
     private final TwakeSpaceRepository spaceRepository;
@@ -108,7 +110,8 @@ public class TwakeSpaceProvisioner {
         return teamCalendar.flatMap(calendar -> sharing.apply(calendar, space).thenReturn(calendar));
     }
 
-    private static TwakeSpace change(SpaceEventType type, SpaceEvent event) {
+    @VisibleForTesting
+    static TwakeSpace change(SpaceEventType type, SpaceEvent event) {
         TwakeSpace space = TwakeSpace.of(event.id(), Optional.ofNullable(event.organizationId()), domain(event));
         return switch (type) {
             case CREATED -> {
@@ -119,16 +122,26 @@ public class TwakeSpaceProvisioner {
                     throw new UnprocessableSpaceEventException("Space " + event.id() + " has no name");
                 }
                 yield space.withName(new TwakeSpace.Name(event.name(), event.timestamp()))
-                    .withMembers(memberships(event, member -> TwakeSpace.Membership.role(String.valueOf(member.role()), event.timestamp())));
+                    .withMembers(memberships(event, member -> role(event, member)));
             }
             case UPDATED -> Optional.ofNullable(event.name())
                 .map(name -> space.withName(new TwakeSpace.Name(name, event.timestamp())))
                 .orElse(space);
             case MEMBER_ADDED, MEMBER_ROLE_CHANGED ->
-                space.withMembers(memberships(event, member -> TwakeSpace.Membership.role(String.valueOf(member.role()), event.timestamp())));
+                space.withMembers(memberships(event, member -> role(event, member)));
             case MEMBER_REMOVED -> space.withMembers(memberships(event, _ -> TwakeSpace.Membership.removed(event.timestamp())));
             case DELETED -> space.withDeletion(event.timestamp());
         };
+    }
+
+    // A member listed without a role is a viewer: the literal role "null" is never stored.
+    private static TwakeSpace.Membership role(SpaceEvent event, SpaceEvent.Member member) {
+        String role = Optional.ofNullable(member.role())
+            .orElseGet(() -> {
+                LOGGER.warn("Member {} of space {} has no role: handled as a {}", member.email(), event.id(), VIEWER);
+                return VIEWER;
+            });
+        return TwakeSpace.Membership.role(role, event.timestamp());
     }
 
     private static Map<Username, TwakeSpace.Membership> memberships(SpaceEvent event, Function<SpaceEvent.Member, TwakeSpace.Membership> membership) {
