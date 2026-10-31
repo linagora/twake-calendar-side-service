@@ -380,6 +380,27 @@ public class EventInviteEmailConsumerTest {
     }
 
     @Test
+    void shouldNotifyOrganizerWhenNewInvitationHasNoRecipientEmail() throws Exception {
+        String eventUid = UUID.randomUUID().toString();
+        ObjectNode message = new ObjectMapper().createObjectNode()
+            .put("senderEmail", organizer.username().asString())
+            .putNull("recipientEmail")
+            .put("method", Method.VALUE_REQUEST)
+            .put("event", generateCalendarData(eventUid, organizer.username().asString(), "Pro", PartStat.NEEDS_ACTION))
+            .put("eventPath", "/calendars/" + organizer.id().value() + "/" + organizer.id().value() + "/" + eventUid + ".ics")
+            .put("isNewEvent", IS_NEW_EVENT);
+        publishNotificationEmailMessage(message.toString());
+
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+        assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(organizer.username().asString());
+        assertThat(TestFixture.extractSubject(smtpMailsResponse.getString("[0].message"))).isEqualTo("Email delivery failed");
+        assertThat(deadLetteredMessageCount()).isZero();
+    }
+
+    @Test
     void shouldAckUpdateWhoseRecipientIsNotAValidAddressWithoutSendingAnyMail() throws Exception {
         publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_REQUEST, !IS_NEW_EVENT));
         publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_CANCEL, !IS_NEW_EVENT));

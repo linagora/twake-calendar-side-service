@@ -92,7 +92,7 @@ public class MailDeliveryFailureNotifier {
 
     public Mono<Void> notifyInvalidRecipient(InvalidRecipientNotificationEmailDTO message) {
         VEvent vEvent = GET_FIRST_VEVENT_FUNCTION.apply(message.event());
-        return notify(message.senderEmail(), vEvent, message.recipientEmail(),
+        return notify(message.senderEmail(), vEvent, StringUtils.defaultString(message.recipientEmail()),
             EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY));
     }
 
