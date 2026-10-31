@@ -160,7 +160,7 @@ public class CalendarEventUtils {
             return Optional.of((List<Temporal>) property.getDates());
         } catch (DateTimeException e) {
             // getValue() would parse again: the exception message carries the faulty text
-            LOGGER.warn("Unreadable {} property", property.getName(), e);
+            LOGGER.info("Unreadable {} property", property.getName(), e);
             return Optional.empty();
         }
     }
