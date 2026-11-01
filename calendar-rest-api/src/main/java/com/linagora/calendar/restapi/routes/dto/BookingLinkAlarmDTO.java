@@ -19,9 +19,11 @@
 package com.linagora.calendar.restapi.routes.dto;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.booking.BookingLinkAlarm;
 import com.linagora.calendar.storage.booking.BookingLinkAlarmAction;
 
@@ -40,13 +42,12 @@ public record BookingLinkAlarmDTO(@JsonProperty("period") String period,
     }
 
     public static List<BookingLinkAlarm> toBookingLinkAlarms(Optional<List<BookingLinkAlarmDTO>> alarms) {
-        return alarms.stream()
-            .flatMap(List::stream)
-            .map(BookingLinkAlarmDTO::toBookingLinkAlarm)
-            .toList();
+        return alarms.map(BookingLinkAlarmDTO::toBookingLinkAlarms)
+            .orElse(List.of());
     }
 
     public static List<BookingLinkAlarm> toBookingLinkAlarms(List<BookingLinkAlarmDTO> alarms) {
+        Preconditions.checkArgument(alarms.stream().noneMatch(Objects::isNull), "'alarm' must not contain null");
         return alarms.stream()
             .map(BookingLinkAlarmDTO::toBookingLinkAlarm)
             .toList();
