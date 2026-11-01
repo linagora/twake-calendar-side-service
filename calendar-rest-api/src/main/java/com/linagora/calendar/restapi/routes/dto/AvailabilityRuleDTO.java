@@ -44,8 +44,7 @@ public record AvailabilityRuleDTO(@JsonProperty("type") AvailabilityRuleType typ
                                   @JsonProperty("end") String end,
                                   @JsonProperty("timeZone") Optional<String> timeZone) {
 
-    private static final DateTimeFormatter LOCAL_DATE_TIME_FORMAT =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+    private static final DateTimeFormatter LOCAL_DATE_TIME_FORMAT = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
     private static final Optional<String> NO_DAY_OF_WEEK = Optional.empty();
 
     public static AvailabilityRuleDTO from(AvailabilityRule rule) {
