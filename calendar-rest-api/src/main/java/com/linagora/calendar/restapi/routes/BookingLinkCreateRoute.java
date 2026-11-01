@@ -115,9 +115,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
         private static Optional<AvailabilityRules> getAvailabilityRules(CreateBookingLinkRequestDTO request, ZoneId defaultZone) {
             return request.availabilityRules()
                 .filter(rules -> !rules.isEmpty())
-                .map(rules -> rules.stream()
-                    .map(dto -> dto.toAvailabilityRule(defaultZone))
-                    .toList())
+                .map(rules -> AvailabilityRuleDTO.toAvailabilityRules(rules, defaultZone))
                 .map(AvailabilityRules::new);
         }
     }
