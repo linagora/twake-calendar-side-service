@@ -20,7 +20,6 @@ package com.linagora.calendar.restapi.auth;
 
 import static com.linagora.calendar.api.JwtSigner.AUTH_TYPE;
 import static com.linagora.calendar.api.JwtSigner.JWT_AUTH_TYPE_VALUE;
-import static org.apache.james.jmap.http.JWTAuthenticationStrategy.AUTHORIZATION_HEADER_PREFIX;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -91,8 +90,7 @@ public class JwtAuthenticationStrategy implements AuthenticationStrategy {
     @Override
     public Mono<MailboxSession> createMailboxSession(HttpServerRequest httpRequest) {
         return Mono.fromCallable(() -> authHeaders(httpRequest))
-            .filter(header -> header.startsWith(AUTHORIZATION_HEADER_PREFIX))
-            .map(header -> header.substring(AUTHORIZATION_HEADER_PREFIX.length()))
+            .flatMap(header -> Mono.justOrEmpty(BearerTokenExtractor.extract(header)))
             .filter(token -> token.startsWith("eyJ")) // Heuristic for detecting JWT
             .filter(JwtAuthenticationStrategy::isAuthTypeJwt)
             .flatMap(userJWTToken -> Mono.fromCallable(() -> {

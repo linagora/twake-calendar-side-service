@@ -51,6 +51,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockserver.integration.ClientAndServer;
 import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
@@ -487,6 +489,30 @@ class TwakeCalendarGuiceServerTest  {
 
         given()
             .header("Authorization", "Bearer " + unquoted)
+        .when()
+            .get("/api/themes/anything")
+        .then()
+            .statusCode(200);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Bearer ", "bearer ", "BEARER "})
+    void shouldAuthenticateWithTokensWhateverTheSchemeCase(String scheme, TwakeCalendarGuiceServer server) {
+        targetRestAPI(server);
+
+        String body = given()
+            .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
+            .when()
+            .post("/api/jwt/generate")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+        String unquoted = body.substring(1, body.length() - 1);
+
+        given()
+            .header("Authorization", scheme + unquoted)
         .when()
             .get("/api/themes/anything")
         .then()
