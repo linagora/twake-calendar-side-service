@@ -21,6 +21,13 @@ package com.linagora.calendar.restapi.routes;
 import static org.apache.james.util.ReactorUtils.DEFAULT_CONCURRENCY;
 
 import java.net.URI;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.Temporal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -51,8 +58,10 @@ import com.linagora.calendar.storage.model.UploadedFile;
 
 import ezvcard.VCard;
 import ezvcard.property.SimpleProperty;
+import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.property.DateProperty;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -133,24 +142,60 @@ public class ImportProcessor {
                 .defaultIfEmpty(new ImportResult(0, ImmutableList.of()));
         }
 
-        private ImportResult.FailedItem failedItemFromEvent(EventToImport event) {
+        static ImportResult.FailedItem failedItemFromEvent(EventToImport event) {
             VEvent vEvent = event.vEvents().getFirst();
 
             return new ImportResult.FailedItem(
                 ImmutableMap.of(
                     "uid", event.uid(),
                     "summary", Optional.ofNullable(vEvent.getSummary()).map(Property::getValue).orElse(StringUtils.EMPTY),
-                    "start", displayValue(event, "start", () -> Optional.ofNullable(vEvent.getDateTimeStart()).map(Property::toString)),
-                    "end", displayValue(event, "end", () -> Optional.ofNullable(vEvent.getEndDate()).map(Object::toString))));
+                    "start", readableDate(event, "start", () -> Optional.ofNullable(vEvent.getDateTimeStart())),
+                    "end", readableDate(event, "end", vEvent::getEndDate)));
         }
 
-        private String displayValue(EventToImport event, String field, Supplier<Optional<String>> valueSupplier) {
+        private static String readableDate(EventToImport event, String field, Supplier<Optional<? extends DateProperty<?>>> dateProperty) {
             try {
-                return valueSupplier.get().orElse(StringUtils.EMPTY);
+                return dateProperty.get()
+                    .map(EventDateFormatter::format)
+                    .orElse(StringUtils.EMPTY);
             } catch (RuntimeException e) {
                 LOGGER.warn("Could not compute {} of rejected event with UID {} for the import report", field, event.uid(), e);
                 return StringUtils.EMPTY;
             }
+        }
+    }
+
+    static class EventDateFormatter {
+        private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+        private static final String UTC = "UTC";
+
+        static String format(DateProperty<?> dateProperty) {
+            Temporal temporal = dateProperty.getDate();
+            return switch (temporal) {
+                case LocalDate date -> DATE_FORMATTER.format(date);
+                case Instant instant -> withZoneLabel(DATE_TIME_FORMATTER.format(instant.atOffset(ZoneOffset.UTC)), Optional.of(UTC));
+                default -> withZoneLabel(DATE_TIME_FORMATTER.format(temporal), zoneLabel(dateProperty, temporal));
+            };
+        }
+
+        private static Optional<String> zoneLabel(DateProperty<?> dateProperty, Temporal temporal) {
+            return dateProperty.getParameter(Parameter.TZID)
+                .map(Parameter::getValue)
+                .or(() -> isUtc(temporal) ? Optional.of(UTC) : Optional.empty());
+        }
+
+        private static boolean isUtc(Temporal temporal) {
+            return switch (temporal) {
+                case ZonedDateTime zonedDateTime -> zonedDateTime.getOffset().equals(ZoneOffset.UTC);
+                case OffsetDateTime offsetDateTime -> offsetDateTime.getOffset().equals(ZoneOffset.UTC);
+                default -> false;
+            };
+        }
+
+        private static String withZoneLabel(String dateTime, Optional<String> zoneLabel) {
+            return zoneLabel.map(label -> dateTime + " " + label)
+                .orElse(dateTime);
         }
     }
 
