@@ -22,7 +22,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
+import org.apache.james.core.Domain;
 import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,5 +60,15 @@ class MongoTwakeSpaceRepositoryTest implements TwakeSpaceRepositoryContract {
 
         assertThat(repository.retrieve(SPACE_ID).block())
             .isEqualTo(SPACE.withMembers(Map.of(ALICE, TwakeSpace.Membership.role("admin", NOW))));
+    }
+
+    @Test
+    void aDomainStoredWithoutItsSourceShouldStayAgainstAnAdminDomain() {
+        Mono.from(mongo.getDb().getCollection(MongoTwakeSpaceRepository.COLLECTION)
+            .insertOne(new Document("_id", SPACE_ID.value()).append("domain", DOMAIN.asString()))).block();
+
+        repository.merge(TwakeSpace.of(SPACE_ID, Optional.empty(), Optional.of(TwakeSpace.SpaceDomain.admin(Domain.of("other.tld"), NOW)))).block();
+
+        assertThat(repository.retrieve(SPACE_ID).block().domain().map(TwakeSpace.SpaceDomain::value)).contains(DOMAIN);
     }
 }

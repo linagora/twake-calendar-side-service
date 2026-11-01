@@ -24,6 +24,7 @@ import static com.mongodb.client.model.Filters.eq;
 import static com.mongodb.client.model.Filters.exists;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +54,8 @@ public class MongoTwakeSpaceRepository implements TwakeSpaceRepository {
     private static final String ID_FIELD = "_id";
     private static final String ORGANIZATION_FIELD = "organization";
     private static final String DOMAIN_FIELD = "domain";
+    private static final String DOMAIN_SOURCE_FIELD = "domainSource";
+    private static final String DOMAIN_TIMESTAMP_FIELD = "domainTimestamp";
     private static final String NAME_FIELD = "name";
     private static final String MEMBERS_FIELD = "members";
     private static final String EMAIL_FIELD = "email";
@@ -112,7 +115,9 @@ public class MongoTwakeSpaceRepository implements TwakeSpaceRepository {
         Document document = new Document(ID_FIELD, space.id().value())
             .append(VERSION_FIELD, version);
         space.organization().ifPresent(organization -> document.append(ORGANIZATION_FIELD, organization.value()));
-        space.domain().ifPresent(domain -> document.append(DOMAIN_FIELD, domain.asString()));
+        space.domain().ifPresent(domain -> document.append(DOMAIN_FIELD, domain.value().asString())
+            .append(DOMAIN_SOURCE_FIELD, domain.source().name())
+            .append(DOMAIN_TIMESTAMP_FIELD, Date.from(domain.timestamp())));
         space.name().ifPresent(name -> document.append(NAME_FIELD, new Document(VALUE_FIELD, name.value())
             .append(TIMESTAMP_FIELD, Date.from(name.timestamp()))));
         document.append(MEMBERS_FIELD, space.members().entrySet().stream()
@@ -134,10 +139,23 @@ public class MongoTwakeSpaceRepository implements TwakeSpaceRepository {
                     member.getDate(TIMESTAMP_FIELD).toInstant())));
         return new TwakeSpace(new SpaceId(document.getString(ID_FIELD)),
             Optional.ofNullable(document.getString(ORGANIZATION_FIELD)).map(OrganizationId::new),
-            Optional.ofNullable(document.getString(DOMAIN_FIELD)).map(Domain::of),
+            toDomain(document),
             Optional.ofNullable(document.get(NAME_FIELD, Document.class))
                 .map(name -> new TwakeSpace.Name(name.getString(VALUE_FIELD), name.getDate(TIMESTAMP_FIELD).toInstant())),
             members,
             Optional.ofNullable(document.getDate(DELETION_FIELD)).map(Date::toInstant));
+    }
+
+    // A domain stored before its source was kept stays: it stands for an admin domain of the earliest event, which only
+    // the domain of the organization replaces.
+    private static Optional<TwakeSpace.SpaceDomain> toDomain(Document document) {
+        return Optional.ofNullable(document.getString(DOMAIN_FIELD))
+            .map(domain -> new TwakeSpace.SpaceDomain(Domain.of(domain),
+                Optional.ofNullable(document.getString(DOMAIN_SOURCE_FIELD))
+                    .map(TwakeSpace.SpaceDomain.Source::valueOf)
+                    .orElse(TwakeSpace.SpaceDomain.Source.ADMIN),
+                Optional.ofNullable(document.getDate(DOMAIN_TIMESTAMP_FIELD))
+                    .map(Date::toInstant)
+                    .orElse(Instant.EPOCH)));
     }
 }
