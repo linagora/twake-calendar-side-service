@@ -106,7 +106,7 @@ public class TeamCalendarSharing {
     // Admins do not get the administration right, so the calendar is never shared outside the space.
     private static DavRight davRight(TeamCalendar teamCalendar, Username username, String role) {
         return switch (role) {
-            case "viewer" -> DavRight.READ;
+            case TwakeSpaceProvisioner.VIEWER -> DavRight.READ;
             case "editor", TwakeSpaceProvisioner.ADMIN -> DavRight.READ_WRITE;
             default -> {
                 LOGGER.warn("Sharing the team calendar of space {} read only with {}: unknown role {}", teamCalendar.name(), username.asString(), role);
