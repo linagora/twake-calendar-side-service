@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import jakarta.inject.Inject;
 
@@ -139,8 +140,17 @@ public class ImportProcessor {
                 ImmutableMap.of(
                     "uid", event.uid(),
                     "summary", Optional.ofNullable(vEvent.getSummary()).map(Property::getValue).orElse(StringUtils.EMPTY),
-                    "start", Optional.ofNullable(vEvent.getDateTimeStart()).map(Property::toString).orElse(StringUtils.EMPTY),
-                    "end", Optional.ofNullable(vEvent.getEndDate()).map(Object::toString).orElse(StringUtils.EMPTY)));
+                    "start", displayValue(event, "start", () -> Optional.ofNullable(vEvent.getDateTimeStart()).map(Property::toString)),
+                    "end", displayValue(event, "end", () -> Optional.ofNullable(vEvent.getEndDate()).map(Object::toString))));
+        }
+
+        private String displayValue(EventToImport event, String field, Supplier<Optional<String>> valueSupplier) {
+            try {
+                return valueSupplier.get().orElse(StringUtils.EMPTY);
+            } catch (RuntimeException e) {
+                LOGGER.warn("Could not compute {} of rejected event with UID {} for the import report", field, event.uid(), e);
+                return StringUtils.EMPTY;
+            }
         }
     }
 
