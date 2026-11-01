@@ -180,7 +180,7 @@ public class EventEmailConsumer implements Closeable, Startable {
     private Mono<Void> consumeInvalidRecipientMessage(JsonNode json) {
         return Mono.fromCallable(() -> OBJECT_MAPPER.treeToValue(json, InvalidRecipientNotificationEmailDTO.class))
             .doOnNext(message -> LOGGER.warn("Ignoring calendar mail event message {} for eventPath {}: invalid recipient address '{}'",
-                message.method().getValue(), message.eventPath(), message.recipientEmail()))
+                message.methodValue().orElse("<absent>"), message.eventPath(), message.recipientEmail()))
             .filter(InvalidRecipientNotificationEmailDTO::isNewInvitation)
             .flatMap(eventMailHandler::handleInvalidRecipientInvitation);
     }

@@ -74,6 +74,7 @@ import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.EventEmailFilter;
@@ -382,6 +383,24 @@ public class EventInviteEmailConsumerTest {
     void shouldAckUpdateWhoseRecipientIsNotAValidAddressWithoutSendingAnyMail() throws Exception {
         publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_REQUEST, !IS_NEW_EVENT));
         publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_CANCEL, !IS_NEW_EVENT));
+
+        calmlyAwait.during(Duration.ofSeconds(3)).atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                assertThat(deadLetteredMessageCount()).isZero();
+                assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty();
+            });
+    }
+
+    @Test
+    void shouldAckInvalidRecipientMessageWithoutMethod() throws Exception {
+        String eventUid = UUID.randomUUID().toString();
+        ObjectNode message = new ObjectMapper().createObjectNode()
+            .put("senderEmail", organizer.username().asString())
+            .put("recipientEmail", INVALID_RECIPIENT)
+            .put("event", generateCalendarData(eventUid, organizer.username().asString(), "Pro", PartStat.NEEDS_ACTION))
+            .put("eventPath", "/calendars/" + organizer.id().value() + "/" + organizer.id().value() + "/" + eventUid + ".ics")
+            .put("isNewEvent", IS_NEW_EVENT);
+        publishNotificationEmailMessage(message.toString());
 
         calmlyAwait.during(Duration.ofSeconds(3)).atMost(Duration.ofSeconds(10))
             .untilAsserted(() -> {

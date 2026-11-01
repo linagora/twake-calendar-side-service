@@ -41,7 +41,11 @@ public record InvalidRecipientNotificationEmailDTO(@JsonProperty("senderEmail") 
                                                    @JsonProperty("eventPath") String eventPath,
                                                    @JsonProperty("isNewEvent") Optional<Boolean> isNewEvent) {
 
+    public Optional<String> methodValue() {
+        return Optional.ofNullable(method).map(Method::getValue);
+    }
+
     public boolean isNewInvitation() {
-        return Method.VALUE_REQUEST.equals(method.getValue()) && isNewEvent.orElse(false);
+        return methodValue().filter(Method.VALUE_REQUEST::equals).isPresent() && isNewEvent.orElse(false);
     }
 }
