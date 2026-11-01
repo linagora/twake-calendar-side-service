@@ -82,7 +82,7 @@ public class ImportMailReportRender {
         Map<String, Object> model = ImmutableMap.of(
             "content", Map.of(
                 "baseUrl", baseUrl,
-                "jobFailedList", importResult.failed(),
+                "jobFailedList", failedItemValues(importResult),
                 "jobSucceedCount", importResult.succeedCount(),
                 "jobFailedCount", importResult.failed().size()));
         MimeAttachment logoAttachment = MimeAttachment.builder()
@@ -97,6 +97,12 @@ public class ImportMailReportRender {
             .flatMap(messageGenerator -> messageGenerator.generate(username, fromMailAddress, model, ImmutableList.of(logoAttachment)))
             .map(Throwing.function(message -> new Mail(templateConfiguration.sender(), List.of(username.asMailAddress()), message)))
             .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private ImmutableList<Map<String, Object>> failedItemValues(ImportResult importResult) {
+        return importResult.failed().stream()
+            .map(ImportResult.FailedItem::keyValues)
+            .collect(ImmutableList.toImmutableList());
     }
 }
 
