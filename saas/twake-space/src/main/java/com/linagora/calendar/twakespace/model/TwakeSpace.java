@@ -44,6 +44,7 @@ public record TwakeSpace(SpaceId id, Optional<OrganizationId> organization, Opti
     public record Membership(Optional<String> role, Instant timestamp) {
         // On equal timestamps the removal wins, then the alphabetically first role.
         private static final Comparator<Membership> LATEST = Comparator.comparing(Membership::timestamp)
+            .thenComparing(Membership::isRemoved)
             .thenComparing(membership -> membership.role().orElse(""), Comparator.reverseOrder());
 
         public static Membership role(String role, Instant timestamp) {
@@ -52,6 +53,10 @@ public record TwakeSpace(SpaceId id, Optional<OrganizationId> organization, Opti
 
         public static Membership removed(Instant timestamp) {
             return new Membership(Optional.empty(), timestamp);
+        }
+
+        public boolean isRemoved() {
+            return role.isEmpty();
         }
     }
 

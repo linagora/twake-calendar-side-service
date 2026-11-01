@@ -78,6 +78,15 @@ class TwakeSpaceTest {
     }
 
     @Test
+    void removalShouldWinOverAnEmptyRoleAtTheSameTimestamp() {
+        TwakeSpace added = SPACE.withMembers(Map.of(BOB, TwakeSpace.Membership.role("", T1)));
+        TwakeSpace removed = SPACE.withMembers(Map.of(BOB, TwakeSpace.Membership.removed(T1)));
+
+        assertThat(added.merge(removed)).isEqualTo(removed.merge(added));
+        assertThat(added.merge(removed).members().get(BOB)).isEqualTo(TwakeSpace.Membership.removed(T1));
+    }
+
+    @Test
     void organizationAndDomainShouldBeTakenFromTheChangeWhenUnknown() {
         TwakeSpace unknown = TwakeSpace.of(SPACE.id(), Optional.empty(), Optional.empty());
 
