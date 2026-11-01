@@ -26,6 +26,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -65,6 +66,15 @@ public record AvailabilityRuleDTO(@JsonProperty("type") AvailabilityRuleType typ
             rule.start().toLocalDateTime().format(LOCAL_DATE_TIME_FORMAT),
             rule.end().toLocalDateTime().format(LOCAL_DATE_TIME_FORMAT),
             Optional.of(rule.start().getZone().getId()));
+    }
+
+    public static List<AvailabilityRule> toAvailabilityRules(List<AvailabilityRuleDTO> rules, ZoneId defaultTimeZone) {
+        return rules.stream()
+            .map(dto -> {
+                Preconditions.checkArgument(dto != null, "'availabilityRules' must not contain null");
+                return dto.toAvailabilityRule(defaultTimeZone);
+            })
+            .toList();
     }
 
     public AvailabilityRule toAvailabilityRule(ZoneId defaultTimeZone) {

@@ -232,9 +232,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
         if (!node.has(FIELD_AVAILABILITY_RULES)) {
             return ValuePatch.keep();
         }
-        return dto.availabilityRules.map(rules -> rules.stream()
-            .map(availabilityRuleDTO -> availabilityRuleDTO.toAvailabilityRule(defaultTimeZone))
-            .toList())
+        return dto.availabilityRules.map(rules -> AvailabilityRuleDTO.toAvailabilityRules(rules, defaultTimeZone))
             .map(ruleList -> {
                 Preconditions.checkArgument(!ruleList.isEmpty(), "'availabilityRules' cannot be empty if provided");
                 return new AvailabilityRules(ruleList);
