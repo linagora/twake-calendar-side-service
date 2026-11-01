@@ -111,6 +111,7 @@ public class EventInviteEmailConsumerTest {
     static final boolean EXTERNAL_USER = false;
     static final boolean IS_NEW_EVENT = true;
     static final String INVALID_RECIPIENT = "pro";
+    static final String UNWRITABLE_RECIPIENT = "a\\b@example.com";
 
     private final ConditionFactory calmlyAwait = Awaitility.with()
         .pollInterval(Duration.ofMillis(500))
@@ -365,6 +366,19 @@ public class EventInviteEmailConsumerTest {
     }
 
     @Test
+    void shouldNotifyOrganizerWhenInvitationRecipientCannotBeWrittenInAToHeader() throws Exception {
+        publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_REQUEST, IS_NEW_EVENT, UNWRITABLE_RECIPIENT));
+
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+        assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(organizer.username().asString());
+        assertThat(TestFixture.extractSubject(smtpMailsResponse.getString("[0].message"))).isEqualTo("Email delivery failed");
+        assertThat(deadLetteredMessageCount()).isZero();
+    }
+
+    @Test
     void shouldAckUpdateWhoseRecipientIsNotAValidAddressWithoutSendingAnyMail() throws Exception {
         publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_REQUEST, !IS_NEW_EVENT));
         publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_CANCEL, !IS_NEW_EVENT));
@@ -482,10 +496,14 @@ public class EventInviteEmailConsumerTest {
     }
 
     private String invalidRecipientMessage(String method, boolean isNewEvent) throws Exception {
+        return invalidRecipientMessage(method, isNewEvent, INVALID_RECIPIENT);
+    }
+
+    private String invalidRecipientMessage(String method, boolean isNewEvent, String recipient) throws Exception {
         String eventUid = UUID.randomUUID().toString();
         return new ObjectMapper().writeValueAsString(ImmutableMap.of(
             "senderEmail", organizer.username().asString(),
-            "recipientEmail", INVALID_RECIPIENT,
+            "recipientEmail", recipient,
             "method", method,
             "event", generateCalendarData(eventUid, organizer.username().asString(), "Pro", PartStat.NEEDS_ACTION),
             "eventPath", "/calendars/" + organizer.id().value() + "/" + organizer.id().value() + "/" + eventUid + ".ics",
