@@ -109,14 +109,26 @@ public class CalendarUtil {
         @Override
         public void register(TimeZone timezone) {
             if (shouldRegister(timezone)) {
-                delegate.register(timezone);
+                registerLeniently(timezone, () -> delegate.register(timezone));
             }
         }
 
         @Override
         public void register(TimeZone timezone, boolean update) {
             if (shouldRegister(timezone)) {
-                delegate.register(timezone, update);
+                registerLeniently(timezone, () -> delegate.register(timezone, update));
+            }
+        }
+
+        /**
+         * ical4j fails to build the zone rules of some valid observances (BYDAY without ordinal and BYSETPOS, BYMONTH
+         * without BYDAY...), which would fail the whole calendar: such a zone is handled like an unknown TZID instead.
+         */
+        private void registerLeniently(TimeZone timezone, Runnable registration) {
+            try {
+                registration.run();
+            } catch (RuntimeException e) {
+                LOGGER.info("Ignoring VTIMEZONE {}: ical4j cannot build its rules", timezone.getID(), e);
             }
         }
 

@@ -237,6 +237,17 @@ class CalendarUtilTest {
             (VTimeZone) calendar.getComponent(Component.VTIMEZONE).orElseThrow())).isTrue();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "FREQ=YEARLY;BYMONTH=10;BYDAY=SU;BYSETPOS=-1",
+        "FREQ=YEARLY;BYMONTH=10",
+        "FREQ=YEARLY;BYMONTH=10;BYMONTHDAY=-30;BYDAY=SU"})
+    void parseIcsShouldNotFailOnObservancesIcal4jCannotTurnIntoRules(String rRule) {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithObservanceRule("19701025T030000", rRule));
+
+        assertThat(calendar.getComponent(Component.VEVENT)).isPresent();
+    }
+
     @Test
     void parseIcsShouldResolveCustomTimezoneSinceOutlookEpoch() {
         Calendar calendar = CalendarUtil.parseIcs(icsWithTimezone("Custom Linagora Time")
