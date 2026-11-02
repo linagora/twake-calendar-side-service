@@ -21,12 +21,15 @@ package com.linagora.calendar.storage.event;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.List;
 import java.util.Optional;
 
 import jakarta.mail.internet.AddressException;
@@ -43,8 +46,10 @@ import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
+import net.fortuna.ical4j.model.property.Description;
 import net.fortuna.ical4j.model.property.RecurrenceId;
 
 class EventParseUtilsTest {
@@ -494,6 +499,43 @@ class EventParseUtilsTest {
 
             assertThat(EventParseUtils.getDescription(parse(description.replace("\n", "\\n"))))
                 .contains("Project notes");
+        }
+
+        @Test
+        void shouldKeepUnclosedFooterSeparator() {
+            VEvent vEvent = new VEvent(new PropertyList(List.of(
+                new Description("Notes\n\n" + FOOTER + "\nVisio: https://meet.example.com/abc"))));
+
+            assertThat(EventParseUtils.getDescription(vEvent))
+                .contains("Notes\n\n" + FOOTER + "\nVisio: https://meet.example.com/abc");
+        }
+
+        @Test
+        void shouldStripEachFooterBlockAndCollapseSurroundingNewlines() {
+            VEvent vEvent = new VEvent(new PropertyList(List.of(
+                new Description("Before\n\n" + FOOTER + "\nVisio\n" + FOOTER + "\n\nMiddle\n"
+                    + LEGACY_FOOTER + "\nAttachments\n" + LEGACY_FOOTER + "\n\nAfter"))));
+
+            assertThat(EventParseUtils.getDescription(vEvent))
+                .contains("Before\nMiddle\nAfter");
+        }
+
+        @Test
+        void getDescriptionShouldBeLinearOnUnclosedFooterBetweenNewlineRuns() {
+            String newlines = "\n".repeat(20_000);
+            VEvent vEvent = new VEvent(new PropertyList(List.of(
+                new Description(newlines + FOOTER + "A" + newlines))));
+
+            assertTimeoutPreemptively(Duration.ofMillis(500), () -> EventParseUtils.getDescription(vEvent));
+        }
+
+        @Test
+        void getDescriptionShouldBeLinearOnFooterWrappingNewlines() {
+            VEvent vEvent = new VEvent(new PropertyList(List.of(
+                new Description("Notes\n\n" + EventParseUtils.wrapInEventFooter("\n".repeat(40_000))))));
+
+            assertTimeoutPreemptively(Duration.ofMillis(500), () ->
+                assertThat(EventParseUtils.getDescription(vEvent)).contains("Notes"));
         }
 
         @Test
