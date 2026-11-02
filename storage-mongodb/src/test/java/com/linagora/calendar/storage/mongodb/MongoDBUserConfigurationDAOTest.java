@@ -22,12 +22,15 @@ import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static net.javacrumbs.jsonunit.core.Option.IGNORING_ARRAY_ORDER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 
 import org.bson.Document;
+import org.bson.RawBsonDocument;
+import org.bson.codecs.DecoderContext;
 import org.bson.types.ObjectId;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,6 +51,7 @@ import com.linagora.calendar.storage.UserConfigurationDAOContract;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBUserConfigurationDAO.UserConfigurationDeserializeException;
+import com.mongodb.MongoClientSettings;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
 import reactor.core.publisher.Mono;
@@ -356,6 +360,40 @@ public class MongoDBUserConfigurationDAOTest implements UserConfigurationDAOCont
             assertThat(configurationEntry)
                 .usingElementComparator(Comparator.comparing(Object::toString))
                 .containsExactlyInAnyOrderElementsOf(originalEntries);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {
+            "{\"a\":18446744073709551616}",
+            "18446744073709551616",
+            "9223372036854775808",
+            "[4, 50000000000000000000]",
+            "[1e4007]",
+            "{\"a\":{\"b\":-1e4007}}"
+        })
+        void convertToDocumentShouldRejectNumbersThatCannotBeStored(String value) {
+            Set<ConfigurationEntry> entries = Set.of(ConfigurationEntry.of("core", "k", toJsonNode(value)));
+
+            assertThatThrownBy(() -> MongoDBUserConfigurationDAO.convertToDocument(entries))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {
+            "{\"a\":9223372036854775807}",
+            "{\"a\":{\"b\":[-9223372036854775808, 1.5, null, \"x\"]}}",
+            "[{\"a\":12}, 1.7976931348623157E308]"
+        })
+        void convertToDocumentShouldProduceEncodableDocumentThatReadsBackUnchanged(String value) {
+            ConfigurationEntry entry = ConfigurationEntry.of("core", "k", toJsonNode(value));
+
+            Document document = MongoDBUserConfigurationDAO.convertToDocument(Set.of(entry));
+            RawBsonDocument encoded = new RawBsonDocument(document, MongoClientSettings.getDefaultCodecRegistry().get(Document.class));
+            Document decoded = MongoClientSettings.getDefaultCodecRegistry().get(Document.class)
+                .decode(encoded.asBsonReader(), DecoderContext.builder().build());
+
+            assertThat(MongoDBUserConfigurationDAO.toConfigurationEntry(decoded))
+                .containsExactly(entry);
         }
     }
 

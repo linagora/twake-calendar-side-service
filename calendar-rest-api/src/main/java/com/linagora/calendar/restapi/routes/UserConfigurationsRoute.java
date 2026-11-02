@@ -42,6 +42,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
+import com.linagora.calendar.storage.configuration.ConfigurationValueValidator;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -64,6 +65,7 @@ public class UserConfigurationsRoute extends CalendarRoute {
 
         public ConfigurationEntryDTO {
             Preconditions.checkArgument(StringUtils.isNotBlank(name), "Name cannot be blank");
+            ConfigurationValueValidator.validate(value);
         }
     }
 

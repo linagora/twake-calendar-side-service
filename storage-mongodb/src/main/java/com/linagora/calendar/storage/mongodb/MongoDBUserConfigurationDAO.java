@@ -41,6 +41,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
+import com.linagora.calendar.storage.configuration.ConfigurationValueValidator;
 import com.linagora.calendar.storage.configuration.ModuleName;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
@@ -226,27 +227,40 @@ public class MongoDBUserConfigurationDAO implements UserConfigurationDAO {
         if (node == null) {
             return null;
         }
+        ConfigurationValueValidator.validate(node);
         try {
-            if (node.isValueNode()) {
-                return switch (node.getNodeType()) {
-                    case STRING -> node.textValue();
-                    case BOOLEAN -> node.booleanValue();
-                    case NUMBER -> node.numberValue();
-                    case NULL -> null;
-                    default -> throw new IllegalArgumentException("Unsupported value type: " + node.getNodeType());
-                };
-            } else if (node.isArray()) {
-                return StreamSupport.stream(node.spliterator(), false)
-                    .map(MongoDBUserConfigurationDAO::jsonNodeToBsonValue)
-                    .toList();
-            } else if (node.isObject()) {
-                return Document.parse(node.toString());
-            } else {
-                return Document.parse(MAPPER.writeValueAsString(node));
-            }
-        } catch (Exception e) {
+            return toBsonValue(node);
+        } catch (RuntimeException e) {
             throw new UserConfigurationSerializeException("Failed to convert JsonNode to BSON value: " + node, e);
         }
+    }
+
+    private static Object toBsonValue(JsonNode node) {
+        return switch (node.getNodeType()) {
+            case STRING -> node.textValue();
+            case BOOLEAN -> node.booleanValue();
+            case NUMBER -> toBsonNumber(node);
+            case NULL -> null;
+            case ARRAY -> StreamSupport.stream(node.spliterator(), false)
+                .map(MongoDBUserConfigurationDAO::toBsonValue)
+                .toList();
+            case OBJECT -> toBsonDocument(node);
+            default -> throw new IllegalArgumentException("Unsupported value type: " + node.getNodeType());
+        };
+    }
+
+    private static Number toBsonNumber(JsonNode node) {
+        if (node.isBigInteger()) {
+            return node.longValue();
+        }
+        return node.numberValue();
+    }
+
+    private static Document toBsonDocument(JsonNode node) {
+        Document document = new Document();
+        node.properties()
+            .forEach(property -> document.append(property.getKey(), toBsonValue(property.getValue())));
+        return document;
     }
 
 }

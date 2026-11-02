@@ -1101,6 +1101,28 @@ class UserConfigurationRouteTest {
             .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"a\":18446744073709551616}", "9223372036854775808", "[4, 50000000000000000000]", "[1e4007]"})
+    void putShouldReturn400WhenValueHoldsANumberThatCannotBeStored(String value) {
+        given()
+            .body("[{\"name\":\"core\",\"configurations\":[{\"name\":\"k\",\"value\":" + value + "}]}]")
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"a\":18446744073709551616}", "9223372036854775808", "[4, 50000000000000000000]", "[1e4007]"})
+    void patchShouldReturn400WhenValueHoldsANumberThatCannotBeStored(String value) {
+        given()
+            .body("[{\"name\":\"core\",\"configurations\":[{\"name\":\"k\",\"value\":" + value + "}]}]")
+        .when()
+            .patch("/api/configurations")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
     @Test
     void patchShouldReturn400WhenEmptyBody() {
         given()
