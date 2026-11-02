@@ -33,12 +33,15 @@ import java.util.Optional;
 import jakarta.mail.internet.InternetAddress;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.james.core.MailAddress;
+import org.apache.james.core.Username;
 import org.apache.james.mailbox.model.Cid;
 import org.apache.james.mailbox.model.ContentType;
 import org.apache.james.mime4j.dom.Entity;
 import org.apache.james.mime4j.dom.Message;
 import org.apache.james.mime4j.dom.Multipart;
 import org.apache.james.mime4j.dom.TextBody;
+import org.apache.james.mime4j.dom.address.Mailbox;
 import org.apache.james.mime4j.dom.field.ContentTypeField;
 import org.apache.james.mime4j.message.DefaultMessageBuilder;
 import org.apache.james.mime4j.message.DefaultMessageWriter;
@@ -47,6 +50,7 @@ import org.junit.jupiter.api.Test;
 
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
+import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 
 class MessageGeneratorTest {
     private static final MimeAttachment LOGO = MimeAttachment.builder()
@@ -148,6 +152,71 @@ class MessageGeneratorTest {
             .containsExactly("text/html", "image/png");
         ContentTypeField relatedContentType = (ContentTypeField) related.getParent().getHeader().getField("Content-Type");
         assertThat(relatedContentType.getParameter("type")).isEqualTo("text/html");
+    }
+
+    @Test
+    void generateShouldKeepAnEncodedWordLookalikeInTheRecipientName() throws Exception {
+        Message message = reparse(generateWithUsers("Ann", "=?utf-8?q?Lee?=", "No", "Reply"));
+
+        Mailbox to = (Mailbox) message.getTo().getFirst();
+        assertThat(to.getName()).isEqualTo("Ann =?utf-8?q?Lee?=");
+        assertThat(to.getAddress()).isEqualTo("bob@domain.tld");
+    }
+
+    @Test
+    void generatedMessageShouldExposeAnEncodedWordLookalikeInTheRecipientName() throws Exception {
+        Message message = generateWithUsers("Ann", "=?utf-8?q?Lee?=", "No", "Reply");
+
+        assertThat(((Mailbox) message.getTo().getFirst()).getName()).isEqualTo("Ann =?utf-8?q?Lee?=");
+    }
+
+    @Test
+    void generateShouldKeepALongNameHoldingAnEncodedWordLookalike() throws Exception {
+        String lastName = "=?utf-8?q?Lee?= " + "a".repeat(120);
+        Message message = reparse(generateWithUsers("Ann", lastName, "No", "Reply"));
+
+        assertThat(((Mailbox) message.getTo().getFirst()).getName()).isEqualTo("Ann " + lastName);
+    }
+
+    @Test
+    void generateShouldKeepAnEncodedWordLookalikeInTheSenderName() throws Exception {
+        Message message = reparse(generateWithUsers("Bob", "Smith", "Ann", "=?utf-8?q?Lee?="));
+
+        Mailbox from = message.getFrom().getFirst();
+        assertThat(from.getName()).isEqualTo("Ann =?utf-8?q?Lee?=");
+        assertThat(from.getAddress()).isEqualTo("no-reply@domain.tld");
+    }
+
+    @Test
+    void generateShouldKeepAnEncodedWordLookalikeWithAnUnknownCharsetInTheRecipientName() throws Exception {
+        Message message = reparse(generateWithUsers("Ann", "=?utf-7?q?a?=", "No", "Reply"));
+
+        assertThat(((Mailbox) message.getTo().getFirst()).getName()).isEqualTo("Ann =?utf-7?q?a?=");
+    }
+
+    @Test
+    void generateShouldKeepAQuotedNameHoldingAnEncodedWordLookalike() throws Exception {
+        Message message = reparse(generateWithUsers("O'Brien,", "=?utf-8?q?Lee?=", "No", "Reply"));
+
+        assertThat(((Mailbox) message.getTo().getFirst()).getName()).isEqualTo("O'Brien, =?utf-8?q?Lee?=");
+    }
+
+    @Test
+    void generateShouldKeepTheRecipientNameAndAddress() throws Exception {
+        Message message = reparse(generateWithUsers("Bob", "Smith", "No", "Reply"));
+
+        Mailbox to = (Mailbox) message.getTo().getFirst();
+        assertThat(to.getName()).isEqualTo("Bob Smith");
+        assertThat(to.getAddress()).isEqualTo("bob@domain.tld");
+    }
+
+    private Message generateWithUsers(String recipientFirstName, String recipientLastName,
+                                      String senderFirstName, String senderLastName) throws Exception {
+        MemoryOpenPaaSUserDAO userDAO = new MemoryOpenPaaSUserDAO();
+        userDAO.add(Username.of("bob@domain.tld"), recipientFirstName, recipientLastName).block();
+        userDAO.add(Username.of("no-reply@domain.tld"), senderFirstName, senderLastName).block();
+        MessageGenerator testee = new MessageGenerator(translator, htmlBodyRenderer, Optional.empty(), userDAO);
+        return testee.generate(Username.of("bob@domain.tld"), new MailAddress("no-reply@domain.tld"), MODEL).block();
     }
 
     private Optional<TextBodyRenderer> textBodyRenderer() throws IOException {
