@@ -19,6 +19,7 @@
 package com.linagora.calendar.storage.mongodb;
 
 import java.text.Normalizer;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -57,12 +58,38 @@ public class AccentInsensitivePrefixPattern {
         .collect(ImmutableMap.toImmutableMap(Map.Entry::getKey, entry -> "[" + entry.getValue() + "]"));
 
     public static Pattern of(String query) {
-        String regex = Normalizer.normalize(query, Normalizer.Form.NFC)
+        List<String> characters = Normalizer.normalize(query, Normalizer.Form.NFC)
             .codePoints()
             .mapToObj(Character::toString)
+            .toList();
+        String regex = IntStream.range(0, characters.size())
+            .filter(index -> !isRedundantMark(characters, index))
+            .mapToObj(characters::get)
             .map(AccentInsensitivePrefixPattern::toRegex)
             .collect(Collectors.joining("", "^", ""));
         return Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    }
+
+    /**
+     * A diacritic NFC could not compose (eg the grave of 'ọ̀') is already accepted by the optional combining
+     * marks following the class of its latin base letter: requiring it would miss the name stored without accents.
+     * Marks following non-latin characters (eg Devanagari vowel signs) are significant and kept.
+     */
+    private static boolean isRedundantMark(List<String> characters, int index) {
+        return isStrippedMark(characters.get(index)) && IntStream.iterate(index - 1, previous -> previous >= 0, previous -> previous - 1)
+            .mapToObj(characters::get)
+            .filter(character -> !isStrippedMark(character))
+            .findFirst()
+            .map(AccentInsensitivePrefixPattern::isLatinLetter)
+            .orElse(false);
+    }
+
+    private static boolean isStrippedMark(String character) {
+        return fold(character).isEmpty();
+    }
+
+    private static boolean isLatinLetter(String character) {
+        return CHARACTER_CLASS_BY_FOLDED_LETTER.containsKey(fold(character));
     }
 
     private static String toRegex(String character) {
