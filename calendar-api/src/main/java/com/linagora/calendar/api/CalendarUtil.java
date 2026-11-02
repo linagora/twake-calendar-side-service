@@ -95,9 +95,9 @@ public class CalendarUtil {
     public static class CustomizedTimeZoneRegistry implements TimeZoneRegistry {
         private static final Logger LOGGER = LoggerFactory.getLogger(CustomizedTimeZoneRegistry.class);
         @VisibleForTesting
-        static final long MAX_OBSERVANCE_TRANSITIONS = 20_000;
+        static final long MAX_OBSERVANCE_TRANSITIONS = Long.getLong("tcalendar.tz.max.observance.transitions", 20_000);
         @VisibleForTesting
-        static final int MAX_CUSTOM_TIMEZONES = 20;
+        static final int MAX_CUSTOM_TIMEZONES = Integer.getInteger("tcalendar.tz.max.custom.tz", 1000);
         private static final int MIN_EXPANDED_YEARS = 5;
         private static final int MAX_DAYS_PER_YEAR = 366;
         private static final int MAX_WEEKDAYS_PER_MONTH = 5;
