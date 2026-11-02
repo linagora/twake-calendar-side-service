@@ -39,7 +39,7 @@ public record CalendarURL(OpenPaaSId base, OpenPaaSId calendarId) {
 
     /**
      * Supported inputs:
-     * - base/calendar
+     * - base/calendar (including a base named "calendars", as written by {@link #serialize()})
      * - /base/calendar
      * - /calendars/base/calendar
      * - /calendars/base/calendar/
@@ -56,8 +56,7 @@ public record CalendarURL(OpenPaaSId base, OpenPaaSId calendarId) {
 
         Preconditions.checkArgument(!parts.isEmpty(), "Invalid CalendarURL format: %s", rawValue);
 
-        if (CALENDAR_SEGMENT.equals(parts.getFirst())) {
-            Preconditions.checkArgument(parts.size() >= 3, "Invalid CalendarURL format, expected /calendars/{base}/{calendar}: %s", rawValue);
+        if (CALENDAR_SEGMENT.equals(parts.getFirst()) && parts.size() >= 3) {
             return new CalendarURL(new OpenPaaSId(parts.get(1)), new OpenPaaSId(parts.get(2)));
         }
 

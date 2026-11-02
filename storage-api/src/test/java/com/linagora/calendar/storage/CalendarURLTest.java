@@ -66,6 +66,21 @@ class CalendarURLTest {
             .isEqualTo(rawValue);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"calendars/b", "calendars/calendars", "b/calendars"})
+    void deserializeShouldReadBackSerialize(String serialized) {
+        String[] ids = serialized.split("/");
+        CalendarURL url = new CalendarURL(new OpenPaaSId(ids[0]), new OpenPaaSId(ids[1]));
+
+        assertThat(CalendarURL.deserialize(url.serialize())).isEqualTo(url);
+    }
+
+    @Test
+    void parseShouldRejectCalendarsSegmentAlone() {
+        assertThatThrownBy(() -> CalendarURL.parse("/calendars"))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
     @Test
     void constructorShouldRejectDotSegments() {
         assertThatThrownBy(() -> new CalendarURL(new OpenPaaSId("base1"), new OpenPaaSId("..")))
