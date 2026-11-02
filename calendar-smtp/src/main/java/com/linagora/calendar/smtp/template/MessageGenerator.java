@@ -39,10 +39,15 @@ import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.filesystem.api.FileSystem;
+import org.apache.james.mime4j.MimeException;
+import org.apache.james.mime4j.codec.EncoderUtil;
 import org.apache.james.mime4j.dom.Message;
+import org.apache.james.mime4j.dom.field.FieldName;
+import org.apache.james.mime4j.field.DefaultFieldParser;
 import org.apache.james.mime4j.message.BodyPart;
 import org.apache.james.mime4j.message.BodyPartBuilder;
 import org.apache.james.mime4j.message.MultipartBuilder;
+import org.apache.james.mime4j.stream.Field;
 import org.apache.james.mime4j.stream.NameValuePair;
 import org.apache.james.mime4j.stream.RawField;
 
@@ -140,6 +145,7 @@ public class MessageGenerator {
     private static final String MULTIPART_RELATED = "related";
     private static final String MULTIPART_ALTERNATIVE = "alternative";
     private static final String CONTENT_LANGUAGE = "Content-Language";
+    private static final String ENCODED_WORD_PREFIX = "=?";
 
     private final HtmlBodyRenderer htmlBodyRenderer;
     private final Optional<TextBodyRenderer> textBodyRenderer;
@@ -199,10 +205,28 @@ public class MessageGenerator {
                 .setDate(new Date())
                 .setSubject(subject(scopedVariableFinal))
                 .setBody(multipartBuilder.build())
-                .setFrom(fromAddress.toString())
-                .setTo(recipient.toString())
+                .setField(addressField(FieldName.FROM, fromAddress))
+                .setField(addressField(FieldName.TO, recipient))
                 .build();
         });
+    }
+
+    private Field addressField(String fieldName, InternetAddress address) throws MimeException {
+        String nameAddress = Optional.ofNullable(address.getPersonal())
+            .map(name -> encodeDisplayName(name) + " <" + address.getAddress() + ">")
+            .orElse(address.getAddress());
+        return DefaultFieldParser.parse(fieldName + ": " + nameAddress);
+    }
+
+    /**
+     * A name holding an RFC 2047 encoded-word lookalike is an atom phrase that mime4j would write as is,
+     * so that readers would decode it into another name: it is encoded so that it decodes back to itself.
+     */
+    private String encodeDisplayName(String name) {
+        if (name.contains(ENCODED_WORD_PREFIX)) {
+            return EncoderUtil.encodeEncodedWord(name, EncoderUtil.Usage.WORD_ENTITY);
+        }
+        return EncoderUtil.encodeAddressDisplayName(name);
     }
 
     private BodyPart textualBodyPart(String content, String subtype, String transferEncoding) throws IOException {
