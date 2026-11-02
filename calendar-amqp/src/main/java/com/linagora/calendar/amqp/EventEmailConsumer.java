@@ -53,6 +53,7 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
 import com.linagora.calendar.amqp.model.CalendarEventBookingConfirmedNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventBookingDeclinedNotificationEmail;
+import com.linagora.calendar.amqp.model.CalendarEventBookingNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
@@ -188,7 +189,7 @@ public class EventEmailConsumer implements Closeable, Startable {
     private Mono<Void> handleMessage(CalendarEventNotificationEmailDTO calendarEventMessage) {
         return switch (calendarEventMessage.method().getValue()) {
             case Method.VALUE_REQUEST -> {
-                if (publicAgendaEvent(calendarEventMessage.event())) {
+                if (bookingEvent(calendarEventMessage)) {
                     LOGGER.info("Received public agenda calendar event message with method REQUEST and eventPath {}",
                         calendarEventMessage.eventPath());
                     if (organizerDeclined(calendarEventMessage.event())) {
@@ -265,6 +266,15 @@ public class EventEmailConsumer implements Closeable, Startable {
             .flatMap(organizer -> EventParseUtils.findAttendeePartStat(event, organizer.email()))
             .filter(PartStat.DECLINED::equals)
             .isPresent();
+    }
+
+    /**
+     * An event whose creator can not be resolved is handled as an ordinary REQUEST, so that its attendees
+     * still get an invitation or update mail instead of a booking mail that can not be rendered.
+     */
+    private boolean bookingEvent(CalendarEventNotificationEmailDTO dto) {
+        return publicAgendaEvent(dto.event())
+            && CalendarEventBookingNotificationEmail.hasResolvableProposer(GET_FIRST_VEVENT_FUNCTION.apply(dto.event()), dto.recipientEmail());
     }
 
     private boolean publicAgendaEvent(Calendar calendar) {
