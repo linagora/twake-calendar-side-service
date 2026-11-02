@@ -848,6 +848,30 @@ class EventParseUtilsTest {
         }
 
         @Test
+        void shouldCreateTheInstanceOfTheRequestedDayForZeroDurationAllDaySeries() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:allday-uid@test
+                DTSTART;VALUE=DATE:20260402
+                DTEND;VALUE=DATE:20260402
+                RRULE:FREQ=DAILY;COUNT=5
+                SUMMARY:Off site
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            VEvent master = (VEvent) CalendarUtil.parseIcs(ics).getComponent(Component.VEVENT).orElseThrow();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, LocalDate.of(2026, 4, 3));
+
+            assertThat(instance.toString())
+                .contains("RECURRENCE-ID;VALUE=DATE:20260403",
+                    "DTSTART;VALUE=DATE:20260403",
+                    "DTEND;VALUE=DATE:20260403");
+        }
+
+        @Test
         void shouldRejectARecurrenceDateThatIsNotAnOccurrence() {
             String ics = """
                 BEGIN:VCALENDAR

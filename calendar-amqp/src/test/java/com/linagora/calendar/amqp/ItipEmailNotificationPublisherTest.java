@@ -743,6 +743,38 @@ class ItipEmailNotificationPublisherTest {
         }
 
         @Test
+        void cancelOfAZeroDurationAllDayOccurrenceShouldStartOnTheCancelledDay() {
+            String previous = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:allday-uid@test
+                DTSTAMP:20261001T100000Z
+                DTSTART;VALUE=DATE:20260402
+                DTEND;VALUE=DATE:20260402
+                RRULE:FREQ=DAILY;COUNT=5
+                SUMMARY:Off site
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            String current = previous.replace("RRULE:FREQ=DAILY;COUNT=5\n", "RRULE:FREQ=DAILY;COUNT=5\nEXDATE;VALUE=DATE:20260403\n");
+
+            List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(
+                dto(Method.VALUE_REQUEST, current, Optional.of(previous)), EVENT_PATH, Optional.of(parseIcs(previous)));
+
+            assertThat(notifications).singleElement().satisfies(notification -> {
+                assertThat(notification.method()).isEqualTo(Method.VALUE_CANCEL);
+                assertThat(notification.event()).contains("RECURRENCE-ID;VALUE=DATE:20260403",
+                    "DTSTART;VALUE=DATE:20260403",
+                    "DTEND;VALUE=DATE:20260403");
+            });
+        }
+
+        @Test
         void requestWithOldAndNewExDateShouldGenerateCancelNotification() {
             String recurringNewWithExDate = """
                 BEGIN:VCALENDAR
