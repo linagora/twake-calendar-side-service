@@ -52,6 +52,7 @@ class BookingLinkDefaultAvailabilityRulesTest {
         "[{\"start\":\"8:0\",\"end\":\"19:0\",\"daysOfWeek\":[8]}]",
         "[{\"start\":\"8:0\",\"end\":\"19:0\",\"daysOfWeek\":[null]}]",
         "[{\"start\":\"8:0\",\"end\":\"19:0\"}]",
+        "[{\"start\":\"8:0\",\"end\":\"19:0\",\"daysOfWeek\":[]}]",
         "[{\"start\":\"24:00\",\"end\":\"19:0\",\"daysOfWeek\":[1]}]",
         "[{\"start\":\"0816:45\",\"end\":\"19:0\",\"daysOfWeek\":[1]}]",
         "[{\"start\":\"08\",\"end\":\"19:0\",\"daysOfWeek\":[1]}]",
