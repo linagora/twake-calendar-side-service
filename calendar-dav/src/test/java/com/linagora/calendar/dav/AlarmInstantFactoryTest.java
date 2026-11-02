@@ -20,6 +20,7 @@ package com.linagora.calendar.dav;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -64,6 +65,25 @@ public class AlarmInstantFactoryTest {
     private Optional<Instant> computeNextAlarmTime(String icsCalendar, Instant instantClock, Username attendee) {
         return testee(instantClock).computeNextAlarmInstant(CalendarUtil.parseIcs(icsCalendar), attendee)
             .map(AlarmInstant::alarmTime);
+    }
+
+    @Test
+    void shouldRejectRecurringEventWithoutDtStartWithIllegalStateException() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:no-start
+            RRULE:FREQ=DAILY
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        assertThatThrownBy(() -> testee(Instant.parse("2025-03-13T00:00:00Z"))
+                .computeNextAlarmInstant(CalendarUtil.parseIcs(ics), Username.of("bob@example.com")))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("DTSTART property is missing or invalid");
     }
 
     @Test

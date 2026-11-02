@@ -57,6 +57,40 @@ import net.fortuna.ical4j.model.property.RecurrenceId;
 class EventParseUtilsTest {
 
     @Test
+    void getZoneIdFromStartDateShouldReturnEmptyWhenDtStartIsMissing() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:no-start
+            RRULE:FREQ=DAILY
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        VEvent event = EventParseUtils.getFirstEvent(CalendarUtil.parseIcs(ics));
+
+        assertThat(EventParseUtils.getZoneIdFromStartDate(event)).isEmpty();
+    }
+
+    @Test
+    void getZoneIdFromStartDateShouldReturnTzidOfDtStart() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:with-tzid
+            DTSTART;TZID=Europe/Paris:20250911T100000
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        VEvent event = EventParseUtils.getFirstEvent(CalendarUtil.parseIcs(ics));
+
+        assertThat(EventParseUtils.getZoneIdFromStartDate(event)).contains(ZoneId.of("Europe/Paris"));
+    }
+
+    @Test
     void getEndTimeShouldReturnDtEndWhenPresent() {
         String ics = """
             BEGIN:VCALENDAR
