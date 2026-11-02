@@ -19,10 +19,9 @@
 package com.linagora.calendar.storage.configuration;
 
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import org.apache.commons.lang3.tuple.Pair;
 
 public class ConfigurationEntryUtils {
 
@@ -33,9 +32,17 @@ public class ConfigurationEntryUtils {
     }
 
     public static Set<ConfigurationEntry> mergeIncomingWithExistingConfiguration(Stream<ConfigurationEntry> incoming, Stream<ConfigurationEntry> existing) {
-        return Stream.concat(existing, incoming)
-            .collect(Collectors.toMap(entry -> Pair.of(entry.moduleName(), entry.configurationKey()),
-                entry -> entry,
+        return keepLastValuePerKey(Stream.concat(existing, incoming));
+    }
+
+    /**
+     * Keeps a single entry per (module, key): when a key is repeated, the last one in encounter order wins.
+     * The given stream must therefore be ordered (e.g. built from a list, not from a hash set).
+     */
+    public static Set<ConfigurationEntry> keepLastValuePerKey(Stream<ConfigurationEntry> entries) {
+        return entries
+            .collect(Collectors.toMap(ConfigurationEntry::getEntryIdentifier,
+                Function.identity(),
                 (oldVal, newVal) -> newVal))
             .values()
             .stream()

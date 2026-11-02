@@ -22,7 +22,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
@@ -42,6 +41,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
+import com.linagora.calendar.storage.configuration.ConfigurationEntryUtils;
 import com.linagora.calendar.storage.configuration.ConfigurationValueValidator;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 
@@ -126,9 +126,8 @@ public class UserConfigurationsRoute extends CalendarRoute {
     }
 
     private Function<List<UserConfigDTO>, Set<ConfigurationEntry>> toConfigurationEntries() {
-        return dtos -> dtos.stream()
-            .flatMap(UserConfigDTO::toConfigurationEntries)
-            .collect(Collectors.toSet());
+        return dtos -> ConfigurationEntryUtils.keepLastValuePerKey(dtos.stream()
+            .flatMap(UserConfigDTO::toConfigurationEntries));
     }
 
     private Function<byte[], List<UserConfigDTO>> serializeBodyRequest() {

@@ -625,6 +625,76 @@ class UserConfigurationRouteTest {
             .statusCode(HttpStatus.SC_NO_CONTENT);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"en", "fr", "vi", "ru"})
+    void putShouldKeepTheLastValueOfARepeatedKey(String lastLanguage) {
+        given()
+            .body(repeatedLanguageBody(lastLanguage))
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertLanguage(lastLanguage);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"en", "fr", "vi", "ru"})
+    void patchShouldKeepTheLastValueOfARepeatedKey(String lastLanguage) {
+        given()
+            .body(repeatedLanguageBody(lastLanguage))
+        .when()
+            .patch("/api/configurations")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        assertLanguage(lastLanguage);
+    }
+
+    private String repeatedLanguageBody(String lastLanguage) {
+        return String.format("""
+            [
+              {
+                "name": "core",
+                "configurations": [
+                  { "name": "language", "value": "fr" },
+                  { "name": "language", "value": "de" },
+                  { "name": "language", "value": "%s" }
+                ]
+              }
+            ]""", lastLanguage);
+    }
+
+    private void assertLanguage(String expectedLanguage) {
+        String body = given()
+            .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
+            .body("""
+                [ {
+                  "name" : "core",
+                  "keys" : [ "language" ]
+                } ]""")
+        .when()
+            .post("/api/configurations")
+        .then()
+            .statusCode(200)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(body).isEqualTo(String.format("""
+            [
+                {
+                    "name": "core",
+                    "configurations": [
+                        {
+                            "name": "language",
+                            "value": "%s"
+                        }
+                    ]
+                }
+            ]""", expectedLanguage));
+    }
+
     @Test
     void patchShouldMergeWithExistingConfiguration() {
         given()

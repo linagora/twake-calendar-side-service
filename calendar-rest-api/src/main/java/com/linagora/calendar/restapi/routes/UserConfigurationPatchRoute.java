@@ -96,9 +96,8 @@ public class UserConfigurationPatchRoute extends CalendarRoute {
     }
 
     private Set<ConfigurationEntry> toConfigurationEntries(List<UserConfigDTO> dtos) {
-        return dtos.stream()
-            .flatMap(UserConfigDTO::toConfigurationEntries)
-            .collect(Collectors.toSet());
+        return ConfigurationEntryUtils.keepLastValuePerKey(dtos.stream()
+            .flatMap(UserConfigDTO::toConfigurationEntries));
     }
 
     private Function<byte[], List<UserConfigDTO>> serializeBodyRequest() {
