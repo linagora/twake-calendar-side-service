@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
@@ -26,8 +27,14 @@ import java.time.Instant;
 import java.util.Set;
 import java.util.stream.IntStream;
 
+import org.apache.james.mime4j.dom.address.Mailbox;
+import org.apache.james.mime4j.field.Fields;
+import org.apache.james.mime4j.field.address.LenientAddressParser;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationRoute.ReservationRequestDTO;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationRoute.ReservationRequestDTO.AttendeeDTO;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
@@ -320,6 +327,39 @@ public class BookingLinkReservationRequestDTOTest {
     void nullBodyShouldBeRejectedAsBadRequest() {
         assertThatThrownBy(() -> parse("null"))
             .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"bob\\\rx@example.com", "bob\\\nx@example.com", "g4--\\:\\\\t@exa.xn.org", "a\\b@example.com"})
+    void creatorEmailThatCannotBeWrittenInAHeaderShouldBeRejected(String email) throws Exception {
+        String payload = "{\"startUtc\":\"2036-01-26T09:30:00Z\",\"creator\":{\"email\":"
+            + new ObjectMapper().writeValueAsString(email) + "},\"eventTitle\":\"Demo\"}";
+
+        assertThatThrownBy(() -> parse(payload).toBookingRequest())
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"bob\\\rx@example.com", "bob\\\nx@example.com", "g4--\\:\\\\t@exa.xn.org", "a\\b@example.com"})
+    void additionalAttendeeEmailThatCannotBeWrittenInAHeaderShouldBeRejected(String email) throws Exception {
+        String payload = "{\"startUtc\":\"2036-01-26T09:30:00Z\",\"creator\":{\"email\":\"creator@example.com\"},"
+            + "\"additional_attendees\":[{\"email\":" + new ObjectMapper().writeValueAsString(email) + "}],\"eventTitle\":\"Demo\"}";
+
+        assertThatThrownBy(() -> parse(payload).toBookingRequest())
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void creatorMailboxShouldBeWrittenAsASingleReplyToMailbox() {
+        BookingRequest bookingRequest = parse("""
+            {"startUtc":"2036-01-26T09:30:00Z","creator":{"name":"BOB","email":"Bob.Smith+tag@example.com"},"eventTitle":"Intro"}""")
+            .toBookingRequest();
+
+        String replyTo = Fields.replyTo(bookingRequest.creator().asMailbox()).getBody();
+
+        assertThat(LenientAddressParser.DEFAULT.parseAddressList(replyTo))
+            .singleElement()
+            .isInstanceOfSatisfying(Mailbox.class, mailbox -> assertThat(mailbox.getAddress()).isEqualTo("Bob.Smith+tag@example.com"));
     }
 
     private ReservationRequestDTO parse(String payload) {

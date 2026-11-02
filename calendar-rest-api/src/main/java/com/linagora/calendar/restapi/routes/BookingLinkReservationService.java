@@ -27,6 +27,9 @@ import jakarta.mail.internet.AddressException;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
+import org.apache.james.mime4j.dom.address.Mailbox;
+import org.apache.james.mime4j.field.address.DefaultAddressParser;
+import org.apache.james.mime4j.field.address.ParseException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -179,12 +182,28 @@ public class BookingLinkReservationService {
                                  boolean visioLink,
                                  String notes) {
         public record BookingAttendee(String name, MailAddress email) {
+            /**
+             * The address is written in mail headers (Reply-To of the proposal mail, To of the acknowledgement): it must
+             * also be a valid RFC 5322 mailbox. {@link MailAddress} is more lenient, e.g. it accepts an unquoted backslash
+             * escaping a line break or a ':' in the local part.
+             */
             public static BookingAttendee from(String name, String email) {
                 Preconditions.checkArgument(StringUtils.isNotBlank(email), "'email' must not be blank");
+                Preconditions.checkArgument(email.chars().noneMatch(Character::isISOControl), "'email' must not contain control characters");
                 try {
-                    return new BookingAttendee(name, new MailAddress(email));
-                } catch (AddressException e) {
+                    MailAddress mailAddress = new MailAddress(email);
+                    DefaultAddressParser.DEFAULT.parseMailbox(mailAddress.asString());
+                    return new BookingAttendee(name, mailAddress);
+                } catch (AddressException | ParseException e) {
                     throw new IllegalArgumentException("'email' has invalid format: " + email, e);
+                }
+            }
+
+            public Mailbox asMailbox() {
+                try {
+                    return DefaultAddressParser.DEFAULT.parseMailbox(email.asString());
+                } catch (ParseException e) {
+                    throw new IllegalStateException("'email' can not be written as a mailbox: " + email.asString(), e);
                 }
             }
         }
