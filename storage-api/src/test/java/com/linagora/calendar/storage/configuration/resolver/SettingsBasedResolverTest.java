@@ -19,10 +19,12 @@
 package com.linagora.calendar.storage.configuration.resolver;
 
 import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
+import static com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader.BUSINESS_HOURS_IDENTIFIER;
 import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -36,6 +38,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.HashBasedTable;
@@ -85,7 +88,7 @@ public class SettingsBasedResolverTest {
     }
 
     @Test
-    void shouldReturnDefaultWhenOnlyLocalePresent() {
+    void shouldUseDefaultZoneIdWhenOnlyLocalePresent() {
         Table<ModuleName, ConfigurationKey, JsonNode> table = HashBasedTable.create();
         table.put(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey(),
             JsonNodeFactory.instance.textNode("fr"));
@@ -97,11 +100,12 @@ public class SettingsBasedResolverTest {
         SettingsBasedResolver resolver = getSettingsBasedResolver(configurationResolver);
 
         SettingsBasedResolver.ResolvedSettings result = resolver.resolveOrDefault(session).block();
-        assertThat(result).isEqualTo(SettingsBasedResolver.ResolvedSettings.DEFAULT);
+        assertThat(result.locale()).isEqualTo(Locale.FRENCH);
+        assertThat(result.zoneId()).isEqualTo(ZoneId.of("UTC"));
     }
 
     @Test
-    void shouldReturnDefaultWhenOnlyZoneIdPresent() {
+    void shouldUseDefaultLocaleWhenOnlyZoneIdPresent() {
         Table<ModuleName, ConfigurationKey, JsonNode> table = HashBasedTable.create();
 
         ObjectNode timezoneNode = JsonNodeFactory.instance.objectNode();
@@ -115,7 +119,94 @@ public class SettingsBasedResolverTest {
         SettingsBasedResolver resolver = getSettingsBasedResolver(configurationResolver);
 
         SettingsBasedResolver.ResolvedSettings result = resolver.resolveOrDefault(session).block();
-        assertThat(result).isEqualTo(SettingsBasedResolver.ResolvedSettings.DEFAULT);
+        assertThat(result.locale()).isEqualTo(Locale.ENGLISH);
+        assertThat(result.zoneId()).isEqualTo(ZoneId.of("Asia/Ho_Chi_Minh"));
+    }
+
+    @Test
+    void shouldKeepLocaleWhenTimeZoneIsMissingFromDatetime() {
+        Table<ModuleName, ConfigurationKey, JsonNode> table = HashBasedTable.create();
+        table.put(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey(), JsonNodeFactory.instance.textNode("fr"));
+        table.put(TIMEZONE_IDENTIFIER.moduleName(), TIMEZONE_IDENTIFIER.configurationKey(),
+            JsonNodeFactory.instance.objectNode().put("use24hourFormat", true));
+
+        SettingsBasedResolver.ResolvedSettings result = getSettingsBasedResolver(mockResolverReturning(table))
+            .resolveOrDefault(session).block();
+
+        assertThat(result.locale()).isEqualTo(Locale.FRENCH);
+        assertThat(result.zoneId()).isEqualTo(ZoneId.of("UTC"));
+    }
+
+    @Test
+    void shouldKeepLocaleWhenTimeZoneIsUnknown() {
+        Table<ModuleName, ConfigurationKey, JsonNode> table = HashBasedTable.create();
+        table.put(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey(), JsonNodeFactory.instance.textNode("fr"));
+        table.put(TIMEZONE_IDENTIFIER.moduleName(), TIMEZONE_IDENTIFIER.configurationKey(),
+            JsonNodeFactory.instance.objectNode().put("timeZone", "Eu"));
+
+        SettingsBasedResolver.ResolvedSettings result = getSettingsBasedResolver(mockResolverReturning(table))
+            .resolveOrDefault(session).block();
+
+        assertThat(result.locale()).isEqualTo(Locale.FRENCH);
+        assertThat(result.zoneId()).isEqualTo(ZoneId.of("UTC"));
+    }
+
+    @Test
+    void shouldKeepZoneIdWhenBusinessHoursIsNull() {
+        Table<ModuleName, ConfigurationKey, JsonNode> table = HashBasedTable.create();
+        table.put(TIMEZONE_IDENTIFIER.moduleName(), TIMEZONE_IDENTIFIER.configurationKey(),
+            JsonNodeFactory.instance.objectNode().put("timeZone", "Europe/Paris"));
+        table.put(BUSINESS_HOURS_IDENTIFIER.moduleName(), BUSINESS_HOURS_IDENTIFIER.configurationKey(), JsonNodeFactory.instance.nullNode());
+
+        SettingsBasedResolver.ResolvedSettings result = getBusinessHoursResolver(mockResolverReturning(table))
+            .resolveOrDefault(session).block();
+
+        assertThat(result.zoneId()).isEqualTo(ZoneId.of("Europe/Paris"));
+        assertThat(result.get(BUSINESS_HOURS_IDENTIFIER, List.class)).isEmpty();
+    }
+
+    @Test
+    void shouldKeepZoneIdWhenBusinessHoursCannotBeConverted() {
+        Table<ModuleName, ConfigurationKey, JsonNode> table = HashBasedTable.create();
+        table.put(TIMEZONE_IDENTIFIER.moduleName(), TIMEZONE_IDENTIFIER.configurationKey(),
+            JsonNodeFactory.instance.objectNode().put("timeZone", "Europe/Paris"));
+        ArrayNode businessHours = JsonNodeFactory.instance.arrayNode();
+        businessHours.addObject().putArray("s]]").add(4).add(5).add(6).add(7);
+        table.put(BUSINESS_HOURS_IDENTIFIER.moduleName(), BUSINESS_HOURS_IDENTIFIER.configurationKey(), businessHours);
+
+        SettingsBasedResolver.ResolvedSettings result = getBusinessHoursResolver(mockResolverReturning(table))
+            .resolveOrDefault(session).block();
+
+        assertThat(result.zoneId()).isEqualTo(ZoneId.of("Europe/Paris"));
+        assertThat(result.get(BUSINESS_HOURS_IDENTIFIER, List.class)).isEmpty();
+    }
+
+    @Test
+    void twoUsersShouldCompleteFirstUserSettingsWithSecondUserSettings() {
+        Username recipientUser = Username.of("recipient@local.com");
+        Username senderUser = Username.of("sender@local.com");
+
+        Table<ModuleName, ConfigurationKey, JsonNode> recipientTable = HashBasedTable.create();
+        recipientTable.put(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey(), JsonNodeFactory.instance.textNode("vi"));
+
+        Table<ModuleName, ConfigurationKey, JsonNode> senderTable = HashBasedTable.create();
+        senderTable.put(LANGUAGE_IDENTIFIER.moduleName(), LANGUAGE_IDENTIFIER.configurationKey(), JsonNodeFactory.instance.textNode("fr"));
+        senderTable.put(TIMEZONE_IDENTIFIER.moduleName(), TIMEZONE_IDENTIFIER.configurationKey(),
+            JsonNodeFactory.instance.objectNode().put("timeZone", "Europe/Paris"));
+
+        ConfigurationResolver configurationResolver = Mockito.mock(ConfigurationResolver.class);
+        Mockito.when(configurationResolver.resolve(Mockito.anySet(),
+                Mockito.argThat(s -> s != null && s.getUser().equals(recipientUser))))
+            .thenReturn(Mono.just(new ConfigurationDocument(recipientTable)));
+        Mockito.when(configurationResolver.resolve(Mockito.anySet(),
+                Mockito.argThat(s -> s != null && s.getUser().equals(senderUser))))
+            .thenReturn(Mono.just(new ConfigurationDocument(senderTable)));
+
+        SettingsBasedResolver.ResolvedSettings result = getSettingsBasedResolver(configurationResolver)
+            .resolveOrDefault(recipientUser, senderUser).block();
+
+        assertThat(result.locale()).isEqualTo(Locale.of("vi"));
+        assertThat(result.zoneId()).isEqualTo(ZoneId.of("Europe/Paris"));
     }
 
     @Test
@@ -275,6 +366,18 @@ public class SettingsBasedResolverTest {
 
         SettingsBasedResolver.ResolvedSettings result = resolver.resolveOrDefault(externalUser).block();
         assertThat(result).isEqualTo(SettingsBasedResolver.ResolvedSettings.DEFAULT);
+    }
+
+    private ConfigurationResolver mockResolverReturning(Table<ModuleName, ConfigurationKey, JsonNode> table) {
+        ConfigurationResolver configurationResolver = Mockito.mock(ConfigurationResolver.class);
+        Mockito.when(configurationResolver.resolve(Mockito.anySet(), Mockito.eq(session)))
+            .thenReturn(Mono.just(new ConfigurationDocument(table)));
+        return configurationResolver;
+    }
+
+    private SettingsBasedResolver getBusinessHoursResolver(ConfigurationResolver configurationResolver) {
+        return SettingsBasedResolver.of(configurationResolver, new SimpleSessionProvider(new RandomMailboxSessionIdGenerator()),
+            Set.of(SettingsBasedResolver.TimeZoneSettingReader.INSTANCE, new BusinessHoursSettingReader()));
     }
 
     private SettingsBasedResolver getSettingsBasedResolver(ConfigurationResolver configurationResolver) {
