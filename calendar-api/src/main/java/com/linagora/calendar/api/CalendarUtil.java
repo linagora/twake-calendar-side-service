@@ -238,8 +238,14 @@ public class CalendarUtil {
 
     private static Property copy(Property property) {
         if (property instanceof XProperty) {
-            return new XProperty(property.getName(), property.getParameterList(), property.getValue());
+            return copy((XProperty) property);
         }
         return property.copy();
+    }
+
+    private static XProperty copy(XProperty property) {
+        XProperty copy = new XProperty(property.getName(), property.getParameterList(), property.getValue());
+        copy.setPrefix(property.getPrefix());
+        return copy;
     }
 }
