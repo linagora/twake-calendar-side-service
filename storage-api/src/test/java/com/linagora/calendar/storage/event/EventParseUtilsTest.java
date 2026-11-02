@@ -765,6 +765,60 @@ class EventParseUtilsTest {
                     "DTSTART;TZID=Asia/Ho_Chi_Minh:20250411T090000",
                     "DTEND;TZID=Asia/Ho_Chi_Minh:20250411T100000");
         }
+
+        @Test
+        void shouldRemoveRecurrenceDefinitionProperties() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:rdate@test
+                DTSTART;TZID=Europe/Paris:20260401T090000
+                DTEND;TZID=Europe/Paris:20260401T100000
+                RRULE:FREQ=DAILY;COUNT=5
+                RDATE;TZID=Europe/Paris:20260420T090000
+                EXDATE;TZID=Europe/Paris:20260403T090000
+                SUMMARY:Review
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            VEvent master = (VEvent) CalendarUtil.parseIcs(ics).getComponent(Component.VEVENT).orElseThrow();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master,
+                ZonedDateTime.of(2026, 4, 2, 9, 0, 0, 0, ZoneId.of("Europe/Paris")));
+
+            assertSoftly(softly -> {
+                softly.assertThat(instance.getProperties(Property.RRULE)).isEmpty();
+                softly.assertThat(instance.getProperties(Property.RDATE)).isEmpty();
+                softly.assertThat(instance.getProperties(Property.EXDATE)).isEmpty();
+                softly.assertThat(instance.getProperties(Property.RECURRENCE_ID)).hasSize(1);
+                softly.assertThat(instance.getProperties(Property.DTSTART)).hasSize(1);
+                softly.assertThat(instance.getProperties(Property.DTEND)).hasSize(1);
+            });
+        }
+
+        @Test
+        void shouldRemoveExRule() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:exrule@test
+                DTSTART;TZID=Europe/Paris:20260401T090000
+                DTEND;TZID=Europe/Paris:20260401T100000
+                RRULE:FREQ=DAILY;COUNT=10
+                EXRULE:FREQ=WEEKLY;BYDAY=SA,SU
+                SUMMARY:Review
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            VEvent master = (VEvent) CalendarUtil.parseIcs(ics).getComponent(Component.VEVENT).orElseThrow();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master,
+                ZonedDateTime.of(2026, 4, 2, 9, 0, 0, 0, ZoneId.of("Europe/Paris")));
+
+            assertThat(instance.getProperties(Property.EXRULE)).isEmpty();
+        }
     }
 
     @Test

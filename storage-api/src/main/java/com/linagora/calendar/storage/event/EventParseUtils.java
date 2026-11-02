@@ -476,7 +476,7 @@ public class EventParseUtils {
         VEvent instance = CalendarUtil.copy(master);
         Period actualPeriod = calculateRecurrenceSet(master, recurrenceDate);
 
-        removeProperties(instance, Property.RRULE, Property.EXDATE, Property.DTSTART, Property.DTEND, Property.DURATION);
+        removeProperties(instance, Property.RRULE, Property.RDATE, Property.EXRULE, Property.EXDATE, Property.DTSTART, Property.DTEND, Property.DURATION);
 
         Optional<ZoneId> masterZoneId = getZoneIdFromStartDate(master);
         addProperties(instance,
