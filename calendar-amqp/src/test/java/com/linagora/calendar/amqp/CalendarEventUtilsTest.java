@@ -19,8 +19,10 @@
 package com.linagora.calendar.amqp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 
@@ -375,6 +377,77 @@ class CalendarEventUtilsTest {
             BEGIN:VEVENT
             UID:no-dtstart@test
             RRULE:FREQ=DAILY;COUNT=2
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isFalse();
+    }
+
+    @Test
+    void expiryCheckShouldStayFastForFiniteRuleWithManyPastOccurrences() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:many-past-occurrences@test
+            DTSTART:20250101T000000Z
+            RRULE:FREQ=SECONDLY;INTERVAL=868;COUNT=7105903
+            END:VEVENT
+            """);
+
+        boolean expired = assertTimeoutPreemptively(Duration.ofSeconds(1),
+            () -> CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK));
+        assertThat(expired).isFalse();
+    }
+
+    @Test
+    void expiryCheckShouldStayFastForUntilRuleWithManyPastOccurrences() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:many-past-occurrences@test
+            DTSTART:19700101T000000Z
+            RRULE:FREQ=SECONDLY;UNTIL=20991231T000000Z
+            END:VEVENT
+            """);
+
+        boolean expired = assertTimeoutPreemptively(Duration.ofSeconds(1),
+            () -> CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK));
+        assertThat(expired).isFalse();
+    }
+
+    @Test
+    void expiryCheckShouldBeFastWhenUntilIsPast() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:ended@test
+            DTSTART:19700101T000000Z
+            RRULE:FREQ=SECONDLY;UNTIL=20251231T000000Z
+            END:VEVENT
+            """);
+
+        boolean expired = assertTimeoutPreemptively(Duration.ofSeconds(1),
+            () -> CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK));
+        assertThat(expired).isTrue();
+    }
+
+    @Test
+    void shouldBeExpiredWhenAllOfManyOccurrencesArePast() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:many-past@test
+            DTSTART:20200101T100000Z
+            RRULE:FREQ=HOURLY;COUNT=15000
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isTrue();
+    }
+
+    @Test
+    void shouldNotBeExpiredWhenUpcomingOccurrenceFollowsManyPastOnes() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:many-past-then-upcoming@test
+            DTSTART:20250101T000000Z
+            RRULE:FREQ=HOURLY;COUNT=8761
             END:VEVENT
             """);
 
