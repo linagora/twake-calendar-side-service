@@ -20,6 +20,7 @@ package com.linagora.calendar.storage.mongodb;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -65,5 +66,24 @@ class AccentInsensitivePrefixPatternTest {
     @Test
     void ofShouldTreatRegexCharactersLiterally() {
         assertThat(AccentInsensitivePrefixPattern.of("th.o").matcher("Théo").lookingAt()).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Adébáyọ̀", "t́", "é́", "ọ̀́"})
+    void ofShouldFindTheUnaccentedNameWhenTheQueryHoldsUncomposableMarks(String query) {
+        // "Adébáyọ̀" ends with U+1ECD U+0300, which NFC cannot compose
+        String unaccented = StringUtils.stripAccents(query);
+        assertThat(AccentInsensitivePrefixPattern.of(query).matcher(unaccented + " Suffix").lookingAt()).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Adébáyọ̀", "t́", "é́"})
+    void ofShouldFindANameHoldingUncomposableMarksByItself(String name) {
+        assertThat(AccentInsensitivePrefixPattern.of(name).matcher(name + " Suffix").lookingAt()).isTrue();
+    }
+
+    @Test
+    void ofShouldKeepMarksFollowingNonLatinCharacters() {
+        assertThat(AccentInsensitivePrefixPattern.of("कि").matcher("क").lookingAt()).isFalse();
     }
 }
