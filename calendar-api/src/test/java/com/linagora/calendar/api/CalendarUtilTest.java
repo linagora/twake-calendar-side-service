@@ -25,13 +25,20 @@ import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.component.VTimeZone;
 import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 
 class CalendarUtilTest {
@@ -150,6 +157,117 @@ class CalendarUtilTest {
         Calendar calendar = CalendarUtil.parseIcs(icsWithTimezone("Custom Linagora Time"));
 
         assertThat(start(calendar)).isEqualTo(Instant.parse("2026-10-26T10:45:00Z"));
+    }
+
+    private static String icsWithObservanceRule(String dtStart, String rRule) {
+        return """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VTIMEZONE
+            TZID:Custom/Zone
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0200
+            TZOFFSETTO:+0100
+            DTSTART:%s
+            RRULE:%s
+            END:STANDARD
+            BEGIN:DAYLIGHT
+            TZOFFSETFROM:+0100
+            TZOFFSETTO:+0200
+            DTSTART:%s
+            RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+            END:DAYLIGHT
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:00000000-0000-0000-0000-000000000001
+            DTSTART:20261026T114500Z
+            SUMMARY:Test
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(dtStart, rRule, dtStart);
+    }
+
+    @Test
+    @Timeout(value = 2, unit = TimeUnit.SECONDS)
+    void parseIcsShouldNotExpandSubDailyVTimezoneObservances() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VTIMEZONE
+            TZID:Custom/Zone
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0200
+            TZOFFSETTO:+0100
+            DTSTART:19701025T030000
+            RRULE:FREQ=MINUTELY
+            END:STANDARD
+            END:VTIMEZONE
+            END:VCALENDAR
+            """;
+
+        assertThatCode(() -> CalendarUtil.parseIcs(ics)).doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "FREQ=SECONDLY",
+        "FREQ=MINUTELY",
+        "FREQ=HOURLY;BYMINUTE=0,30",
+        "FREQ=DAILY",
+        "FREQ=WEEKLY",
+        "FREQ=YEARLY;BYHOUR=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23",
+        "FREQ=YEARLY;BYYEARDAY=1,2,3,4,5,6,7,8,9,10",
+        "FREQ=MONTHLY;BYMONTHDAY=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28"})
+    @Timeout(value = 2, unit = TimeUnit.SECONDS)
+    void parseIcsShouldNotRegisterTimezoneWithTooManyTransitions(String rRule) {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithObservanceRule("16010101T030000", rRule));
+
+        assertThat(CalendarUtil.CustomizedTimeZoneRegistry.hasBoundedObservances(
+            (VTimeZone) calendar.getComponent(Component.VTIMEZONE).orElseThrow())).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU",
+        "FREQ=YEARLY;BYMONTH=10;BYMONTHDAY=8,9,10,11,12,13,14;BYDAY=SU"})
+    void parseIcsShouldRegisterRealWorldTimezonesSinceOutlookEpoch(String rRule) {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithObservanceRule("16010101T030000", rRule));
+
+        assertThat(CalendarUtil.CustomizedTimeZoneRegistry.hasBoundedObservances(
+            (VTimeZone) calendar.getComponent(Component.VTIMEZONE).orElseThrow())).isTrue();
+    }
+
+    @Test
+    void parseIcsShouldResolveCustomTimezoneSinceOutlookEpoch() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithTimezone("Custom Linagora Time")
+            .replace("DTSTART:19700329T020000", "DTSTART:16010325T020000")
+            .replace("DTSTART:19701025T030000", "DTSTART:16011028T030000"));
+
+        assertThat(start(calendar)).isEqualTo(Instant.parse("2026-10-26T10:45:00Z"));
+    }
+
+    @Test
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    void parseIcsShouldRegisterABoundedNumberOfCustomTimezones() {
+        String vTimeZones = IntStream.range(0, 2000)
+            .mapToObj(i -> """
+                BEGIN:VTIMEZONE
+                TZID:Custom/Zone-%d
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0200
+                TZOFFSETTO:+0100
+                DTSTART:19701025T030000
+                RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+                END:STANDARD
+                END:VTIMEZONE
+                """.formatted(i))
+            .collect(Collectors.joining());
+        String ics = "BEGIN:VCALENDAR\nVERSION:2.0\n" + vTimeZones + "END:VCALENDAR\n";
+
+        // Each registered custom zone takes an id from a JVM wide pool of 1500: the next parse must still succeed
+        assertThatCode(() -> CalendarUtil.parseIcs(ics)).doesNotThrowAnyException();
+        assertThat(start(CalendarUtil.parseIcs(icsWithTimezone("Custom Linagora Time"))))
+            .isEqualTo(Instant.parse("2026-10-26T10:45:00Z"));
     }
 
     @Test
