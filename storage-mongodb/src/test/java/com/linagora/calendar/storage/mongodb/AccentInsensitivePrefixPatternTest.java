@@ -86,4 +86,46 @@ class AccentInsensitivePrefixPatternTest {
     void ofShouldKeepMarksFollowingNonLatinCharacters() {
         assertThat(AccentInsensitivePrefixPattern.of("कि").matcher("क").lookingAt()).isFalse();
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "\u095E\u093E\u0924\u093F\u092E\u093E", // फ़ातिमा with the precomposed फ़ (composition exclusion)
+        "\u0958\u093E\u0938\u093F\u092E", // क़ासिम with the precomposed क़
+        "\u110C\u116F\u11B3", // 줤 stored decomposed (NFD)
+        "\uFA01", // CJK compatibility ideograph, NFC maps it to U+5EA6
+        "\uFA01\u0301\uFFFD"
+    })
+    void ofShouldFindANameTypedExactlyAsStored(String name) {
+        assertThat(AccentInsensitivePrefixPattern.of(name).matcher(name + " Suffix").lookingAt()).isTrue();
+    }
+
+    @Test
+    void ofShouldFindADecomposedHangulNameFromAComposedQuery() {
+        assertThat(AccentInsensitivePrefixPattern.of("\uC924").matcher("\u110C\u116F\u11B3").lookingAt()).isTrue();
+    }
+
+    @Test
+    void ofShouldFindAComposedHangulNameFromADecomposedQuery() {
+        assertThat(AccentInsensitivePrefixPattern.of("\u110C\u116F\u11B3").matcher("\uC924").lookingAt()).isTrue();
+    }
+
+    @Test
+    void ofShouldFindADecomposedNuktaNameFromAPrecomposedQuery() {
+        assertThat(AccentInsensitivePrefixPattern.of("\u095E\u093E").matcher("\u092B\u093C\u093E").lookingAt()).isTrue();
+    }
+
+    @Test
+    void ofShouldFindACompatibilityIdeographNameFromItsCanonicalForm() {
+        assertThat(AccentInsensitivePrefixPattern.of("\uFA01").matcher("\u5EA6").lookingAt()).isTrue();
+    }
+
+    @Test
+    void ofShouldFindAComposedCyrillicNameFromADecomposedQuery() {
+        assertThat(AccentInsensitivePrefixPattern.of("\u0438\u0306").matcher("\u0439").lookingAt()).isTrue();
+    }
+
+    @Test
+    void ofShouldNotMatchADifferentHangulSyllable() {
+        assertThat(AccentInsensitivePrefixPattern.of("\uC924").matcher("\u110C\u116F\u11B2").lookingAt()).isFalse();
+    }
 }
