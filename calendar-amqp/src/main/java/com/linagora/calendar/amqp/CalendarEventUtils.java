@@ -49,7 +49,7 @@ import net.fortuna.ical4j.model.property.RRule;
 public class CalendarEventUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarEventUtils.class);
     @VisibleForTesting
-    static final int MAX_EXAMINED_OCCURRENCES = 20_000;
+    static final int MAX_EXAMINED_OCCURRENCES = Integer.getInteger("tcalendar.itip.max.examined.occurences", 20_000);
     private static final ZonedDateTime LAST_EXPANDED_DATE = ZonedDateTime.of(9999, 12, 31, 23, 59, 59, 0, ZoneOffset.UTC);
 
     public static boolean vEventExpired(VEvent vevent, Clock clock) {
