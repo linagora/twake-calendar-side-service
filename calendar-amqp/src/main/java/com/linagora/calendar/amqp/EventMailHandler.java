@@ -72,6 +72,7 @@ import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
 import com.linagora.calendar.smtp.template.content.model.ReplyContentModelBuilder;
+import com.linagora.calendar.storage.MailtoUri;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ResourceDAO;
@@ -275,12 +276,14 @@ public class EventMailHandler {
 
         private PersonModel booker() {
             String bookerEmail = EventParseUtils.getPropertyValueIgnoreCase(event.base().getFirstVEvent(), X_PUBLICLY_CREATOR_HEADER)
+                .map(MailtoUri::stripMailtoPrefix)
                 .orElseThrow(() -> new EventMailHandlerException("Missing " + X_PUBLICLY_CREATOR_HEADER + " for publicly created cancel event"));
             return personOfEmail(bookerEmail);
         }
 
         private PersonModel canceler() {
             return EventParseUtils.getPropertyValueIgnoreCase(event.base().getFirstVEvent(), X_PUBLICLY_CANCELLED_BY_HEADER)
+                .map(MailtoUri::stripMailtoPrefix)
                 .map(this::personOfEmail)
                 .orElseGet(() -> PersonModel.from(EventParseUtils.getOrganizer(event.base().getFirstVEvent())));
         }

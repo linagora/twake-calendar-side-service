@@ -23,6 +23,7 @@ import org.apache.james.core.MailAddress;
 import com.linagora.calendar.amqp.EventMailHandlerException;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
+import com.linagora.calendar.storage.MailtoUri;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
 public interface CalendarEventBookingNotificationEmail {
@@ -34,6 +35,7 @@ public interface CalendarEventBookingNotificationEmail {
     default MailAddress proposerEmail() {
         try {
             return new MailAddress(EventParseUtils.getPropertyValueIgnoreCase(base().getFirstVEvent(), X_PUBLICLY_CREATOR_HEADER)
+                .map(MailtoUri::stripMailtoPrefix)
                 .orElseThrow());
         } catch (Exception e) {
             throw new EventMailHandlerException("Invalid " + X_PUBLICLY_CREATOR_HEADER + " for public agenda event", e);
