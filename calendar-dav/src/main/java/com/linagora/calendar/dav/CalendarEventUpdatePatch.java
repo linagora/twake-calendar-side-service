@@ -32,7 +32,6 @@ import net.fortuna.ical4j.model.Content;
 import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyList;
-import net.fortuna.ical4j.model.RelationshipPropertyModifiers;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 
@@ -74,7 +73,7 @@ public interface CalendarEventUpdatePatch {
                     if (sameStatus) {
                         return false;
                     } else {
-                        vEvent.with(RelationshipPropertyModifiers.ATTENDEE, attendee.replace(status));
+                        replaceProperty(vEvent, attendee, attendee.replace(status));
                         return true;
                     }
                 })
@@ -87,6 +86,19 @@ public interface CalendarEventUpdatePatch {
             .addAll(vEvent.getProperties())
             .addAll(Arrays.asList(properties))
             .build();
+
+        vEvent.setPropertyList(new PropertyList(newProperties));
+    }
+
+    /**
+     * Replaces only the given property instance (by identity), leaving other properties
+     * sharing the same value (e.g. duplicated ATTENDEE addresses) untouched.
+     */
+    static void replaceProperty(VEvent vEvent, Property oldProperty, Property newProperty) {
+        List<Property> newProperties = vEvent.getProperties()
+            .stream()
+            .map(property -> property == oldProperty ? newProperty : property)
+            .toList();
 
         vEvent.setPropertyList(new PropertyList(newProperties));
     }
