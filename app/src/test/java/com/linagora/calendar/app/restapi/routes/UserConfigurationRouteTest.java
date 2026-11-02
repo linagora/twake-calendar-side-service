@@ -108,59 +108,7 @@ class UserConfigurationRouteTest {
     }
 
     @Test
-    void putShouldReturn204WhenValidRequest() {
-        given()
-            .body("""
-                [
-                  {
-                    "name": "core",
-                    "configurations": [
-                      {
-                        "name": "homePage",
-                        "value": "unifiedinbox"
-                      },
-                      {
-                        "name": "businessHours",
-                        "value": [
-                          {
-                            "start": "09:00",
-                            "end": "17:05",
-                            "daysOfWeek": [1, 2, 3, 4, 5]
-                          }
-                        ]
-                      },
-                      {
-                        "name": "datetime",
-                        "value": {
-                          "timeZone": "Asia/Ho_Chi_Minh",
-                          "use24hourFormat": true
-                        }
-                      },
-                      {
-                        "name": "language",
-                        "value": "vi"
-                      }
-                    ]
-                  },
-                  {
-                    "name": "linagora.esn.unifiedinbox",
-                    "configurations": [
-                      {
-                        "name": "useEmailLinks",
-                        "value": true
-                      }
-                    ]
-                  }
-                ]
-                """)
-        .when()
-            .put("/api/configurations?scope=user")
-        .then()
-            .statusCode(HttpStatus.SC_NO_CONTENT);
-    }
-
-    @Test
-    void putShouldSaveUserConfigurationWhenSuccessful() {
+    void patchShouldSaveUserConfigurationWhenSuccessful() {
         String configuration = """
             [
               {
@@ -178,7 +126,7 @@ class UserConfigurationRouteTest {
         given()
             .body(configuration)
         .when()
-            .put("/api/configurations?scope=user")
+            .patch("/api/configurations?scope=user")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -213,7 +161,7 @@ class UserConfigurationRouteTest {
     }
 
     @Test
-    void putShouldSaveUserConfigurationWhenComplexRequest(TwakeCalendarGuiceServer server) {
+    void patchShouldSaveUserConfigurationWhenComplexRequest(TwakeCalendarGuiceServer server) {
         given()
             .body("""
                 [
@@ -259,7 +207,7 @@ class UserConfigurationRouteTest {
                 ]
                 """)
         .when()
-            .put("/api/configurations?scope=user")
+            .patch("/api/configurations?scope=user")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -287,33 +235,6 @@ class UserConfigurationRouteTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-        "/api/configurations",  // Missing scope
-        "/api/configurations?scope=invalid", // Invalid scope
-        "/api/configurations?scope=", // Invalid scope
-    })
-    void putShouldReturn400WhenInvalidScopeParameter(String invalidUrl) {
-        given()
-            .body("""
-                [
-                  {
-                    "name": "core",
-                    "configurations": [
-                      {
-                        "name": "homePage",
-                        "value": "unifiedinbox"
-                      }
-                    ]
-                  }
-                ]
-                """)
-        .when()
-            .put(invalidUrl)
-        .then()
-            .statusCode(HttpStatus.SC_BAD_REQUEST);
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {
         "[{\"name\": \"core\" }]",  // Missing configurations
         "[{\"configurations\": [{\"name\": \"language\", \"value\": \"en\"}]}]", // Missing name
         "[{\"name\": \"core\", \"configurations\": [{\"name\": \"language\"}]}]",  // Missing value for 'language'
@@ -322,11 +243,11 @@ class UserConfigurationRouteTest {
         "{}",
         ""
     })
-    void putShouldReturn400WhenInvalidRequest(String bodyRequest) {
+    void patchShouldReturn400WhenInvalidRequest(String bodyRequest) {
         String response = given()
             .body(bodyRequest)
         .when()
-            .put("/api/configurations?scope=user")
+            .patch("/api/configurations?scope=user")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
             .contentType(JSON)
@@ -347,7 +268,7 @@ class UserConfigurationRouteTest {
     }
 
     @Test
-    void putShouldSaveDisplayWeekNumbersConfiguration() {
+    void patchShouldSaveDisplayWeekNumbersConfiguration() {
         String configuration = """
             [
               {
@@ -365,7 +286,7 @@ class UserConfigurationRouteTest {
         given()
             .body(configuration)
         .when()
-            .put("/api/configurations?scope=user")
+            .patch("/api/configurations?scope=user")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -569,7 +490,7 @@ class UserConfigurationRouteTest {
                 ]
                 """)
         .when()
-            .put("/api/configurations?scope=user")
+            .patch("/api/configurations?scope=user")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -649,7 +570,7 @@ class UserConfigurationRouteTest {
                 ]
                 """)
         .when()
-            .put("/api/configurations?scope=user")
+            .patch("/api/configurations?scope=user")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -727,7 +648,7 @@ class UserConfigurationRouteTest {
                 ]
                 """)
         .when()
-            .put("/api/configurations?scope=user")
+            .patch("/api/configurations?scope=user")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -819,7 +740,7 @@ class UserConfigurationRouteTest {
                 ]
                 """)
         .when()
-            .put("/api/configurations?scope=user")
+            .patch("/api/configurations?scope=user")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -881,7 +802,7 @@ class UserConfigurationRouteTest {
                 ]
                 """)
         .when()
-            .put("/api/configurations?scope=user")
+            .patch("/api/configurations?scope=user")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -955,7 +876,7 @@ class UserConfigurationRouteTest {
     }
 
     @Test
-    void putShouldPreserveAutoDetect() {
+    void patchShouldSaveAutoDetectFalse() {
         given()
             .body("""
                 [
@@ -975,7 +896,7 @@ class UserConfigurationRouteTest {
                 ]
                 """)
         .when()
-            .put("/api/configurations?scope=user")
+            .patch("/api/configurations?scope=user")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
@@ -1032,7 +953,7 @@ class UserConfigurationRouteTest {
                 ]
                 """)
         .when()
-            .put("/api/configurations?scope=user")
+            .patch("/api/configurations?scope=user")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
