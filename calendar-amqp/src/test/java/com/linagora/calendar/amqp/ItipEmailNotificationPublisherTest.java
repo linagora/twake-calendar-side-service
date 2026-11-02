@@ -433,6 +433,36 @@ class ItipEmailNotificationPublisherTest {
         }
 
         @Test
+        void requestWithEmptyRecurrenceIdShouldStillNotifyChangedMaster() {
+            String current = RECURRING_MASTER_AND_OVERRIDE
+                .replace("SUMMARY:Weekly sync\n", "SUMMARY:Weekly sync updated\n");
+
+            List<NotificationEmailDTO> notifications = requestWithEmptyRecurrenceId(current);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.isNewEvent()).isFalse();
+                    assertThat(notification.event()).contains("SUMMARY:Weekly sync updated")
+                        .doesNotContain("RECURRENCE-ID");
+                });
+        }
+
+        @Test
+        void requestWithChangedRuleAndEmptyRecurrenceIdShouldStillNotifyNewSeries() {
+            String current = RECURRING_MASTER_AND_OVERRIDE
+                .replace("RRULE:FREQ=WEEKLY;COUNT=3", "RRULE:FREQ=WEEKLY;COUNT=4");
+
+            List<NotificationEmailDTO> notifications = requestWithEmptyRecurrenceId(current);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RRULE:FREQ=WEEKLY;COUNT=4")
+                        .doesNotContain("RECURRENCE-ID");
+                });
+        }
+
+        @Test
         void requestWithUnreadableRDateShouldNotBeSuppressedWhenExpiryIsUnknown() {
             String current = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RDATE;TZID=Europe/Paris:20261340T100000");
             Clock afterStart = Clock.fixed(Instant.parse("2026-04-02T00:00:00Z"), ZoneOffset.UTC);
@@ -1269,17 +1299,37 @@ class ItipEmailNotificationPublisherTest {
         }
 
         private List<NotificationEmailDTO> requestWithUnparsableRecurrenceId(String current) {
-            Calendar previousCalendar = parseIcs(RECURRING_OLD_NO_EXDATE);
-            Calendar currentCalendar = parseIcs(current);
-            VEvent override = currentCalendar.<VEvent>getComponents(Component.VEVENT).getLast();
-            override.remove(override.getRecurrenceId());
             // Same state as CalendarDiffCalculatorTest: relaxed ICS parsing clears invalid values, so inject a throwing RECURRENCE-ID.
-            override.add(new RecurrenceId<Temporal>("20260408T100000Z") {
+            return requestWithOverrideRecurrenceId(current, new RecurrenceId<Temporal>("20260408T100000Z") {
                 @Override
                 public Temporal getDate() {
                     throw new DateTimeParseException("Unparsable RECURRENCE-ID", "mailto:john@example.com", 0);
                 }
             });
+        }
+
+        private List<NotificationEmailDTO> requestWithEmptyRecurrenceId(String current) {
+            // ical4j keeps "RECURRENCE-ID;TZID=Europe/Paris:" with a null date. The value stays readable so that
+            // CalendarDiffCalculator still indexes the override: only the publisher handling of the null date is exercised.
+            return requestWithOverrideRecurrenceId(current, new RecurrenceId<Temporal>("20260408T100000Z") {
+                @Override
+                public Temporal getDate() {
+                    return null;
+                }
+
+                @Override
+                public String getValue() {
+                    return "20260408T100000Z";
+                }
+            });
+        }
+
+        private List<NotificationEmailDTO> requestWithOverrideRecurrenceId(String current, RecurrenceId<Temporal> recurrenceId) {
+            Calendar previousCalendar = parseIcs(RECURRING_OLD_NO_EXDATE);
+            Calendar currentCalendar = parseIcs(current);
+            VEvent override = currentCalendar.<VEvent>getComponents(Component.VEVENT).getLast();
+            override.remove(override.getRecurrenceId());
+            override.add(recurrenceId);
 
             // The calculator returns both the master and override diffs.
             assertThat(CalendarDiffCalculator.calculate("alice@example.com", currentCalendar, previousCalendar)).hasSize(2);

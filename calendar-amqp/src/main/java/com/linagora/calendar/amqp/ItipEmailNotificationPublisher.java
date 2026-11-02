@@ -434,11 +434,16 @@ class ItipEmailNotificationPublisher {
         }
 
         /**
-         * An unparsable RECURRENCE-ID must not prevent notifying the other occurrences: such an override is not keyed.
+         * An unparsable or empty RECURRENCE-ID must not prevent notifying the other occurrences: such an override is not keyed.
          */
         private Optional<Temporal> recurrenceDate(VEvent vevent, DateProperty<?> recurrenceId) {
             try {
-                return Optional.of(recurrenceId.getDate());
+                Optional<Temporal> recurrenceDate = Optional.ofNullable(recurrenceId.getDate());
+                if (recurrenceDate.isEmpty()) {
+                    LOGGER.warn("Ignoring override with empty RECURRENCE-ID for event {}",
+                        vevent.getUid().map(Property::getValue).orElse(null));
+                }
+                return recurrenceDate;
             } catch (DateTimeException exception) {
                 // getValue() would trigger the same failing parse: log the UID instead
                 LOGGER.warn("Ignoring override with unparsable RECURRENCE-ID for event {}",
