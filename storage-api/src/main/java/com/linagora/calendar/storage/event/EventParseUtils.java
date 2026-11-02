@@ -44,7 +44,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import jakarta.mail.internet.AddressException;
@@ -104,9 +103,9 @@ public class EventParseUtils {
     public static final String LEGACY_EVENT_FOOTER_SEPARATOR =
         "-::~:~::~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~:~::~:~::-";
     public static final String EVENT_FOOTER_SEPARATOR = "-_-_-_-_-_-_-_-";
-    private static final List<Pattern> EVENT_FOOTER_PATTERNS = List.of(
-        eventFooterPattern(EVENT_FOOTER_SEPARATOR),
-        eventFooterPattern(LEGACY_EVENT_FOOTER_SEPARATOR));
+    private static final List<String> EVENT_FOOTER_SEPARATORS = List.of(
+        EVENT_FOOTER_SEPARATOR,
+        LEGACY_EVENT_FOOTER_SEPARATOR);
 
     private static final DateTimeFormatter FLEXIBLE_DATE_TIME_FORMATTER =
         new DateTimeFormatterBuilder()
@@ -289,15 +288,45 @@ public class EventParseUtils {
             return description;
         }
         String withoutFooters = description;
-        for (Pattern footerPattern : EVENT_FOOTER_PATTERNS) {
-            withoutFooters = footerPattern.matcher(withoutFooters).replaceAll("\n");
+        for (String separator : EVENT_FOOTER_SEPARATORS) {
+            withoutFooters = stripFooterBlocks(withoutFooters, separator);
         }
         String trimmed = withoutFooters.trim();
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private static Pattern eventFooterPattern(String separator) {
-        return Pattern.compile("\\n*" + Pattern.quote(separator) + "[\\s\\S]*?" + Pattern.quote(separator) + "\\n*");
+    /**
+     * Replaces each block {@code \n*<separator>...<separator>\n*} with a single {@code \n}, pairing separators from
+     * left to right. An opening separator that is never closed is kept as is.
+     *
+     * <p>Linear in the length of the description: a regex with a leading {@code \n*} backtracks quadratically over
+     * long newline runs.
+     */
+    private static String stripFooterBlocks(String description, String separator) {
+        int open = description.indexOf(separator);
+        if (open < 0) {
+            return description;
+        }
+        StringBuilder result = new StringBuilder(description.length());
+        int copyFrom = 0;
+        while (open >= 0) {
+            int close = description.indexOf(separator, open + separator.length());
+            if (close < 0) {
+                break;
+            }
+            int blockStart = open;
+            while (blockStart > copyFrom && description.charAt(blockStart - 1) == '\n') {
+                blockStart--;
+            }
+            int blockEnd = close + separator.length();
+            while (blockEnd < description.length() && description.charAt(blockEnd) == '\n') {
+                blockEnd++;
+            }
+            result.append(description, copyFrom, blockStart).append('\n');
+            copyFrom = blockEnd;
+            open = description.indexOf(separator, copyFrom);
+        }
+        return result.append(description, copyFrom, description.length()).toString();
     }
 
     public static Optional<String> getPropertyValueIgnoreCase(VEvent vEvent, String property) {
