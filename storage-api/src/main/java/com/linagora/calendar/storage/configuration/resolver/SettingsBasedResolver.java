@@ -24,6 +24,7 @@ import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingR
 import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
 
 import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -43,7 +44,6 @@ import com.linagora.calendar.storage.configuration.ModuleName;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
 import com.linagora.calendar.storage.exception.UserNotFoundException;
 
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public interface SettingsBasedResolver {
@@ -156,12 +156,8 @@ public interface SettingsBasedResolver {
 
         @Override
         public Mono<ResolvedSettings> resolveOrDefault(MailboxSession session) {
-            return readSavedSettings(session)
-                .onErrorResume(error -> {
-                    logError(session.getUser(), error);
-                    return Mono.just(ResolvedSettings.DEFAULT);
-                })
-                .switchIfEmpty(Mono.just(ResolvedSettings.DEFAULT));
+            return readSavedSettingsOrEmpty(session)
+                .map(this::withDefaults);
         }
 
         @Override
@@ -171,33 +167,52 @@ public interface SettingsBasedResolver {
 
         @Override
         public Mono<ResolvedSettings> resolveOrDefault(Username user, Username secondUser) {
-            return readSavedSettings(sessionProvider.createSession(user))
+            return readSavedSettingsOrEmpty(sessionProvider.createSession(user))
+                .flatMap(userSettings -> {
+                    if (containsAllRequiredIdentifiers(userSettings)) {
+                        return Mono.just(userSettings);
+                    }
+                    return readSavedSettingsOrEmpty(sessionProvider.createSession(secondUser))
+                        .map(secondUserSettings -> merge(userSettings, secondUserSettings));
+                })
+                .map(this::withDefaults);
+        }
+
+        private Mono<Map<EntryIdentifier, Object>> readSavedSettingsOrEmpty(MailboxSession session) {
+            return configurationResolver.resolve(identifiers, session)
+                .map(this::resolveSettingsFromDocument)
                 .onErrorResume(error -> {
-                    logError(user, error);
+                    logError(session.getUser(), error);
                     return Mono.empty();
                 })
-                .switchIfEmpty(Mono.defer(() -> readSavedSettings(sessionProvider.createSession(secondUser))))
-                .onErrorResume(error -> {
-                    logError(secondUser, error);
-                    return Mono.just(ResolvedSettings.DEFAULT);
-                })
-                .switchIfEmpty(Mono.just(ResolvedSettings.DEFAULT));
+                .defaultIfEmpty(Map.of());
         }
 
-        private Mono<ResolvedSettings> readSavedSettings(MailboxSession session) {
-            return configurationResolver.resolve(identifiers, session)
-                .flatMap(this::resolveSettingsFromDocument)
-                .filter(this::containsAllRequiredIdentifiers)
-                .map(ResolvedSettings::new);
+        private Map<EntryIdentifier, Object> resolveSettingsFromDocument(ConfigurationDocument document) {
+            return readers.stream()
+                .flatMap(reader -> parseOrEmpty(reader, document)
+                    .map(value -> Map.entry(reader.identifier(), (Object) value))
+                    .stream())
+                .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
         }
 
-        private Mono<Map<EntryIdentifier, Object>> resolveSettingsFromDocument(ConfigurationDocument document) {
-            return Flux.fromIterable(readers)
-                .flatMap(reader ->
-                    reader.parse(document)
-                        .map(value -> Mono.just(Map.entry(reader.identifier(), (Object) value)))
-                        .orElse(Mono.empty()))
-                .collectMap(Map.Entry::getKey, Map.Entry::getValue);
+        private Optional<?> parseOrEmpty(SettingReader<?> reader, ConfigurationDocument document) {
+            try {
+                return reader.parse(document);
+            } catch (Exception e) {
+                LOGGER.warn("Failed to read setting {}, will use its default value", reader.identifier(), e);
+                return Optional.empty();
+            }
+        }
+
+        private Map<EntryIdentifier, Object> merge(Map<EntryIdentifier, Object> preferred, Map<EntryIdentifier, Object> fallback) {
+            Map<EntryIdentifier, Object> merged = new HashMap<>(fallback);
+            merged.putAll(preferred);
+            return merged;
+        }
+
+        private ResolvedSettings withDefaults(Map<EntryIdentifier, Object> savedSettings) {
+            return new ResolvedSettings(Map.copyOf(merge(savedSettings, ResolvedSettings.DEFAULT.values())));
         }
 
         private boolean containsAllRequiredIdentifiers(Map<EntryIdentifier, Object> map) {
