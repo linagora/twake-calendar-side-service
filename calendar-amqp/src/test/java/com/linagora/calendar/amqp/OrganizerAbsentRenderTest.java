@@ -241,6 +241,35 @@ class OrganizerAbsentRenderTest {
     }
 
     @Test
+    void bookingConfirmedModelShouldAcceptAMailtoPrefixedCreator() throws Exception {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:booking-1
+            DTSTART:20261103T150000Z
+            DTEND:20261103T153000Z
+            SUMMARY:Intro call
+            ORGANIZER;CN=Owner:mailto:owner@domain.tld
+            ATTENDEE;CN=Erin;PARTSTAT=NEEDS-ACTION:mailto:erin@visitor.com
+            X-PUBLICLY-CREATED:TRUE
+            X-PUBLICLY-CREATOR:mailto:erin@visitor.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+        CalendarEventNotificationEmail base = new CalendarEventNotificationEmail(
+            new MailAddress("owner@domain.tld"),
+            new MailAddress("bob@domain.tld"),
+            CalendarUtil.parseIcs(ics),
+            "/calendars/base/event.ics");
+
+        Map<String, Object> pugModel = new CalendarEventBookingConfirmedNotificationEmail(base)
+            .toPugModel(LOCALE, ZONE, translator("event-booking-confirmed"), new MailAddress("bob@domain.tld"));
+
+        assertThat(pugModel).containsEntry("subject.proposal_owner", "Erin");
+    }
+
+    @Test
     void alarmTemplateShouldRenderWhenOrganizerIsAbsent() throws Exception {
         // Mirrors AlarmTriggerService: an absent organizer becomes PersonModel.EMPTY.
         Map<String, Object> pugModel = AlarmContentModelBuilder.builder()

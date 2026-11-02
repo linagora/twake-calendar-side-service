@@ -67,6 +67,32 @@ class BookedEventCancelledTest {
     }
 
     @Test
+    void fromShouldResolveCancelledByWhenPubliclyCancelledByHasMailtoPrefix() {
+        BookedEventCancelled result = BookedEventCancelled.from(ORGANIZER, CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-123
+            SUMMARY:30-min intro call
+            DTSTART:20360126T093000Z
+            DURATION:PT30M
+            ORGANIZER;CN=Alice Owner:mailto:owner@example.com
+            ATTENDEE;RSVP=TRUE;ROLE=CHAIR;CUTYPE=INDIVIDUAL;PARTSTAT=NEEDS-ACTION;CN=Alice Owner:mailto:owner@example.com
+            ATTENDEE;RSVP=TRUE;ROLE=REQ-PARTICIPANT;CUTYPE=INDIVIDUAL;PARTSTAT=ACCEPTED;CN=BOB:mailto:creator@example.com
+            X-PUBLICLY-CREATED;VALUE=BOOLEAN:TRUE
+            X-PUBLICLY-CREATOR:creator@example.com
+            X-PUBLICLY-CANCELLED-BY:MAILTO:creator@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """));
+
+        assertSoftly(softly -> {
+            softly.assertThat(result.cancelledBy().cn()).isEqualTo("BOB");
+            softly.assertThat(result.cancelledBy().email().asString()).isEqualTo("creator@example.com");
+        });
+    }
+
+    @Test
     void fromShouldFallbackToOrganizerWhenPubliclyCreatorIsAbsent() {
         BookedEventCancelled result = BookedEventCancelled.from(ORGANIZER, CalendarUtil.parseIcs("""
             BEGIN:VCALENDAR

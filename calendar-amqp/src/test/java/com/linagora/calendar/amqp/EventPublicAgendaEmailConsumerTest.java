@@ -708,6 +708,52 @@ public class EventPublicAgendaEmailConsumerTest {
             .contains("Subject: Van Tung TRAN has accepted your event proposal");
     }
 
+    @Test
+    void shouldSendBookingConfirmedEmailWhenPubliclyCreatorHasMailtoPrefix() {
+        String eventUid = UUID.randomUUID().toString();
+        String mailtoCreator = "mailto:" + attendee.username().asString();
+        davTestHelper.upsertCalendar(organizer, generatePublicAgendaCalendarWithCustomCreator(eventUid,
+            organizer.username().asString(), attendee.username().asString(), PartStat.NEEDS_ACTION, INITIAL_SEQUENCE,
+            mailtoCreator, null), eventUid);
+        calmlyAwaitDuringNoEmail
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
+
+        davTestHelper.upsertCalendar(organizer, generatePublicAgendaCalendarWithCustomCreator(eventUid,
+            organizer.username().asString(), attendee.username().asString(), PartStat.ACCEPTED, UPDATED_SEQUENCE,
+            mailtoCreator, null), eventUid);
+
+        awaitAtMostForEmailDelivery
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        assertSoftly(softly -> {
+            softly.assertThat(smtpMailsResponseSupplier.get().getString("[0].recipients[0].address"))
+                .isEqualTo(attendee.username().asString());
+            softly.assertThat(smtpMailsResponseSupplier.get().getString("[0].message"))
+                .contains("Subject: Van Tung TRAN has accepted your event proposal");
+        });
+    }
+
+    @Test
+    void cancelEmailShouldNameTheBookerWhenPubliclyCreatorHasMailtoPrefix() {
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(organizer, generatePublicAgendaCalendarWithCustomCreator(eventUid,
+            organizer.username().asString(), attendee.username().asString(), PartStat.ACCEPTED, UPDATED_SEQUENCE,
+            "MAILTO:" + attendee.username().asString(), null), eventUid);
+        awaitAtMostForEmailDelivery
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+        mockSmtpExtension.clear();
+
+        davTestHelper.deleteCalendar(organizer, eventUid);
+
+        awaitAtMostForEmailDelivery
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        assertThat(getHtml(smtpMailsResponseSupplier.get().getString("[0].message")))
+            .contains("has canceled an event")
+            .contains("Bob")
+            .doesNotContain("MAILTO:");
+    }
+
     private String getHtml(String rawMessage) {
         Pattern htmlPattern = Pattern.compile(
             "Content-Transfer-Encoding: base64\r?\nContent-Type: text/html; charset=UTF-8\r?\nContent-Language: [^\r\n]+\r?\n\r?\n([A-Za-z0-9+/=\r\n]+)\r?\n---=Part",

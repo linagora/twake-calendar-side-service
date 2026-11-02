@@ -26,6 +26,7 @@ import java.util.Optional;
 import org.apache.commons.lang3.Strings;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.storage.MailtoUri;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
@@ -73,6 +74,7 @@ public record BookedEventCancelled(OpenPaaSUser organizer,
     private static EventFields.Person resolveCancelledBy(VEvent vEvent, EventFields.Person fallback) {
         return EventParseUtils.getPropertyValueIgnoreCase(vEvent, X_PUBLICLY_CANCELLED_BY)
             .or(() -> EventParseUtils.getPropertyValueIgnoreCase(vEvent, X_PUBLICLY_CREATOR))
+            .map(MailtoUri::stripMailtoPrefix)
             .flatMap(creatorEmail -> EventParseUtils.getAttendees(vEvent).stream()
                 .filter(attendee -> Strings.CI.equals(attendee.email().asString(), creatorEmail))
                 .findFirst()
