@@ -458,6 +458,10 @@ public class EventParseUtils {
         } catch (DateTimeException e) {
             LOGGER.info("Ignoring unparsable RECURRENCE-ID: {}", e.getMessage());
             return Optional.empty();
+        } catch (NullPointerException e) {
+            // Relaxed parsing keeps a RECURRENCE-ID with a TZID but an empty value: ical4j getValue() then dereferences a null date
+            LOGGER.info("Ignoring RECURRENCE-ID with an empty value");
+            return Optional.empty();
         }
     }
 
