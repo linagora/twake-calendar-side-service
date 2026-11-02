@@ -30,11 +30,21 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.DateTimeException;
+import java.time.Year;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoField;
+import java.time.temporal.Temporal;
 import java.time.zone.ZoneRules;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.stream.Stream;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.annotations.VisibleForTesting;
 
 import net.fortuna.ical4j.data.CalendarBuilder;
 import net.fortuna.ical4j.data.CalendarParserFactory;
@@ -47,15 +57,21 @@ import net.fortuna.ical4j.model.ComponentList;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyFactory;
 import net.fortuna.ical4j.model.PropertyList;
+import net.fortuna.ical4j.model.Recur;
 import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.TimeZoneRegistry;
 import net.fortuna.ical4j.model.TimeZoneRegistryImpl;
 import net.fortuna.ical4j.model.component.CalendarComponent;
+import net.fortuna.ical4j.model.component.Observance;
 import net.fortuna.ical4j.model.component.VAlarm;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.component.VTimeZone;
+import net.fortuna.ical4j.model.property.DtStart;
 import net.fortuna.ical4j.model.property.Method;
+import net.fortuna.ical4j.model.property.RRule;
 import net.fortuna.ical4j.model.property.Version;
 import net.fortuna.ical4j.model.property.XProperty;
+import net.fortuna.ical4j.transform.recurrence.Frequency;
 import net.fortuna.ical4j.util.CompatibilityHints;
 import net.fortuna.ical4j.util.MapTimeZoneCache;
 
@@ -70,22 +86,112 @@ public class CalendarUtil {
      * <p>To avoid this, VTIMEZONE whose TZID is known by the JVM, either directly or through the ical4j aliases (Windows
      * zone names...), are not registered: they resolve to the JVM zone. Only custom TZIDs are registered and resolved
      * from their own definition.
+     *
+     * <p>Registering a VTIMEZONE makes ical4j expand every observance RRULE from its DTSTART up to now. Custom zones whose
+     * observances would yield too many transitions (sub-daily rules, decades of monthly ones...) are not registered either:
+     * their TZID is then handled like any unknown TZID. So are the custom zones beyond the first
+     * {@link #MAX_CUSTOM_TIMEZONES} of a calendar, as each takes an id from the JVM wide pool.
      */
     public static class CustomizedTimeZoneRegistry implements TimeZoneRegistry {
+        private static final Logger LOGGER = LoggerFactory.getLogger(CustomizedTimeZoneRegistry.class);
+        @VisibleForTesting
+        static final long MAX_OBSERVANCE_TRANSITIONS = 20_000;
+        @VisibleForTesting
+        static final int MAX_CUSTOM_TIMEZONES = 20;
+        private static final int MIN_EXPANDED_YEARS = 5;
+        private static final int MAX_DAYS_PER_YEAR = 366;
+        private static final int MAX_WEEKDAYS_PER_MONTH = 5;
+        private static final int MONTHS_PER_YEAR = 12;
+
         private final TimeZoneRegistryImpl delegate = new TimeZoneRegistryImpl();
+        private int registeredCount = 0;
 
         @Override
         public void register(TimeZone timezone) {
-            if (!isGloballyKnown(timezone.getID())) {
+            if (shouldRegister(timezone)) {
                 delegate.register(timezone);
             }
         }
 
         @Override
         public void register(TimeZone timezone, boolean update) {
-            if (!isGloballyKnown(timezone.getID())) {
+            if (shouldRegister(timezone)) {
                 delegate.register(timezone, update);
             }
+        }
+
+        private boolean shouldRegister(TimeZone timezone) {
+            if (isGloballyKnown(timezone.getID())) {
+                return false;
+            }
+            if (registeredCount >= MAX_CUSTOM_TIMEZONES) {
+                LOGGER.info("Ignoring VTIMEZONE {}: more than {} custom timezones in the calendar", timezone.getID(), MAX_CUSTOM_TIMEZONES);
+                return false;
+            }
+            if (!hasBoundedObservances(timezone.getVTimeZone())) {
+                LOGGER.info("Ignoring VTIMEZONE {}: its observances recur too often to be expanded", timezone.getID());
+                return false;
+            }
+            registeredCount++;
+            return true;
+        }
+
+        /**
+         * Upper bound of the transitions ical4j would generate, without expanding them. Only yearly and monthly rules
+         * without sub-daily parts are accepted: every real world VTIMEZONE recurs yearly.
+         */
+        @VisibleForTesting
+        static boolean hasBoundedObservances(VTimeZone vTimeZone) {
+            int currentYear = Year.now(ZoneOffset.UTC).getValue();
+            long transitions = 0;
+            for (Observance observance : vTimeZone.getObservances()) {
+                for (RRule<?> rRule : observance.<RRule<?>>getProperties(Property.RRULE)) {
+                    OptionalLong perYear = maxOccurrencesPerYear(rRule.getRecur());
+                    if (perYear.isEmpty()) {
+                        return false;
+                    }
+                    transitions += perYear.getAsLong() * expandedYears(observance, currentYear);
+                    if (transitions > MAX_OBSERVANCE_TRANSITIONS) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        private static OptionalLong maxOccurrencesPerYear(Recur<?> recur) {
+            boolean yearly = recur.getFrequency() == Frequency.YEARLY;
+            if (!yearly && recur.getFrequency() != Frequency.MONTHLY) {
+                return OptionalLong.empty();
+            }
+            if (!recur.getHourList().isEmpty() || !recur.getMinuteList().isEmpty() || !recur.getSecondList().isEmpty()
+                || !recur.getYearDayList().isEmpty() || !recur.getWeekNoList().isEmpty()) {
+                return OptionalLong.empty();
+            }
+            long daysPerMonth = 1;
+            if (!recur.getMonthDayList().isEmpty()) {
+                daysPerMonth = recur.getMonthDayList().size();
+            } else if (!recur.getDayList().isEmpty()) {
+                daysPerMonth = recur.getDayList().stream()
+                    .mapToLong(weekDay -> weekDay.getOffset() == 0 ? MAX_WEEKDAYS_PER_MONTH : 1)
+                    .sum();
+            }
+            long months = MONTHS_PER_YEAR;
+            if (!recur.getMonthList().isEmpty()) {
+                months = recur.getMonthList().size();
+            } else if (yearly && recur.getMonthDayList().isEmpty() && recur.getDayList().isEmpty()) {
+                months = 1;
+            }
+            return OptionalLong.of(Math.min(MAX_DAYS_PER_YEAR, months * daysPerMonth));
+        }
+
+        private static long expandedYears(Observance observance, int currentYear) {
+            return observance.<DtStart<Temporal>>getProperty(Property.DTSTART)
+                .map(DtStart::getDate)
+                .filter(date -> date.isSupported(ChronoField.YEAR))
+                .map(date -> (long) currentYear - date.get(ChronoField.YEAR) + 1)
+                .map(years -> Math.max(years, MIN_EXPANDED_YEARS))
+                .orElse((long) MIN_EXPANDED_YEARS);
         }
 
         private boolean isGloballyKnown(String tzId) {
