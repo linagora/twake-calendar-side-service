@@ -50,7 +50,8 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.UserContactResolver;
-import com.linagora.calendar.storage.UserNameResolver;
+import com.linagora.calendar.storage.UserContactResolver.UserContact;
+import com.linagora.calendar.storage.UserNameResolver.UserNames;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
@@ -63,23 +64,30 @@ public class CalendarSettingUpdaterTest {
     private CalendarSettingUpdater testee;
     private OpenPaaSUserDAO openPaaSUserDAO;
     private UserConfigurationDAO userConfigurationDAO;
-    private MutableUserNameResolver userNameResolver;
+    private MutableUserContactResolver userContactResolver;
     private final SimpleSessionProvider sessionProvider = new SimpleSessionProvider(new RandomMailboxSessionIdGenerator());
     private final Username USER = Username.of("tung@domain.tld");
 
     /**
-     * Test double letting each test control the names the resolver (LDAP in production) returns for a user.
+     * Test double letting each test control the names the directory (LDAP in production) returns for a user, or make it fail.
      */
-    private static class MutableUserNameResolver implements UserNameResolver {
+    private static class MutableUserContactResolver implements UserContactResolver {
         private final Map<Username, UserNames> names = new ConcurrentHashMap<>();
+        private Optional<RuntimeException> failure = Optional.empty();
 
         void register(Username username, UserNames userNames) {
             names.put(username, userNames);
         }
 
+        void fail(RuntimeException exception) {
+            failure = Optional.of(exception);
+        }
+
         @Override
-        public Mono<Optional<UserNames>> resolve(Username username) {
-            return Mono.just(Optional.ofNullable(names.get(username)));
+        public Mono<Optional<UserContact>> resolve(Username username) {
+            return Mono.defer(() -> failure.<Mono<Optional<UserContact>>>map(Mono::error)
+                .orElseGet(() -> Mono.just(Optional.ofNullable(names.get(username))
+                    .map(userNames -> UserContact.builder().names(Optional.of(userNames)).build()))));
         }
     }
 
@@ -87,13 +95,13 @@ public class CalendarSettingUpdaterTest {
     void setup() {
         openPaaSUserDAO = new MemoryOpenPaaSUserDAO();
         userConfigurationDAO = new MemoryUserConfigurationDAO(openPaaSUserDAO);
-        userNameResolver = new MutableUserNameResolver();
+        userContactResolver = new MutableUserContactResolver();
         // Disable user search for the test domain so the provisioner skips the (CardDav) address book step,
         // keeping this an in-memory test. Auto-provisioning thus only creates the OpenPaaSUser.
         DomainSettingsResolver domainSettingsResolver = new DomainSettingsResolver(
             new MemoryDomainSettingsDAO(), Set.of(USER.getDomainPart().get()), Set.of(), new MapConfiguration(Map.of()));
         SaaSUserProvisioner userProvisioner = new SaaSUserProvisioner(openPaaSUserDAO,
-            new MemoryOpenPaaSDomainDAO(), null, domainSettingsResolver, userNameResolver, new UserContactResolver.Noop());
+            new MemoryOpenPaaSDomainDAO(), null, domainSettingsResolver, userContactResolver);
         testee = new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, userProvisioner, sessionProvider);
         openPaaSUserDAO.add(USER).block();
     }
@@ -358,7 +366,7 @@ public class CalendarSettingUpdaterTest {
     @Test
     void shouldReimportDisplayNameFromResolverUponSettingsMessage() {
         // Given: the resolver (LDAP in production) now reports a renamed handle
-        userNameResolver.register(USER, new UserNameResolver.UserNames("Tung", "Tran"));
+        userContactResolver.register(USER, new UserNames("Tung", "Tran"));
 
         // When: a settings message is received
         testee.updateSettings(newMessage(2, "en")).block();
@@ -372,7 +380,7 @@ public class CalendarSettingUpdaterTest {
     @Test
     void shouldReimportDisplayNameEvenWhenPayloadHasNoLanguage() {
         // Given
-        userNameResolver.register(USER, new UserNameResolver.UserNames("Tung", "Tran"));
+        userContactResolver.register(USER, new UserNames("Tung", "Tran"));
         TWPCommonSettingsMessage message = new TWPCommonSettingsMessage("source", "nick", "req-1",
             System.currentTimeMillis(), 10L, new TWPCommonSettingsMessage.Payload(USER.asString(), Optional.empty(), Optional.empty()));
 
@@ -394,6 +402,26 @@ public class CalendarSettingUpdaterTest {
         testee.updateSettings(newMessage(2, "en")).block();
 
         // Then: display name is left untouched
+        OpenPaaSUser user = openPaaSUserDAO.retrieve(USER).block();
+        assertThat(user.firstname()).isEqualTo("Tung");
+        assertThat(user.lastname()).isEqualTo("Tran");
+    }
+
+    @Test
+    void shouldPersistSettingsAndKeepDisplayNameWhenDirectoryFails() {
+        // Given a user with a display name, and a directory failing to resolve that user
+        openPaaSUserDAO.update(openPaaSUserDAO.retrieve(USER).block().id(), USER, "Tung", "Tran").block();
+        userContactResolver.fail(new RuntimeException("LDAP is down"));
+
+        // When a settings message of that user is received
+        testee.updateSettings(newMessage(2, "en")).block();
+
+        // Then the settings are persisted
+        assertThat(userConfigurationDAO.retrieveConfiguration(sessionProvider.createSession(USER)).collectList().block())
+            .containsExactlyInAnyOrder(ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
+                ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(2)));
+
+        // And the display name is left untouched
         OpenPaaSUser user = openPaaSUserDAO.retrieve(USER).block();
         assertThat(user.firstname()).isEqualTo("Tung");
         assertThat(user.lastname()).isEqualTo("Tran");

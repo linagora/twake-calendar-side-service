@@ -38,7 +38,6 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.UserContactResolver;
 import com.linagora.calendar.storage.UserContactResolver.UserContact;
-import com.linagora.calendar.storage.UserNameResolver;
 import com.linagora.calendar.storage.UserNameResolver.UserNames;
 import com.linagora.calendar.storage.UserSearchMode;
 
@@ -51,7 +50,6 @@ public class SaaSUserProvisioner {
     private final OpenPaaSDomainDAO domainDAO;
     private final CardDavClient cardDavClient;
     private final DomainSettingsResolver domainSettingsResolver;
-    private final UserNameResolver userNameResolver;
     private final UserContactResolver userContactResolver;
 
     @Inject
@@ -59,13 +57,11 @@ public class SaaSUserProvisioner {
                                OpenPaaSDomainDAO domainDAO,
                                CardDavClient cardDavClient,
                                DomainSettingsResolver domainSettingsResolver,
-                               UserNameResolver userNameResolver,
                                UserContactResolver userContactResolver) {
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
         this.cardDavClient = cardDavClient;
         this.domainSettingsResolver = domainSettingsResolver;
-        this.userNameResolver = userNameResolver;
         this.userContactResolver = userContactResolver;
     }
 
@@ -83,12 +79,12 @@ public class SaaSUserProvisioner {
             .flatMap(userContact -> addUserToDomainAddressBook(username, userContact));
     }
 
-    // A directory failure does not block the provisioning: the user is then handled as unknown to the directory,
-    // the next subscription message or LDAP sync filling its names and card.
+    // A directory failure does not block the provisioning nor the reimport: the user is then handled as unknown to the
+    // directory, the next subscription or settings message, or the LDAP sync, filling its names and card.
     private Mono<Optional<UserContact>> lookupDirectory(Username username) {
         return userContactResolver.resolve(username)
             .onErrorResume(error -> {
-                LOGGER.warn("Could not resolve the directory details of user {}, provisioning it without them",
+                LOGGER.warn("Could not resolve the directory details of user {}, handling it without them",
                     username.asString(), error);
                 return Mono.just(Optional.empty());
             });
@@ -102,13 +98,16 @@ public class SaaSUserProvisioner {
     }
 
     /**
-     * Reimports the display name (first and last name) of an already registered user from the
-     * user name resolver (typically LDAP), so a rename in the source directory is reflected on
-     * the calendar side upon the next {@code settings} message. See issue #929.
+     * Reimports the names and the domain member card of an already registered user from the directory
+     * (typically LDAP), so that a rename there reaches calendar, and through the card the other apps, upon
+     * the next {@code settings} message. See issues #929 and #1167. The directory is looked up once. On a directory
+     * failure, the user is handled as unknown to the directory: its names and existing card are left untouched.
+     * CardDav failures are propagated.
      */
-    public Mono<OpenPaaSUser> reimportDisplayName(OpenPaaSUser user) {
-        return userNameResolver.resolve(user.username())
-            .flatMap(maybeNames -> reimportDisplayName(user, maybeNames));
+    public Mono<OpenPaaSUser> reimportFromDirectory(OpenPaaSUser user) {
+        return lookupDirectory(user.username())
+            .flatMap(userContact -> reimportDisplayName(user, userContact.flatMap(UserContact::names))
+                .flatMap(reimported -> addUserToDomainAddressBook(reimported.username(), userContact).thenReturn(reimported)));
     }
 
     private Mono<OpenPaaSUser> reimportDisplayName(OpenPaaSUser user, Optional<UserNames> maybeNames) {

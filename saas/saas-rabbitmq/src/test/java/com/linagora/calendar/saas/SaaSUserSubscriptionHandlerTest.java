@@ -49,7 +49,6 @@ import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.UserContactResolver;
 import com.linagora.calendar.storage.UserContactResolver.UserContact;
-import com.linagora.calendar.storage.UserNameResolver;
 import com.linagora.calendar.storage.UserNameResolver.UserNames;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
@@ -106,7 +105,7 @@ class SaaSUserSubscriptionHandlerTest {
             new MemoryDomainSettingsDAO(), Set.of(Domain.of("nonshared.tld")), Set.of(), new MapConfiguration(Map.of()));
         userContactResolver = new MutableUserContactResolver();
         testee = new SaaSUserSubscriptionHandler(new SaaSUserProvisioner(userDAO, domainDAO, cardDavClient, domainSettingsResolver,
-            new UserNameResolver.Noop(), userContactResolver));
+            userContactResolver));
         testDomain = createNewDomainWithAddressBook();
     }
 
