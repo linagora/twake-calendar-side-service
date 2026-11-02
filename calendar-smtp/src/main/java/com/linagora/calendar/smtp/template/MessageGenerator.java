@@ -30,6 +30,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
 import jakarta.mail.internet.InternetAddress;
@@ -47,6 +48,7 @@ import org.apache.james.mime4j.stream.NameValuePair;
 import org.apache.james.mime4j.stream.RawField;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -77,50 +79,75 @@ public class MessageGenerator {
             }
 
             public MessageGenerator forLocalizedFeature(Language language, TemplateType templateType) throws IOException {
-                Path templatePath = Paths.get(configuration.templateLocationPath(), templateType.value());
-                File templateFileDirectory = fileSystem.getFile(templatePath.toString());
-                if (!templateFileDirectory.exists() || !templateFileDirectory.isDirectory()) {
-                    throw new FileNotFoundException("Template directory not found: " + templateFileDirectory.getAbsolutePath());
-                }
+                return forTranslator(translatorFactory(templateType).forLocale(language.locale()), templateType);
+            }
 
-                I18NTranslator i18NTranslator = getI18NTranslator(templateType, language.locale());
-
+            MessageGenerator forTranslator(I18NTranslator i18NTranslator, TemplateType templateType) throws IOException {
+                File templateFileDirectory = templateDirectory(templateType);
                 HtmlBodyRenderer htmlBodyRenderer = HtmlBodyRenderer.forPath(templateFileDirectory.getAbsolutePath());
                 Optional<TextBodyRenderer> textBodyRenderer = TextBodyRenderer.forPath(templateFileDirectory.getAbsolutePath());
                 return new MessageGenerator(i18NTranslator, htmlBodyRenderer, textBodyRenderer, userDAO);
             }
 
+            PropertiesI18NTranslator.Factory translatorFactory(TemplateType templateType) throws IOException {
+                File translationsFileDirectory = new File(templateDirectory(templateType), "translations");
+                return new PropertiesI18NTranslator.Factory(translationsFileDirectory);
+            }
+
+            private File templateDirectory(TemplateType templateType) throws IOException {
+                Path templatePath = Paths.get(configuration.templateLocationPath(), templateType.value());
+                File templateFileDirectory = fileSystem.getFile(templatePath.toString());
+                if (!templateFileDirectory.exists() || !templateFileDirectory.isDirectory()) {
+                    throw new FileNotFoundException("Template directory not found: " + templateFileDirectory.getAbsolutePath());
+                }
+                return templateFileDirectory;
+            }
+
             public Factory cached() {
                 return new Cached(this);
             }
-
-            private I18NTranslator getI18NTranslator(TemplateType templateType, Locale locale) throws FileNotFoundException {
-                Path translationsPath = Path.of(configuration.templateLocationPath(), templateType.value(), "translations");
-                File translationsFileDirectory = fileSystem.getFile(translationsPath.toString());
-                return new PropertiesI18NTranslator.Factory(translationsFileDirectory).forLocale(locale);
-            }
         }
 
-        record CacheEntry(Language language, TemplateType templateType) {
+        record CacheEntry(Locale locale, TemplateType templateType) {
 
         }
 
+        /**
+         * The language is user input: generators are cached by the locale their translator resolves to, English for any
+         * language without translations. The number of entries is thus bounded by the translation files.
+         */
         class Cached implements Factory {
-            private final Factory factory;
+            private static final long MAXIMUM_SIZE = 1000;
+
+            private final Default factory;
+            private final Cache<TemplateType, PropertiesI18NTranslator.Factory> translatorFactories;
             private final Cache<CacheEntry, MessageGenerator> loadingCache;
 
-            public Cached(Factory factory) {
+            public Cached(Default factory) {
                 this.factory = factory;
-                this.loadingCache = CacheBuilder.newBuilder().build();
+                this.translatorFactories = CacheBuilder.newBuilder().maximumSize(MAXIMUM_SIZE).build();
+                this.loadingCache = CacheBuilder.newBuilder().maximumSize(MAXIMUM_SIZE).build();
             }
 
             @Override
             public MessageGenerator forLocalizedFeature(Language language, TemplateType templateType) throws IOException {
+                I18NTranslator translator = get(translatorFactories, templateType, () -> factory.translatorFactory(templateType))
+                    .forLocale(language.locale());
+                return get(loadingCache, new CacheEntry(translator.associatedLocale(), templateType),
+                    () -> factory.forTranslator(translator, templateType));
+            }
+
+            @VisibleForTesting
+            long cacheSize() {
+                return loadingCache.size();
+            }
+
+            private static <K, V> V get(Cache<K, V> cache, K key, Callable<V> loader) throws IOException {
                 try {
-                    return loadingCache.get(new CacheEntry(language, templateType), () -> factory.forLocalizedFeature(language, templateType));
+                    return cache.get(key, loader);
                 } catch (ExecutionException e) {
-                    if (e.getCause() instanceof IOException) {
-                        throw (IOException) e.getCause();
+                    if (e.getCause() instanceof IOException ioException) {
+                        throw ioException;
                     }
                     throw new RuntimeException(e);
                 }
