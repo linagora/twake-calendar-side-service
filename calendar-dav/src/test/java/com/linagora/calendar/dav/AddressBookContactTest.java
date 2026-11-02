@@ -644,6 +644,43 @@ public class AddressBookContactTest {
             // Then the parsed contact equals the built one
             assertThat(contacts).containsExactly(contact);
         }
+
+        @Test
+        void shouldCollapseNonBreakingSpacesNextToSpaces() {
+            // Given text values holding non-breaking spaces next to other spaces
+            // When a contact is built with them
+            AddressBookContact contact = AddressBookContact.builder()
+                .familyName("Doe  Smith")
+                .givenName("John  Paul")
+                .telephoneNumber("+33  6 00")
+                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", " alice.example.com "))
+                .build();
+
+            // Then the spaces are collapsed into a single one
+            assertThat(contact).isEqualTo(AddressBookContact.builder()
+                .familyName("Doe Smith")
+                .givenName("John Paul")
+                .telephoneNumber("+33 6 00")
+                .extraProperties(ImmutableListMultimap.of("X-TWAKE-WORKPLACE-FQDN", "alice.example.com"))
+                .build());
+        }
+
+        @Test
+        void builtContactWithNonBreakingSpaceShouldSurviveVcardRoundTrip() {
+            // Given a contact built from values holding non-breaking spaces next to other spaces
+            AddressBookContact contact = AddressBookContact.builder()
+                .familyName("Doe  Smith")
+                .givenName("John  Paul")
+                .mail("john.doe@example.com")
+                .build();
+
+            // When its card is written then parsed back
+            List<AddressBookContact> readBack = AddressBookContact.parse(contact.toVcardBytes());
+
+            // Then the parsed contact has the same content as the built one
+            assertThat(readBack).hasSize(1);
+            assertThat(contact.hasSameContentAs(readBack.getFirst())).isTrue();
+        }
     }
 
     @Nested
