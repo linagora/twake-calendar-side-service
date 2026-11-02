@@ -121,8 +121,8 @@ public class CalendarUtil {
         }
 
         /**
-         * ical4j fails to build the zone rules of some valid observances (BYDAY without ordinal and BYSETPOS, BYMONTH
-         * without BYDAY...), which would fail the whole calendar: such a zone is handled like an unknown TZID instead.
+         * ical4j throws while building the zone rules of some observances (e.g. a negative BYMONTHDAY beyond -28), which
+         * would fail the whole calendar: such a zone is handled like an unknown TZID instead.
          */
         private void registerLeniently(TimeZone timezone, Runnable registration) {
             try {
