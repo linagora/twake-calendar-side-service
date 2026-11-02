@@ -64,9 +64,11 @@ import reactor.core.publisher.Mono;
 import reactor.rabbitmq.OutboundMessage;
 
 class TWPSyncSettingsIntegrationTest {
-    private static final Domain DOMAIN = Domain.of("domain.tld");
+    // User search is disabled for this domain in the test configuration, so that handling a settings message
+    // skips the domain member card, this test running without Sabre.
+    private static final Domain DOMAIN = Domain.of("xyz.com");
     private static final String PASSWORD = "secret";
-    private static final Username USERNAME = Username.of("bob@domain.tld");
+    private static final Username USERNAME = Username.of("bob@xyz.com");
     private static final String LANGUAGE_KEY = "language";
     private static final String LANGUAGE_FR = "fr";
     private static final String LANGUAGE_EN = "en";
@@ -257,18 +259,16 @@ class TWPSyncSettingsIntegrationTest {
     }
 
     @Test
-    void shouldContinueProcessingWhenConsumeMessageWithUserNotFound() throws Exception {
-        Username unknownUser = Username.of(UUID.randomUUID() + "@domain.tld");
-
-        // publish AMQP message for non-existing user
-        publishAmqpSettingsMessage(createSettingsUpdateMessage(unknownUser, Map.of(LANGUAGE_KEY, LANGUAGE_FR), FIRST_VERSION));
+    void shouldContinueProcessingWhenConsumingFailingMessage() throws Exception {
+        // Given a message whose handling fails because of its invalid language
+        publishAmqpSettingsMessage(createSettingsUpdateMessage(USERNAME, Map.of(LANGUAGE_KEY, "??invalid??"), FIRST_VERSION));
         // Wait a bit for consumer to process & error handling to complete
         Thread.sleep(500);
 
-        // publish a valid message for an existing user
+        // When a valid message of the same user is published
         publishAmqpSettingsMessage(createSettingsUpdateMessage(USERNAME, Map.of(LANGUAGE_KEY, LANGUAGE_FR), FIRST_VERSION + 1));
 
-        // Then
+        // Then the consumer still handles it, the language being updated
         awaitAtMost.untilAsserted(() -> {
             String responseJson =
                 given()
