@@ -681,6 +681,64 @@ public class AddressBookContactTest {
             assertThat(readBack).hasSize(1);
             assertThat(contact.hasSameContentAs(readBack.getFirst())).isTrue();
         }
+
+        @Test
+        void shouldKeepTheNumberOfATelUriTelephone() {
+            // Given a telephone number written as a tel URI
+            // When a contact is built with it
+            AddressBookContact contact = AddressBookContact.builder()
+                .telephoneNumber("tel:+33123456789")
+                .build();
+
+            // Then only its number is kept
+            assertThat(contact.telephoneNumber()).contains("+33123456789");
+        }
+
+        @Test
+        void builtContactWithTelUriNumberShouldSurviveVcardRoundTrip() {
+            // Given a contact whose telephone number is a tel URI
+            AddressBookContact contact = AddressBookContact.builder()
+                .familyName("Doe")
+                .mail("john.doe@example.com")
+                .telephoneNumber("tel:+33123456789")
+                .build();
+
+            // When its card is written then parsed back
+            List<AddressBookContact> readBack = AddressBookContact.parse(contact.toVcardBytes());
+
+            // Then the parsed contact has the same content
+            assertThat(readBack).hasSize(1);
+            assertThat(contact.hasSameContentAs(readBack.getFirst())).isTrue();
+        }
+
+        @Test
+        void textTelUriTelephoneShouldSurviveVcardRoundTrip() {
+            // Given a card whose telephone is a text value shaped as a tel URI
+            byte[] card = "BEGIN:VCARD\nVERSION:4.0\nTEL:\ttel:+33123456789\nEND:VCARD\n".getBytes(StandardCharsets.UTF_8);
+            AddressBookContact contact = AddressBookContact.parse(card).getFirst();
+
+            // When its card is written then parsed back
+            List<AddressBookContact> readBack = AddressBookContact.parse(contact.toVcardBytes());
+
+            // Then the parsed contact has the same content
+            assertThat(readBack).hasSize(1);
+            assertThat(contact.hasSameContentAs(readBack.getFirst())).isTrue();
+        }
+
+        @Test
+        void nestedTelUriTelephoneShouldSurviveVcardRoundTrip() {
+            // Given a contact whose telephone number is a tel URI wrapping another one
+            AddressBookContact contact = AddressBookContact.builder()
+                .telephoneNumber("tel:tel:+33123456789")
+                .build();
+
+            // When its card is written then parsed back
+            List<AddressBookContact> readBack = AddressBookContact.parse(contact.toVcardBytes());
+
+            // Then the parsed contact has the same content
+            assertThat(readBack).hasSize(1);
+            assertThat(contact.hasSameContentAs(readBack.getFirst())).isTrue();
+        }
     }
 
     @Nested

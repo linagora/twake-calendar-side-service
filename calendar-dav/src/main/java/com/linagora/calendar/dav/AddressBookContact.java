@@ -155,7 +155,7 @@ public record AddressBookContact(Optional<String> uid,
         // Text values are normalized, blank ones being dropped, so that a contact equals the card it is written to and read back from.
         public AddressBookContact build() {
             return new AddressBookContact(uid, normalize(familyName), normalize(givenName), normalize(displayName), mail,
-                normalize(telephoneNumber), normalize(extraProperties));
+                normalizeTelephone(telephoneNumber), normalize(extraProperties));
         }
 
         private static Optional<String> normalize(Optional<String> value) {
@@ -166,6 +166,22 @@ public record AddressBookContact(Optional<String> uid,
         // StringUtils::normalizeSpace turns non-breaking spaces into spaces only after collapsing whitespaces, which is not idempotent.
         private static String normalizeSpace(String value) {
             return StringUtils.normalizeSpace(value.replace(NON_BREAKING_SPACE, ' '));
+        }
+
+        // A telephone written as text but shaped as a tel URI is read back as that URI number: keep only the number.
+        private static Optional<String> normalizeTelephone(Optional<String> telephone) {
+            Optional<String> normalized = normalize(telephone);
+            return normalized.flatMap(Builder::telUriNumber)
+                .map(number -> normalizeTelephone(Optional.of(number)))
+                .orElse(normalized);
+        }
+
+        private static Optional<String> telUriNumber(String value) {
+            try {
+                return Optional.ofNullable(TelUri.parse(value).getNumber());
+            } catch (IllegalArgumentException e) {
+                return Optional.empty();
+            }
         }
 
         private static ImmutableListMultimap<String, String> normalize(ImmutableListMultimap<String, String> properties) {
