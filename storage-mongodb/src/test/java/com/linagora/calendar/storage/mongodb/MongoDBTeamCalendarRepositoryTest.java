@@ -72,6 +72,6 @@ public class MongoDBTeamCalendarRepositoryTest implements TeamCalendarRepository
 
         assertThat(indexes)
             .extracting(index -> index.getString("name"))
-            .contains("domainId_1", "domainId_1_name_1");
+            .contains("domainId_1", "domainId_1_name_1", "domainId_1_emailAddress_1");
     }
 }

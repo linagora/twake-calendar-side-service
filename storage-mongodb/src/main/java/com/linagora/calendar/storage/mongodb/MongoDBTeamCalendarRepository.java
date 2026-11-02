@@ -63,6 +63,7 @@ public class MongoDBTeamCalendarRepository implements TeamCalendarRepository {
     private static final String DOMAIN_ID_FIELD = "domainId";
     private static final String DOMAIN_NAME_FIELD = "domainName";
     private static final String NAME_FIELD = "name";
+    private static final String EMAIL_ADDRESS_FIELD = "emailAddress";
     private static final String DISPLAY_NAME_FIELD = "displayName";
     private static final String CREATION_FIELD = "creation";
     private static final String UPDATED_FIELD = "updated";
@@ -79,6 +80,7 @@ public class MongoDBTeamCalendarRepository implements TeamCalendarRepository {
     public static Mono<Void> declareIndex(MongoCollection<Document> collection) {
         return Mono.from(collection.createIndex(Indexes.ascending(DOMAIN_ID_FIELD), new IndexOptions()))
             .then(Mono.from(collection.createIndex(Indexes.ascending(DOMAIN_ID_FIELD, NAME_FIELD), new IndexOptions())))
+            .then(Mono.from(collection.createIndex(Indexes.ascending(DOMAIN_ID_FIELD, EMAIL_ADDRESS_FIELD), new IndexOptions())))
             .then();
     }
 
