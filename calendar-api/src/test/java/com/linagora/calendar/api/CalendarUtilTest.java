@@ -30,6 +30,7 @@ import org.junit.jupiter.api.Test;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 
@@ -92,6 +93,17 @@ class CalendarUtilTest {
         UID:event-2
         DTSTART:20251021T100000Z
         SUMMARY:Other
+        END:VEVENT
+        END:VCALENDAR
+        """;
+
+    private static final String ICS_WITH_MIN_MAX_VERSION = """
+        BEGIN:VCALENDAR
+        VERSION:1.0;2.0
+        PRODID:-//Test//EN
+        BEGIN:VEVENT
+        UID:a
+        DTSTART:20251020T100000Z
         END:VEVENT
         END:VCALENDAR
         """;
@@ -297,5 +309,81 @@ class CalendarUtilTest {
 
         assertThat(CalendarUtil.parseIcs(result.toString()).toString())
             .contains("D.END:Weekly meeting moved");
+    }
+
+    @Test
+    void copyShouldNotFailOnVersionWithSemicolon() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:a
+            DTSTART:20251020T100000Z
+            VERSION:A;B
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+        assertThatCode(() -> CalendarUtil.copy(vEvent)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void copyShouldKeepVEventVersionWithSemicolon() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:a
+            DTSTART:20251020T100000Z
+            VERSION:1.0;2.0
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+        assertThat(CalendarUtil.copy(vEvent).getProperty(Property.VERSION).get().getValue())
+            .isEqualTo("1.0;2.0");
+    }
+
+    @Test
+    void parseIcsShouldKeepAMinMaxVersion() {
+        Calendar calendar = CalendarUtil.parseIcs(ICS_WITH_MIN_MAX_VERSION);
+
+        assertThat(calendar.getProperty(Property.VERSION).get().getValue())
+            .isEqualTo("1.0;2.0");
+    }
+
+    @Test
+    void copyOfShouldKeepAMinMaxVersion() {
+        Calendar calendar = CalendarUtil.parseIcs(ICS_WITH_MIN_MAX_VERSION);
+
+        assertThat(CalendarUtil.copyOf(CalendarUtil.copyOf(calendar)).getProperty(Property.VERSION).get().getValue())
+            .isEqualTo("1.0;2.0");
+    }
+
+    @Test
+    void calendarCopyShouldKeepAMinMaxVersion() {
+        Calendar calendar = CalendarUtil.parseIcs(ICS_WITH_MIN_MAX_VERSION);
+
+        assertThat(calendar.copy().getProperty(Property.VERSION).get().getValue())
+            .isEqualTo("1.0;2.0");
+    }
+
+    @Test
+    void parseIcsShouldKeepVersionWithoutMinimum() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//EN
+            BEGIN:VEVENT
+            UID:a
+            DTSTART:20251020T100000Z
+            END:VEVENT
+            END:VCALENDAR
+            """);
+
+        assertThat(calendar.getProperty(Property.VERSION).get().getValue())
+            .isEqualTo("2.0");
     }
 }

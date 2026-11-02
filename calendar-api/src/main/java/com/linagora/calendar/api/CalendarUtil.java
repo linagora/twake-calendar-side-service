@@ -39,11 +39,13 @@ import java.util.stream.Stream;
 import net.fortuna.ical4j.data.CalendarBuilder;
 import net.fortuna.ical4j.data.CalendarParserFactory;
 import net.fortuna.ical4j.data.ContentHandlerContext;
+import net.fortuna.ical4j.data.DefaultPropertyFactorySupplier;
 import net.fortuna.ical4j.data.ParserException;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.ComponentList;
 import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.PropertyFactory;
 import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.TimeZoneRegistry;
@@ -52,6 +54,7 @@ import net.fortuna.ical4j.model.component.CalendarComponent;
 import net.fortuna.ical4j.model.component.VAlarm;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Method;
+import net.fortuna.ical4j.model.property.Version;
 import net.fortuna.ical4j.model.property.XProperty;
 import net.fortuna.ical4j.util.CompatibilityHints;
 import net.fortuna.ical4j.util.MapTimeZoneCache;
@@ -147,7 +150,9 @@ public class CalendarUtil {
     public static Calendar parseIcs(byte[] icsContent) {
         CalendarBuilder builder = new CalendarBuilder(
             CalendarParserFactory.getInstance().get(),
-            new ContentHandlerContext().withSuppressInvalidProperties(true),
+            new ContentHandlerContext()
+                .withSuppressInvalidProperties(true)
+                .withPropertyFactorySupplier(CalendarUtil::propertyFactories),
             new CustomizedTimeZoneRegistry());
         try {
             ByteArrayInputStream inputStream = new ByteArrayInputStream(icsContent);
@@ -157,6 +162,16 @@ public class CalendarUtil {
         } catch (ParserException e) {
             throw new RuntimeException("Error while parsing ICal object", e);
         }
+    }
+
+    /**
+     * The ical4j property factories, VERSION being parsed by {@link LenientVersion}. Factories are looked up in
+     * order, the first one supporting a property name wins.
+     */
+    private static List<PropertyFactory<?>> propertyFactories() {
+        return Stream.concat(Stream.of(new LenientVersion.Factory()),
+                new DefaultPropertyFactorySupplier().get().stream())
+            .toList();
     }
 
     /**
@@ -217,7 +232,8 @@ public class CalendarUtil {
      *
      * <p>Unlike {@link VEvent#copy()}, this does not fail on properties unknown to ical4j (eg {@code FOOBAR:baz}):
      * relaxed parsing turns them into {@link XProperty} whose factory based copy throws an
-     * {@link UnsupportedOperationException}.
+     * {@link UnsupportedOperationException}. Nor does it fail on properties whose value their factory cannot read
+     * back: those are copied as {@link XProperty}.
      */
     public static VEvent copy(VEvent vEvent) {
         return new VEvent(copyProperties(vEvent.getPropertyList()),
@@ -248,8 +264,19 @@ public class CalendarUtil {
 
     private static Property copyIgnoringPrefix(Property property) {
         if (property instanceof XProperty) {
-            return new XProperty(property.getName(), property.getParameterList(), property.getValue());
+            return asXProperty(property);
         }
-        return property.copy();
+        if (property instanceof Version) {
+            return new LenientVersion(property.getParameterList(), property.getValue());
+        }
+        try {
+            return property.copy();
+        } catch (RuntimeException e) {
+            return asXProperty(property);
+        }
+    }
+
+    private static XProperty asXProperty(Property property) {
+        return new XProperty(property.getName(), property.getParameterList(), property.getValue());
     }
 }
