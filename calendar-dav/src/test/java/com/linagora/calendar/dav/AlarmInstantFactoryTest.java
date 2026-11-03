@@ -3039,6 +3039,59 @@ public class AlarmInstantFactoryTest {
         }
     }
 
+    @Test
+    void shouldIgnoreUnparsableExDate() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:weekly
+            DTSTART:20260608T083000Z
+            RRULE:FREQ=WEEKLY
+            EXDATE;TZID=Unknown/Zone:20260165T083000
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT15M
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Optional<AlarmInstantFactory.AlarmInstant> alarm = testee(Instant.parse("2026-06-01T00:00:00Z"))
+            .computeNextAlarmInstant(CalendarUtil.parseIcs(ics), Username.of("bob@example.com"));
+
+        assertThat(alarm.map(AlarmInstantFactory.AlarmInstant::alarmTime))
+            .contains(Instant.parse("2026-06-08T08:15:00Z"));
+    }
+
+    @Test
+    void shouldKeepReadableExDatesWhenAnotherIsUnparsable() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:weekly
+            DTSTART:20260608T083000Z
+            RRULE:FREQ=WEEKLY
+            EXDATE;TZID=Unknown/Zone:20260165T083000
+            EXDATE:20260608T083000Z
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT15M
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Optional<AlarmInstantFactory.AlarmInstant> alarm = testee(Instant.parse("2026-06-01T00:00:00Z"))
+            .computeNextAlarmInstant(CalendarUtil.parseIcs(ics), Username.of("bob@example.com"));
+
+        assertThat(alarm.map(AlarmInstantFactory.AlarmInstant::alarmTime))
+            .contains(Instant.parse("2026-06-15T08:15:00Z"));
+    }
+
     private MailAddress asMailAddress(String email) {
         return Throwing.supplier(() -> new MailAddress(email)).get();
     }
