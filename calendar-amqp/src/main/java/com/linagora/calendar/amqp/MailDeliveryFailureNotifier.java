@@ -100,6 +100,11 @@ public class MailDeliveryFailureNotifier {
         MailAddress organizer = EventParseUtils.getOrganizer(vEvent)
             .map(Person::email)
             .orElse(senderEmail);
+        if (!HeaderAddressValidator.isWritableInHeader(organizer)) {
+            LOGGER.warn("Invitation to {} could not be delivered; cannot notify organizer: invalid address '{}'",
+                recipient, organizer.asString());
+            return Mono.empty();
+        }
         Username organizerUser = Username.fromMailAddress(organizer);
         return settingsResolver.resolveOrDefault(organizerUser, Username.fromMailAddress(senderEmail))
             .flatMap(settings -> generateMail(recipient, failedSubject, organizer, organizerUser, settings)

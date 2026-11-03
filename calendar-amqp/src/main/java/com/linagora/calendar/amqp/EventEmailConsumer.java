@@ -30,18 +30,14 @@ import java.util.function.Supplier;
 
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
-import jakarta.mail.internet.AddressException;
 
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.backends.rabbitmq.QueueArguments;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
-import org.apache.james.core.MailAddress;
 import org.apache.james.lifecycle.api.Startable;
 import org.apache.james.metrics.api.Metric;
 import org.apache.james.metrics.api.MetricFactory;
-import org.apache.james.mime4j.field.address.DefaultAddressParser;
-import org.apache.james.mime4j.field.address.ParseException;
 import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -150,19 +146,8 @@ public class EventEmailConsumer implements Closeable, Startable {
                 })));
     }
 
-    /**
-     * The recipient must also be writable in a To header: mime4j's RFC 5322 parser is stricter than
-     * {@link MailAddress} (e.g. it rejects an unquoted backslash, as in {@code a\b@example.com}).
-     */
     private boolean hasValidRecipient(JsonNode json) {
-        String recipient = json.path(RECIPIENT_EMAIL_FIELD).asText();
-        try {
-            new MailAddress(recipient);
-            DefaultAddressParser.DEFAULT.parseMailbox(recipient);
-            return true;
-        } catch (AddressException | ParseException e) {
-            return false;
-        }
+        return HeaderAddressValidator.isWritableInHeader(json.path(RECIPIENT_EMAIL_FIELD).asText());
     }
 
     private Mono<Void> consumeValidMessage(JsonNode json) {

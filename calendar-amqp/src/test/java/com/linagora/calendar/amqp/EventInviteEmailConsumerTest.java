@@ -69,6 +69,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
@@ -113,6 +115,9 @@ public class EventInviteEmailConsumerTest {
     static final boolean IS_NEW_EVENT = true;
     static final String INVALID_RECIPIENT = "pro";
     static final String UNWRITABLE_RECIPIENT = "a\\b@example.com";
+    // ical4j percent-encodes the backslash; EventParseUtils decodes it back when the raw value is not a MailAddress
+    static final String UNWRITABLE_ICS_ORGANIZER = "a\\b@domain.tld?subject=x";
+    static final String UNWRITABLE_ICS_ORGANIZER_WITH_ESCAPED_CR = "a%5C%0Db@domain.tld?subject=x";
 
     private final ConditionFactory calmlyAwait = Awaitility.with()
         .pollInterval(Duration.ofMillis(500))
@@ -379,6 +384,18 @@ public class EventInviteEmailConsumerTest {
         assertThat(deadLetteredMessageCount()).isZero();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {UNWRITABLE_ICS_ORGANIZER, UNWRITABLE_ICS_ORGANIZER_WITH_ESCAPED_CR})
+    void shouldAckInvalidRecipientInvitationWhoseOrganizerCannotBeWrittenInAToHeader(String icsOrganizer) throws Exception {
+        publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_REQUEST, IS_NEW_EVENT, INVALID_RECIPIENT, icsOrganizer));
+
+        calmlyAwait.during(Duration.ofSeconds(3)).atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                assertThat(deadLetteredMessageCount()).isZero();
+                assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty();
+            });
+    }
+
     @Test
     void shouldNotifyOrganizerWhenNewInvitationHasNoRecipientEmail() throws Exception {
         String eventUid = UUID.randomUUID().toString();
@@ -540,12 +557,16 @@ public class EventInviteEmailConsumerTest {
     }
 
     private String invalidRecipientMessage(String method, boolean isNewEvent, String recipient) throws Exception {
+        return invalidRecipientMessage(method, isNewEvent, recipient, organizer.username().asString());
+    }
+
+    private String invalidRecipientMessage(String method, boolean isNewEvent, String recipient, String icsOrganizer) throws Exception {
         String eventUid = UUID.randomUUID().toString();
         return new ObjectMapper().writeValueAsString(ImmutableMap.of(
             "senderEmail", organizer.username().asString(),
             "recipientEmail", recipient,
             "method", method,
-            "event", generateCalendarData(eventUid, organizer.username().asString(), "Pro", PartStat.NEEDS_ACTION),
+            "event", generateCalendarData(eventUid, icsOrganizer, "Pro", PartStat.NEEDS_ACTION),
             "eventPath", "/calendars/" + organizer.id().value() + "/" + organizer.id().value() + "/" + eventUid + ".ics",
             "isNewEvent", isNewEvent,
             "changes", ImmutableMap.of("summary", ImmutableMap.of("previous", "Old summary", "current", "Twake Calendar - Sprint planning #04"))));
