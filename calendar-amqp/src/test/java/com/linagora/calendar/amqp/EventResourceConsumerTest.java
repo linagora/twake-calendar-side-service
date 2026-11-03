@@ -71,11 +71,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
+import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.dav.CalDavClient;
@@ -112,6 +116,9 @@ import reactor.core.publisher.Mono;
 import reactor.rabbitmq.Sender;
 
 public class EventResourceConsumerTest {
+    // ical4j percent-encodes the backslash; EventParseUtils decodes it back when the raw value is not a MailAddress
+    static final String UNWRITABLE_ICS_ORGANIZER = "a\\b@domain.tld?subject=x";
+    static final String UNWRITABLE_ICS_ORGANIZER_WITH_ESCAPED_CR = "a%5C%0Db@domain.tld?subject=x";
 
     private final ConditionFactory calmlyAwait = Awaitility.with()
         .pollInterval(Duration.ofMillis(500))
@@ -491,6 +498,31 @@ public class EventResourceConsumerTest {
                 .contains("Projector")
                 .contains("This is a meeting to discuss the sprint planning for the next week.");
         }));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {UNWRITABLE_ICS_ORGANIZER, UNWRITABLE_ICS_ORGANIZER_WITH_ESCAPED_CR})
+    void shouldAckResourceReplyWhoseOrganizerCannotBeWrittenInAToHeader(String icsOrganizer, DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
+        OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
+        ResourceId resourceId = createResource(domain, resourceAdmin, resourceAdmin);
+        String eventUid = UUID.randomUUID().toString();
+        String message = new ObjectMapper().writeValueAsString(ImmutableMap.of(
+            "resourceId", resourceId.value(),
+            "eventId", eventUid + ".ics",
+            "eventPath", "/calendars/" + resourceId.value() + "/" + resourceId.value() + "/" + eventUid + ".ics",
+            "ics", generateCalendarData(eventUid, icsOrganizer, attendee.username().asString(),
+                "Sprint planning #01", "Twake Meeting Room", "Description", "30250411T100000", "30250411T110000",
+                resourceId.value(), PartStat.ACCEPTED.getValue())));
+
+        publishMessage(EventResourceConsumer.Queue.ACCEPT.exchangeName(), message);
+        publishMessage(EventResourceConsumer.Queue.DECLINE.exchangeName(), message);
+
+        negativeAwait.atMost(Duration.ofSeconds(10))
+            .untilAsserted(() -> {
+                assertThat(channel.messageCount(EventResourceConsumer.Queue.ACCEPT.deadLetter())).isZero();
+                assertThat(channel.messageCount(EventResourceConsumer.Queue.DECLINE.deadLetter())).isZero();
+                assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty();
+            });
     }
 
     @Test

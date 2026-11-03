@@ -185,9 +185,23 @@ public class EventResourceHandler {
         return resourceService.retrieveWithAdministration(new ResourceId(message.resourceId()), ONLY_ACTIVE)
             .filter(resourceWithAdministration -> !resourceWithAdministration.administrators().isEmpty())
             .flatMap(resourceWithAdministration -> Mono.justOrEmpty(getOrganizerEmail(message))
+                .filter(organizerEmail -> isWritableReplyRecipient(message, organizerEmail))
                 .filter(eventEmailFilter::shouldProcess)
                 .filter(organizerEmail -> !isOrganizerAdmin(resourceWithAdministration.administrators(), organizerEmail))
                 .flatMap(organizerEmail -> sendReplyMail(message, resourceWithAdministration.resource().name(), organizerEmail, approved)));
+    }
+
+    /**
+     * No mail can be sent to an organizer that cannot be written in a To header and retrying cannot help:
+     * we log and skip the reply rather than dead-lettering the message.
+     */
+    private boolean isWritableReplyRecipient(CalendarResourceMessageDTO message, MailAddress organizerEmail) {
+        boolean writable = HeaderAddressValidator.isWritableInHeader(organizerEmail);
+        if (!writable) {
+            LOGGER.warn("Ignoring resource reply for resourceId {} and eventPath {}: invalid organizer address '{}'",
+                message.resourceId(), message.eventPath(), organizerEmail.asString());
+        }
+        return writable;
     }
 
     private Optional<MailAddress> getOrganizerEmail(CalendarResourceMessageDTO calendarResourceMessageDTO) {
