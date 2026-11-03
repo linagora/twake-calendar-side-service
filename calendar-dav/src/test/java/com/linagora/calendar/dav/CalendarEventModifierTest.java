@@ -277,7 +277,7 @@ public class CalendarEventModifierTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"2.0", ";"})
+    @ValueSource(strings = {"2.0"})
     void applyShouldSupportVersionPropertyInsideVEvent(String version) {
         Calendar updated = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED))
             .apply(calendarWithVEventVersion(version));
@@ -286,7 +286,7 @@ public class CalendarEventModifierTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"1.0;2.0", "abc", ""})
+    @ValueSource(strings = {"1.0;2.0", ";", "abc", ""})
     void applyShouldRejectInvalidVersionPropertyInsideVEventWithIllegalArgumentException(String version) {
         assertThatThrownBy(() -> CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED))
             .apply(calendarWithVEventVersion(version)))
