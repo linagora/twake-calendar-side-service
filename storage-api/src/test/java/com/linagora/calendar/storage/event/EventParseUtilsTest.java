@@ -1000,5 +1000,25 @@ class EventParseUtilsTest {
                 softly.assertThat(EventParseUtils.hasUnparsableRecurrenceId(event)).isTrue();
             });
         }
+
+        @Test
+        void shouldReturnEmptyWhenValueIsEmptyWithTzid() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:event-1
+                RECURRENCE-ID;TZID=Europe/Paris:
+                DTSTART:20350926T090000Z
+                END:VEVENT
+                END:VCALENDAR
+                """);
+            VEvent event = EventParseUtils.getFirstEvent(calendar);
+
+            assertSoftly(softly -> {
+                softly.assertThat(EventParseUtils.getRecurrenceId(event)).isEmpty();
+                softly.assertThat(EventParseUtils.hasUnparsableRecurrenceId(event)).isTrue();
+            });
+        }
     }
 }
