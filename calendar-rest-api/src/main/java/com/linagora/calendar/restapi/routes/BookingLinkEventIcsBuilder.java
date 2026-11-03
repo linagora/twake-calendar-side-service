@@ -86,7 +86,7 @@ public class BookingLinkEventIcsBuilder {
     private static final XProperty X_PROPERTY_PUBLIC = new XProperty("X-PUBLICLY-CREATED", "TRUE").add(Value.BOOLEAN);
     private static final String MAIL_TO_PREFIX = "mailto:";
     private static final CharMatcher TEXT_FORBIDDEN_CHARACTERS = CharMatcher.javaIsoControl().and(CharMatcher.noneOf("\n\t"));
-    private static final CharMatcher PARAMETER_FORBIDDEN_CHARACTERS = CharMatcher.javaIsoControl().or(CharMatcher.is('"'));
+    private static final CharMatcher PARAMETER_FORBIDDEN_CHARACTERS = CharMatcher.javaIsoControl().or(CharMatcher.anyOf("\"\\"));
 
     private final Clock clock;
     private final MeetingConferenceLinkGenerator meetingLinkGenerator;
@@ -340,6 +340,7 @@ public class BookingLinkEventIcsBuilder {
 
     /**
      * Parameter values are written verbatim, and a quoted value cannot hold a DQUOTE (RFC 5545 3.1).
+     * Backslashes are dropped too: ical4j reads them as escapes inside quoted values, so a trailing one swallows the next line.
      */
     private static Optional<Cn> cn(String name) {
         return Optional.ofNullable(name)
