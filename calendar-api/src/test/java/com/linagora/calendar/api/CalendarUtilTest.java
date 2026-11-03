@@ -260,6 +260,26 @@ class CalendarUtilTest {
     }
 
     @Test
+    void copyShouldKeepTheGroupPrefixOfKnownProperties() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:a
+            DTSTART:20251020T100000Z
+            SUMMARY:Weekly meeting
+            A.SUMMARY:Grouped summary
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
+
+        VEvent copy = CalendarUtil.copy(vEvent);
+
+        assertThat(copy.toString()).isEqualTo(vEvent.toString());
+    }
+
+    @Test
     void copyShouldKeepGroupedPropertiesNamedAsComponentDelimiters() {
         Calendar calendar = CalendarUtil.parseIcs("""
             BEGIN:VCALENDAR
