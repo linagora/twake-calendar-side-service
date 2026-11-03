@@ -219,7 +219,7 @@ class ItipEmailNotificationPublisher {
                 .map(cancelCalendar -> NotificationEmailDTO.builder(localDelivery)
                     .withEventPath(eventPath)
                     .withMethod(Method.VALUE_CANCEL)
-                    .withEvent(cancelCalendar.toString())
+                    .withEvent(renderPayload(cancelCalendar))
                     .build())
                 .toList();
 
@@ -227,7 +227,7 @@ class ItipEmailNotificationPublisher {
                 .flatMap(changes -> computeRestoredCalendars(changes, newCalendar))
                 .map(restoredCalendar -> NotificationEmailDTO.builder(localDelivery)
                     .withEventPath(eventPath)
-                    .withEvent(restoredCalendar.toString())
+                    .withEvent(renderPayload(restoredCalendar))
                     .isNewEvent(MARK_AS_NEW_EVENT)
                     .build())
                 .toList();
@@ -270,7 +270,7 @@ class ItipEmailNotificationPublisher {
 
             return vevents.stream()
                 .map(vevent -> payloadBuilderTemplate.copy()
-                    .withEvent(CalendarUtil.withSingleVEvent(newCalendar, vevent).toString())
+                    .withEvent(renderPayload(CalendarUtil.withSingleVEvent(newCalendar, vevent)))
                     .build())
                 .toList();
         }
@@ -279,11 +279,22 @@ class ItipEmailNotificationPublisher {
                                                                         Calendar newCalendar,
                                                                         EventDiff diff) {
             NotificationEmailDTO.Builder payloadBuilder = payloadBuilderTemplate
-                .withEvent(CalendarUtil.withSingleVEvent(newCalendar, diff.vevent()).toString())
+                .withEvent(renderPayload(CalendarUtil.withSingleVEvent(newCalendar, diff.vevent())))
                 .isNewEvent(diff.isNewEvent());
             Optional<ObjectNode> serializedChanges = diff.serializeChanges();
             serializedChanges.ifPresent(payloadBuilder::withChanges);
             return payloadBuilder.build();
+        }
+
+        /**
+         * A calendar that parsed fine cannot always be rendered: unreadable date values are left out of the payload.
+         */
+        private static String renderPayload(Calendar calendar) {
+            List<VEvent> renderableVEvents = calendar.getComponents(Component.VEVENT).stream()
+                .map(VEvent.class::cast)
+                .map(CalendarEventUtils::withoutUnreadableDates)
+                .toList();
+            return CalendarUtil.withVEvents(calendar, renderableVEvents).toString();
         }
 
         private record ExDateChanges(VEvent previousMaster, VEvent currentMaster,

@@ -36,12 +36,15 @@ import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.storage.event.EventParseUtils;
 
+import net.fortuna.ical4j.model.ComponentList;
 import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.Recur;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.Value;
 import net.fortuna.ical4j.model.property.DateListProperty;
+import net.fortuna.ical4j.model.property.DateProperty;
 import net.fortuna.ical4j.model.property.ExDate;
 import net.fortuna.ical4j.model.property.RDate;
 import net.fortuna.ical4j.model.property.RRule;
@@ -155,6 +158,36 @@ public class CalendarEventUtils {
             .filter(DateListProperty.class::isInstance)
             .map(property -> (DateListProperty<?>) property)
             .anyMatch(property -> parseDates(property).isEmpty());
+    }
+
+    /**
+     * ical4j keeps leniently parsed date values as text and parses them again on rendering: such a VEVENT cannot be
+     * serialized. Returns the VEVENT without its unreadable date properties, consistent with {@link #readableDates}.
+     *
+     * <p>The supplied VEVENT is left untouched: it may be shared with other calendars.
+     */
+    public static VEvent withoutUnreadableDates(VEvent vevent) {
+        List<Property> readableProperties = vevent.getProperties().stream()
+            .filter(CalendarEventUtils::isRenderable)
+            .toList();
+        if (readableProperties.size() == vevent.getProperties().size()) {
+            return vevent;
+        }
+        return new VEvent(new PropertyList(readableProperties), new ComponentList<>(vevent.getAlarms()));
+    }
+
+    private static boolean isRenderable(Property property) {
+        if (!(property instanceof DateProperty<?> || property instanceof DateListProperty<?>)) {
+            return true;
+        }
+        try {
+            property.getValue();
+            return true;
+        } catch (DateTimeException e) {
+            // getValue() is the failing parse: the exception message carries the faulty text
+            LOGGER.info("Dropping unreadable {} property from the notification payload", property.getName(), e);
+            return false;
+        }
     }
 
     /**
