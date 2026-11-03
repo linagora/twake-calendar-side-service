@@ -27,6 +27,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 import javax.net.ssl.X509TrustManager;
 
@@ -41,8 +42,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.common.base.CharMatcher;
 import com.linagora.calendar.smtp.Mail.UnknownUserHandling;
 import com.linagora.calendar.smtp.SmtpSendingFailedException.UnknownUser;
+import com.linagora.calendar.smtp.SmtpSendingFailedException.UnsafeEnvelope;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.SendingTrial;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository.UnsentMail;
@@ -75,7 +78,7 @@ public interface MailSender {
             private static final Retry RETRY_SEND =
                 Retry.backoff(MAX_SMTP_SEND_RETRIES, SMTP_SEND_RETRY_BACKOFF)
                     .maxBackoff(Duration.ofSeconds(5))
-                    .filter(error -> !(error instanceof UnknownUser))
+                    .filter(error -> !(error instanceof UnknownUser || error instanceof UnsafeEnvelope))
                     .doBeforeRetry(retrySignal -> LOGGER.warn("Retrying SMTP mail send after failure (attempt {}/{})",
                         retrySignal.totalRetries() + 1, MAX_SMTP_SEND_RETRIES, retrySignal.failure()))
                     .onRetryExhaustedThrow((spec, signal) -> signal.failure());
@@ -211,6 +214,9 @@ public interface MailSender {
     }
 
     class Default implements MailSender {
+        // Backstop against SMTP command injection: commons-net writes envelope addresses verbatim.
+        private static final CharMatcher UNSAFE_ENVELOPE_CHARACTERS = CharMatcher.javaIsoControl().or(CharMatcher.anyOf("<>"));
+
         private final SMTPClient client;
         private final MailSenderConfiguration configuration;
         private final EventEmailFilter eventEmailFilter;
@@ -239,18 +245,32 @@ public interface MailSender {
             }
         }
 
+        private static boolean isSafeEnvelopeAddress(String address) {
+            return UNSAFE_ENVELOPE_CHARACTERS.matchesNoneOf(address);
+        }
+
+        private static boolean isSafeEnvelopeAddress(MailAddress address) {
+            return isSafeEnvelopeAddress(address.asString());
+        }
+
         private void sendMailTransaction(Mail mail) throws IOException {
+            String sender = mail.sender().asString("");
+            if (!isSafeEnvelopeAddress(sender)) {
+                throw new UnsafeEnvelope("Refusing to send a mail with an unsafe 'mail from' address");
+            }
+            List<MailAddress> recipients = safeRecipients(mail);
+
             int heloCode = client.helo(configuration.ehlo());
             if (!SMTPReply.isPositiveCompletion(heloCode)) {
                 throw new SmtpSendingFailedException("'helo' failed: " + client.getReplyString());
             }
 
-            client.setSender(mail.sender().asString(""));
+            client.setSender(sender);
             if (!SMTPReply.isPositiveCompletion(client.getReplyCode())) {
                 throw new SmtpSendingFailedException("'mail from' failed: " + client.getReplyString());
             }
 
-            addRecipients(mail);
+            addRecipients(recipients);
             sendMessageData(mail);
 
             if (!client.completePendingCommand()) {
@@ -268,10 +288,23 @@ public interface MailSender {
             }
         }
 
-        private void addRecipients(Mail mail) throws IOException {
+        private List<MailAddress> safeRecipients(Mail mail) {
+            mail.recipients().stream()
+                .filter(Predicate.not(Default::isSafeEnvelopeAddress))
+                .forEach(recipient -> LOGGER.warn("Skipping unsafe 'rcpt to' address {}", UNSAFE_ENVELOPE_CHARACTERS.replaceFrom(recipient.asString(), '?')));
+            List<MailAddress> safeRecipients = mail.recipients().stream()
+                .filter(Default::isSafeEnvelopeAddress)
+                .toList();
+            if (safeRecipients.isEmpty() && !mail.recipients().isEmpty()) {
+                throw new UnsafeEnvelope("All 'rcpt to' addresses are unsafe");
+            }
+            return safeRecipients;
+        }
+
+        private void addRecipients(List<MailAddress> recipients) throws IOException {
             int successfullRecipientCount = 0;
-            boolean unknownUserRejections = !mail.recipients().isEmpty();
-            for (MailAddress recipient : mail.recipients()) {
+            boolean unknownUserRejections = !recipients.isEmpty();
+            for (MailAddress recipient : recipients) {
                 client.addRecipient(recipient.asString());
                 if (!SMTPReply.isPositiveCompletion(client.getReplyCode())) {
                     LOGGER.warn("'rcpr to' command failed for {}: {}", recipient.asString(), client.getReplyString());

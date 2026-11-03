@@ -208,6 +208,66 @@ class MailSenderTest {
     }
 
     @Test
+    void shouldNotSendUnsafeRecipientToSmtpServer() throws Exception {
+        String rawMessage = "From: sender@localhost\nTo: recipient@localhost\nSubject: Test\n\nHello World!";
+        Message message = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage.getBytes(StandardCharsets.UTF_8)));
+        Mail mail = new Mail(
+            MaybeSender.of(new MailAddress("sender@localhost")),
+            ImmutableList.of(forgedAddress("a\\\r\nRCPT TO:<evil@x>@domain.tld"), new MailAddress("recipient@localhost")),
+            message
+        );
+
+        mailSender.send(mail).block();
+        JsonPath response = RestAssured.get("/smtpMails").jsonPath();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(response.getList("")).hasSize(1);
+            softly.assertThat(response.getList("[0].recipients.address")).containsExactly("recipient@localhost");
+        }));
+    }
+
+    @Test
+    void shouldThrowWhenAllRecipientsAreUnsafe() throws Exception {
+        String rawMessage = "From: sender@localhost\nTo: recipient@localhost\nSubject: Test\n\nHello World!";
+        Message message = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage.getBytes(StandardCharsets.UTF_8)));
+        Mail mail = new Mail(
+            MaybeSender.of(new MailAddress("sender@localhost")),
+            ImmutableList.of(forgedAddress("a\\\r\nRCPT TO:<evil@x>@domain.tld")),
+            message
+        );
+
+        assertThatThrownBy(() -> mailSender.send(mail).block())
+            .isInstanceOf(SmtpSendingFailedException.UnsafeEnvelope.class);
+        assertThat(RestAssured.get("/smtpMails").jsonPath().getList("")).isEmpty();
+    }
+
+    @Test
+    void shouldThrowWhenSenderIsUnsafe() throws Exception {
+        String rawMessage = "From: sender@localhost\nTo: recipient@localhost\nSubject: Test\n\nHello World!";
+        Message message = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage.getBytes(StandardCharsets.UTF_8)));
+        Mail mail = new Mail(
+            MaybeSender.of(forgedAddress("a\\\r\nRCPT TO:<evil@x>@domain.tld")),
+            ImmutableList.of(new MailAddress("recipient@localhost")),
+            message
+        );
+
+        assertThatThrownBy(() -> mailSender.send(mail).block())
+            .isInstanceOf(SmtpSendingFailedException.UnsafeEnvelope.class)
+            .hasMessageContaining("'mail from'");
+        assertThat(RestAssured.get("/smtpMails").jsonPath().getList("")).isEmpty();
+    }
+
+    // MailAddress parsing may reject control characters: forge the string form written to the SMTP dialogue.
+    private static MailAddress forgedAddress(String forgedValue) throws Exception {
+        return new MailAddress("forged@domain.tld") {
+            @Override
+            public String asString() {
+                return forgedValue;
+            }
+        };
+    }
+
+    @Test
     void shouldFilterRecipients() throws Exception {
         String rawMessage = "From: sender@localhost\nTo: a@localhost, b@localhost\nSubject: Test\n\nHello!";
         Message message = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage.getBytes(StandardCharsets.UTF_8)));
