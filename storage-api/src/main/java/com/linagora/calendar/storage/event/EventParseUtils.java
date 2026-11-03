@@ -547,6 +547,7 @@ public class EventParseUtils {
     public static Period calculateRecurrenceSet(VEvent master, Temporal recurrenceDate) {
         try {
             Period period = switch (recurrenceDate) {
+                // Contains the recurrence date itself so that zero-length occurrences (DTEND = DTSTART) are found
                 case LocalDate localDate -> new Period(localDate, localDate.plusDays(1));
                 default -> datetimePeriod(master, toInstant(recurrenceDate));
             };
