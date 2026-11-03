@@ -709,6 +709,49 @@ class EventParseUtilsTest {
         }
 
         @Test
+        void shouldIgnoreUnreadableExDate() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VTIMEZONE
+                TZID:Europe/Paris
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0200
+                TZOFFSETTO:+0100
+                DTSTART:19701025T030000
+                RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+                END:STANDARD
+                BEGIN:DAYLIGHT
+                TZOFFSETFROM:+0100
+                TZOFFSETTO:+0200
+                DTSTART:19700329T020000
+                RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+                END:DAYLIGHT
+                END:VTIMEZONE
+                BEGIN:VEVENT
+                UID:event-1
+                DTSTART;TZID=Europe/Paris:20351002T140000
+                DTEND;TZID=Europe/Paris:20351002T150000
+                RRULE:FREQ=DAILY;COUNT=5
+                EXDATE;TZID=Europe/Paris:20351341T140000
+                SUMMARY:Daily
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            Calendar calendar = CalendarUtil.parseIcs(ics);
+            VEvent master = (VEvent) calendar.getComponent(Component.VEVENT).get();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master,
+                ZonedDateTime.parse("2035-10-03T14:00:00+02:00[Europe/Paris]"));
+
+            assertThat(instance.toString())
+                .contains("RECURRENCE-ID;TZID=Europe/Paris:20351003T140000",
+                    "DTSTART;TZID=Europe/Paris:20351003T140000",
+                    "DTEND;TZID=Europe/Paris:20351003T150000")
+                .doesNotContain("EXDATE");
+        }
+
+        @Test
         void shouldHandleUtcDateTime() {
             String ics = """
                 BEGIN:VCALENDAR

@@ -70,6 +70,7 @@ import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.component.CalendarComponent;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
+import net.fortuna.ical4j.model.property.DateListProperty;
 import net.fortuna.ical4j.model.property.Description;
 import net.fortuna.ical4j.model.property.DtEnd;
 import net.fortuna.ical4j.model.property.DtStart;
@@ -553,7 +554,7 @@ public class EventParseUtils {
                 default -> datetimePeriod(master, toInstant(recurrenceDate));
             };
 
-            Set<Period<Temporal>> occurrences = master.calculateRecurrenceSet(period);
+            Set<Period<Temporal>> occurrences = withoutUnreadableDateLists(master).calculateRecurrenceSet(period);
             // The lookup period spans the whole day: pick the occurrence starting at the recurrence date (e.g. hourly series)
             return occurrences.stream()
                 .filter(occurrence -> startsAt(occurrence, recurrenceDate))
@@ -561,9 +562,36 @@ public class EventParseUtils {
                 .or(() -> occurrences.stream().findFirst())
                 .orElseThrow();
         } catch (Exception exception) {
+            // Serializing the master would parse its leniently parsed values again
             throw new IllegalArgumentException("Cannot calculateRecurrenceSet for recurrenceDate: " + recurrenceDate
-                + " of event: " + master, exception);
+                + " of event with UID " + describeUid(master), exception);
         }
+    }
+
+    /**
+     * ical4j parses date lists lazily: an unreadable EXDATE or RDATE value fails the whole recurrence set computation.
+     * Such properties are ignored, as done when indexing EXDATEs.
+     */
+    private static VEvent withoutUnreadableDateLists(VEvent master) {
+        List<Property> readableProperties = master.getProperties().stream()
+            .filter(EventParseUtils::isReadable)
+            .toList();
+        if (readableProperties.size() == master.getProperties().size()) {
+            return master;
+        }
+        return new VEvent(new PropertyList(readableProperties));
+    }
+
+    private static boolean isReadable(Property property) {
+        if (property instanceof DateListProperty<?> dateList) {
+            try {
+                dateList.getDates();
+            } catch (DateTimeException e) {
+                LOGGER.info("Ignoring unreadable {} property when computing occurrences: {}", property.getName(), e.getMessage());
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean startsAt(Period<Temporal> occurrence, Temporal recurrenceDate) {

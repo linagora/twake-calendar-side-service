@@ -232,8 +232,8 @@ public class CalendarUtil {
      *
      * <p>Unlike {@link VEvent#copy()}, this does not fail on properties unknown to ical4j (eg {@code FOOBAR:baz}):
      * relaxed parsing turns them into {@link XProperty} whose factory based copy throws an
-     * {@link UnsupportedOperationException}. Nor does it fail on properties whose value their factory cannot read
-     * back: those are copied as {@link XProperty}.
+     * {@link UnsupportedOperationException}. Nor does it fail on properties whose leniently parsed value their
+     * factory cannot read back: those are shared with the original VEVENT, so that they keep their type.
      */
     public static VEvent copy(VEvent vEvent) {
         return new VEvent(copyProperties(vEvent.getPropertyList()),
@@ -272,7 +272,9 @@ public class CalendarUtil {
         try {
             return property.copy();
         } catch (RuntimeException e) {
-            return asXProperty(property);
+            // Leniently parsed values (eg an EXDATE with month 13, a DTSTART with a TZID and no value) can not be
+            // re-parsed by the factory: share the original property instead
+            return property;
         }
     }
 
