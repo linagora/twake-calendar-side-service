@@ -20,6 +20,7 @@ package com.linagora.calendar.restapi.routes;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -42,6 +43,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
+import com.linagora.calendar.storage.configuration.ConfigurationValueValidator;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 
 import io.netty.handler.codec.http.HttpMethod;
@@ -64,6 +66,7 @@ public class UserConfigurationsRoute extends CalendarRoute {
 
         public ConfigurationEntryDTO {
             Preconditions.checkArgument(StringUtils.isNotBlank(name), "Name cannot be blank");
+            ConfigurationValueValidator.validate(value);
         }
     }
 
@@ -74,6 +77,12 @@ public class UserConfigurationsRoute extends CalendarRoute {
         public UserConfigDTO {
             Preconditions.checkArgument(StringUtils.isNotBlank(name), "Name cannot be blank");
             Preconditions.checkArgument(configurations != null, "Configurations cannot be null");
+            Preconditions.checkArgument(configurations.stream().noneMatch(Objects::isNull), "Configurations cannot contain null entries");
+        }
+
+        public static List<UserConfigDTO> requireNoNullElement(List<UserConfigDTO> dtos) {
+            Preconditions.checkArgument(dtos.stream().noneMatch(Objects::isNull), "Configuration modules cannot be null");
+            return dtos;
         }
 
         public Stream<ConfigurationEntry> toConfigurationEntries() {
@@ -132,9 +141,9 @@ public class UserConfigurationsRoute extends CalendarRoute {
     private Function<byte[], List<UserConfigDTO>> serializeBodyRequest() {
         return body -> {
             try {
-                return objectMapper.readValue(
+                return UserConfigDTO.requireNoNullElement(objectMapper.readValue(
                     body, new TypeReference<>() {
-                    });
+                    }));
             } catch (Exception e) {
                 LOGGER.warn("Failed to deserialize body: {}", body);
                 throw new IllegalArgumentException("Invalid request body", e);

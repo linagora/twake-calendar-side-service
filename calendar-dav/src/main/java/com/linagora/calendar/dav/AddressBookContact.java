@@ -57,6 +57,7 @@ public record AddressBookContact(Optional<String> uid,
                                  ImmutableListMultimap<String, String> extraProperties) {
 
     private static final String EXTENDED_PROPERTY_PREFIX = "X-";
+    private static final char NON_BREAKING_SPACE = ' ';
 
     public static class DavContactCardParseException extends RuntimeException {
         public DavContactCardParseException(String message, Throwable cause) {
@@ -158,8 +159,13 @@ public record AddressBookContact(Optional<String> uid,
         }
 
         private static Optional<String> normalize(Optional<String> value) {
-            return value.map(StringUtils::normalizeSpace)
+            return value.map(Builder::normalizeSpace)
                 .filter(StringUtils::isNotEmpty);
+        }
+
+        // StringUtils::normalizeSpace turns non-breaking spaces into spaces only after collapsing whitespaces, which is not idempotent.
+        private static String normalizeSpace(String value) {
+            return StringUtils.normalizeSpace(value.replace(NON_BREAKING_SPACE, ' '));
         }
 
         private static ImmutableListMultimap<String, String> normalize(ImmutableListMultimap<String, String> properties) {

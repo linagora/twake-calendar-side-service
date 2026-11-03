@@ -104,8 +104,8 @@ public class UserConfigurationPatchRoute extends CalendarRoute {
     private Function<byte[], List<UserConfigDTO>> serializeBodyRequest() {
         return body -> {
             try {
-                return objectMapper.readValue(body, new TypeReference<>() {
-                    });
+                return UserConfigDTO.requireNoNullElement(objectMapper.readValue(body, new TypeReference<>() {
+                    }));
             } catch (Exception e) {
                 LOGGER.warn("Failed to deserialize body: {}", new String(body, StandardCharsets.UTF_8));
                 throw new IllegalArgumentException("Invalid request body", e);

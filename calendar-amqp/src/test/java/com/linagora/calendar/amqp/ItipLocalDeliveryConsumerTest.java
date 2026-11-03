@@ -469,6 +469,50 @@ public class ItipLocalDeliveryConsumerTest {
     }
 
     @Test
+    void shouldIgnoreRequestWhenOrganizerAddressIsTooLong() {
+        declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
+        List<JsonNode> emailMessages = consumeJsonMessages(testEmailQueue);
+        String overlongOrganizer = "a".repeat(300) + "@example.com";
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(BOB, EVENT_UID, CALENDAR_ID, jsonString("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:event-uid@test
+                DTSTAMP:20261001T100000Z
+                DTSTART:20261013T120000Z
+                DTEND:20261013T130000Z
+                SUMMARY:Meeting
+                ORGANIZER:mailto:%s
+                ATTENDEE:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(overlongOrganizer)), ALICE);
+
+        publishToConsumer(payload);
+
+        // The organizer cannot be the sender: the message is ignored (acked), not dead-lettered.
+        AWAIT_AT_MOST.during(Duration.ofSeconds(1))
+            .untilAsserted(() -> {
+                assertThat(channel.messageCount(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE)).isZero();
+                WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
+                assertThat(emailMessages).isEmpty();
+            });
+    }
+
+    @Test
     void shouldNotCallItipWhenRecipientIsExternal() {
         when(localRecipientResolver.resolve(Username.of(ALICE))).thenReturn(Mono.just(Optional.empty()));
         declareQueueBoundToExchange(EventEmailConsumer.EXCHANGE_NAME, testEmailQueue);
@@ -611,7 +655,7 @@ public class ItipLocalDeliveryConsumerTest {
         // An invalid address is necessarily not local: the message is ignored (acked), not dead-lettered.
         AWAIT_AT_MOST.during(Duration.ofSeconds(1))
             .untilAsserted(() -> {
-                assertThat(channel.basicGet(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE, true)).isNull();
+                assertThat(channel.messageCount(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE)).isZero();
                 WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip")));
             });
     }

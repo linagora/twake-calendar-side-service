@@ -34,7 +34,7 @@ import jakarta.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
 import org.apache.james.mime4j.dom.Message;
-import org.apache.james.mime4j.stream.RawField;
+import org.apache.james.mime4j.field.Fields;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
@@ -114,7 +114,7 @@ public class PublicAgendaProposalNotifier {
             fromMailAddress,
             PugModel.toPugModel(bookingCreated, actionLinks, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory))
             .map(message -> {
-                message.getHeader().addField(new RawField("Reply-To", bookingCreated.request().creator().email().asString()));
+                message.getHeader().addField(Fields.replyTo(bookingCreated.request().creator().asMailbox()));
                 return message;
             });
     }
@@ -180,7 +180,7 @@ public class PublicAgendaProposalNotifier {
 
         private static Map<String, Object> attendeesAsPugModel(BookingCreated bookingCreated) {
             return Stream.concat(Stream.of(bookingCreated.request().creator()), bookingCreated.request().additionalAttendees().stream())
-                .collect(Collectors.toMap(attendee -> attendee.email().asString(), PugModel::attendeeToPugModel));
+                .collect(Collectors.toMap(attendee -> attendee.email().asString(), PugModel::attendeeToPugModel, (first, second) -> first));
         }
 
         private static Map<String, Object> attendeeToPugModel(BookingAttendee attendee) {

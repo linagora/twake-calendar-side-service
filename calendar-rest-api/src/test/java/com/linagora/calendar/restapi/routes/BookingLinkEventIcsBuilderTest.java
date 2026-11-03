@@ -546,6 +546,32 @@ public class BookingLinkEventIcsBuilderTest {
             .containsExactly("Alice Owner", "BOB  TRANSP:TRANSPARENT", "Nguyen  CLASS:PRIVATE", "Projector URL:https://evil.example.com");
     }
 
+    @Test
+    void backslashesInNamesShouldNotSwallowTheNextLine() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.empty(), FIXED_UID_GENERATOR);
+
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("Doe, John\\", "john@example.com"),
+            List.of(BookingAttendee.from("Alice", "alice@example.com")),
+            "eventTitle",
+            false,
+            "Agenda");
+        BookingEventOptions options = new BookingEventOptions(Optional.of("Room 3"), Optional.empty(), Optional.empty(),
+            List.of(BookingAttendee.from("Projector, big\\", "projector-id@example.com")), List.of());
+
+        VEvent event = parseEvent(testee.build(request, BookingAttendee.from("Owner, The\\", "owner@example.com"),
+            List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options).block());
+
+        assertThat(event.getAttendees().stream()
+            .map(attendee -> attendee.getParameter(Parameter.CN).map(Parameter::getValue).orElse(null) + "|" + attendee.getValue())
+            .toList())
+            .containsExactly("Owner, The |mailto:owner@example.com", "Doe, John |mailto:john@example.com",
+                "Alice|mailto:alice@example.com", "Projector, big |mailto:projector-id@example.com");
+        assertThat(event.getDescription().getValue()).contains("Agenda");
+        assertThat(event.getLocation().getValue()).isEqualTo("Room 3");
+    }
+
     private VEvent parseEvent(BuildResult result) {
         Calendar calendar = CalendarUtil.parseIcs(result.icsBytes());
         return (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();

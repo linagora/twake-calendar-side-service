@@ -266,26 +266,30 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
 
     private boolean hasInvalidRequestOrganizer(ItipLocalDeliveryDTO localDelivery,
                                                Calendar calendar) {
-        Set<Username> currentOrganizers = extractOrganizer(calendar);
+        Set<String> currentOrganizers = extractOrganizer(calendar);
         if (currentOrganizers.size() != 1) {
             return SKIP;
         }
 
-        Username currentOrganizer = currentOrganizers.iterator().next();
+        String currentOrganizer = currentOrganizers.iterator().next();
         return senderIsNotOrganizer(localDelivery, currentOrganizer);
     }
 
-    private boolean senderIsNotOrganizer(ItipLocalDeliveryDTO localDelivery, Username organizer) {
-        return !Strings.CI.equals(organizer.asString(), normalizeEmail(localDelivery.strippedSender()));
+    private boolean senderIsNotOrganizer(ItipLocalDeliveryDTO localDelivery, String organizer) {
+        return !Strings.CI.equals(organizer, normalizeEmail(localDelivery.strippedSender()));
     }
 
-    private Set<Username> extractOrganizer(Calendar calendar) {
+    /**
+     * Organizer addresses are compared as normalized strings: building a {@link Username} would throw on
+     * addresses it rejects (e.g. longer than 255 characters), dead-lettering the message instead of skipping it.
+     */
+    private Set<String> extractOrganizer(Calendar calendar) {
         return calendar.getComponents(Component.VEVENT).stream()
             .map(vEvent -> EventParseUtils.getOrganizer((VEvent) vEvent))
             .flatMap(Optional::stream)
             .map(person -> person.email().asString())
             .filter(StringUtils::isNotBlank)
-            .map(email -> Username.of(normalizeEmail(email)))
+            .map(this::normalizeEmail)
             .collect(Collectors.toSet());
     }
 

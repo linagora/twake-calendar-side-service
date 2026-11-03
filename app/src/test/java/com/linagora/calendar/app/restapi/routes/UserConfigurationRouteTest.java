@@ -318,6 +318,9 @@ class UserConfigurationRouteTest {
         "[{\"configurations\": [{\"name\": \"language\", \"value\": \"en\"}]}]", // Missing name
         "[{\"name\": \"core\", \"configurations\": [{\"name\": \"language\"}]}]",  // Missing value for 'language'
         "[{\"name\": \"core\", \"configurations\": [{\"value\": \"language\"}]}]",  // Missing key for 'language'
+        "[null]", // Null module
+        "[{\"name\": \"core\", \"configurations\": [null]}]", // Null configuration entry
+        "null",
         "invalid_json",
         "{}",
         ""
@@ -1095,6 +1098,43 @@ class UserConfigurationRouteTest {
     void patchShouldReturn400WhenInvalidRequestBody() {
         given()
             .body("invalid json")
+        .when()
+            .patch("/api/configurations")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"a\":18446744073709551616}", "9223372036854775808", "[4, 50000000000000000000]", "[1e4007]"})
+    void putShouldReturn400WhenValueHoldsANumberThatCannotBeStored(String value) {
+        given()
+            .body("[{\"name\":\"core\",\"configurations\":[{\"name\":\"k\",\"value\":" + value + "}]}]")
+        .when()
+            .put("/api/configurations?scope=user")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"a\":18446744073709551616}", "9223372036854775808", "[4, 50000000000000000000]", "[1e4007]"})
+    void patchShouldReturn400WhenValueHoldsANumberThatCannotBeStored(String value) {
+        given()
+            .body("[{\"name\":\"core\",\"configurations\":[{\"name\":\"k\",\"value\":" + value + "}]}]")
+        .when()
+            .patch("/api/configurations")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "[null]", // Null module
+        "[{\"name\": \"core\", \"configurations\": [null]}]", // Null configuration entry
+        "null"
+    })
+    void patchShouldReturn400WhenBodyHasNullElement(String bodyRequest) {
+        given()
+            .body(bodyRequest)
         .when()
             .patch("/api/configurations")
         .then()
