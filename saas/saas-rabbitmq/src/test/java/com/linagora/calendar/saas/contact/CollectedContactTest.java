@@ -171,6 +171,47 @@ class CollectedContactTest {
             .contains("X-TEST;X-LABEL=Line 1^nLine 2;VALUE=text:value");
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {-1, 0, 101})
+    void vCardWrittenFromAnOutOfRangePrefShouldBeReadableBack(int pref) throws Exception {
+        ObjectNode contact = contact("""
+            {"@type": "Card", "version": "2.0",
+             "emails": {"e": {"@type": "EmailAddress", "address": "alice@example.com", "pref": %d}}}
+            """.formatted(pref));
+
+        CollectedContact incoming = CollectedContact.parse(contact);
+        CollectedContact stored = CollectedContact.parse(incoming.toVCardAsBytes());
+
+        assertThat(stored.uid()).isEqualTo(incoming.uid());
+        assertThat(new CollectedContactUpdateCalculator().calculate(stored, incoming)).isEmpty();
+    }
+
+    @Test
+    void outOfRangePrefsShouldBeClampedOnEveryProperty() throws Exception {
+        ObjectNode contact = contact("""
+            {"@type": "Card", "version": "2.0",
+             "emails": {"e": {"@type": "EmailAddress", "address": "alice@example.com", "pref": 0}},
+             "phones": {"p": {"@type": "Phone", "number": "+33123456789", "pref": 101}},
+             "onlineServices": {"m": {"@type": "OnlineService", "service": "matrix", "user": "@alice:example.com", "pref": 500}}}
+            """);
+
+        assertThat(CollectedContact.parse(contact).toVCardAsBytes()).asString(StandardCharsets.UTF_8)
+            .contains("EMAIL;PREF=1", "PREF=100")
+            .doesNotContain("PREF=0", "PREF=101", "PREF=500");
+    }
+
+    @Test
+    void parsingShouldNotMutateTheIncomingJSContact() throws Exception {
+        ObjectNode contact = contact("""
+            {"@type": "Card", "version": "2.0",
+             "emails": {"e": {"@type": "EmailAddress", "address": "alice@example.com", "pref": 0}}}
+            """);
+
+        CollectedContact.parse(contact);
+
+        assertThat(contact.at("/emails/e/pref").asInt()).isZero();
+    }
+
     @Test
     void shouldThrowWhenJSContactIsInvalid() throws Exception {
         // Given an invalid JSContact
