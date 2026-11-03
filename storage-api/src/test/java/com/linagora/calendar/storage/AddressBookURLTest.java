@@ -70,4 +70,21 @@ class AddressBookURLTest {
         assertThatThrownBy(() -> new AddressBookURL(new OpenPaaSId("base1"), ".."))
             .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"a b@c", "x?y", "x#y", "a/b", "{uid}", "50%", ".."})
+    void vcardUriShouldRejectNamesThatAreNotSinglePathSegments(String vcardUid) {
+        AddressBookURL addressBook = new AddressBookURL(new OpenPaaSId("base1"), "collected");
+
+        assertThatThrownBy(() -> addressBook.vcardUri(vcardUid))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void vcardUriShouldAppendSafeName() {
+        AddressBookURL addressBook = new AddressBookURL(new OpenPaaSId("base1"), "collected");
+
+        assertThat(addressBook.vcardUri("user@domain.tld").getRawPath())
+            .isEqualTo("/addressbooks/base1/collected/user@domain.tld.vcf");
+    }
 }

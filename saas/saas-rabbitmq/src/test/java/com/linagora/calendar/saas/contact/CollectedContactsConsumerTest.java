@@ -526,6 +526,65 @@ class CollectedContactsConsumerTest {
     }
 
     @Test
+    void shouldStoreContactsWhoseUidIsNotASafeResourceName() throws Exception {
+        // Given a batch whose first contact has a UID that is not a valid path segment
+        String message = """
+            {
+              "userEmail": "{userEmail}",
+              "collectedContacts": [{
+                "@type": "Card",
+                "version": "2.0",
+                "uid": "a b@c",
+                "emails": { "e": { "@type": "EmailAddress", "address": "alice@example.com" } }
+              }, {
+                "@type": "Card",
+                "version": "2.0",
+                "emails": { "e": { "@type": "EmailAddress", "address": "carol@example.com" } }
+              }]
+            }
+            """.replace("{userEmail}", user.username().asString());
+
+        // When it is published
+        channel.basicPublish(CommonContactsConfiguration.DEFAULT_COLLECTED_CONTACTS_EXCHANGE, "", null, message.getBytes(StandardCharsets.UTF_8));
+
+        // Then both contacts are stored, the first one keeping its UID
+        AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
+        AWAIT_AT_MOST.untilAsserted(() -> assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
+                .contains("UID:a b@c", "alice@example.com", "carol@example.com")));
+    }
+
+    @Test
+    void shouldUpdateContactWhoseUidIsNotASafeResourceName() throws Exception {
+        // Given a contact with an unsafe UID already collected
+        String uid = "x?y";
+        testee.handle(collectedContacts(uid, "First name")).block();
+
+        // When the same contact is collected again
+        testee.handle(collectedContacts(uid, "Second name")).block();
+
+        // Then the stored card is updated rather than duplicated
+        AddressBookURL addressBook = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
+        assertThat(cardDavClient.exportContact(user.username(), addressBook).blockOptional())
+            .hasValueSatisfying(contacts -> assertThat(contacts).asString(StandardCharsets.UTF_8)
+                .containsOnlyOnce("BEGIN:VCARD")
+                .contains("UID:x?y", "FN:Second name"));
+    }
+
+    private CollectedContactsDTO collectedContacts(String uid, String fullName) throws Exception {
+        return new CollectedContactsDTO(user.username().asString(), List.of(
+            (ObjectNode) OBJECT_MAPPER.readTree("""
+                {
+                  "@type": "Card",
+                  "version": "2.0",
+                  "uid": "%s",
+                  "name": { "@type": "Name", "full": "%s" },
+                  "emails": { "e": { "@type": "EmailAddress", "address": "alice@example.com" } }
+                }
+                """.formatted(uid, fullName))));
+    }
+
+    @Test
     void shouldIgnoreMessageWhenUserDoesNotExist() throws Exception {
         CollectedContactsDTO message = new CollectedContactsDTO("unknown@example.com", List.of(
             (ObjectNode) OBJECT_MAPPER.readTree("""
