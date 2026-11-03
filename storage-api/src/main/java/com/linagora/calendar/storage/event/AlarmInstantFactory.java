@@ -23,6 +23,7 @@ import static net.fortuna.ical4j.model.Property.ATTENDEE;
 import static net.fortuna.ical4j.model.Property.TRIGGER;
 
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -471,9 +472,19 @@ public interface AlarmInstantFactory {
             private static List<Temporal> extractExDates(VEvent master) {
                 return master.getProperties(Property.EXDATE).stream()
                     .map(ExDate.class::cast)
-                    .flatMap(exDate -> ((List<Temporal>) exDate.getDates()).stream()
-                        .map(Default::normalizeTemporal))
+                    .flatMap(UpcomingOccurrences::readableDates)
+                    .map(Default::normalizeTemporal)
                     .toList();
+            }
+
+            // ical4j parses date lists lazily: an unreadable EXDATE only fails here, it is ignored
+            private static Stream<Temporal> readableDates(ExDate<?> exDate) {
+                try {
+                    return ((List<Temporal>) exDate.getDates()).stream();
+                } catch (DateTimeException e) {
+                    LOGGER.info("Ignoring unreadable EXDATE property", e);
+                    return Stream.empty();
+                }
             }
         }
     }
