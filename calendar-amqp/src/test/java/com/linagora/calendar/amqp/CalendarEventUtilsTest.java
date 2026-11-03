@@ -370,6 +370,59 @@ class CalendarEventUtilsTest {
     }
 
     @Test
+    void shouldNotBeExpiredWhenPeriodRDateIsInFuture() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:rdate-period@test
+            DTSTART:20251220T100000Z
+            RDATE;VALUE=PERIOD:20260110T100000Z/PT1H
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isFalse();
+    }
+
+    @Test
+    void shouldBeExpiredWhenPeriodRDateIsInPast() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:rdate-period-past@test
+            DTSTART:20251210T100000Z
+            RDATE;VALUE=PERIOD:20251220T100000Z/20251220T110000Z
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isTrue();
+    }
+
+    @Test
+    void shouldBeExpiredWhenPeriodRDateIsExcluded() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:rdate-period-excluded@test
+            DTSTART:20251210T100000Z
+            RDATE;VALUE=PERIOD:20260110T100000Z/PT1H
+            EXDATE:20260110T100000Z
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isTrue();
+    }
+
+    @Test
+    void shouldNotBeExpiredWhenOnePeriodOfRDateIsInFuture() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:rdate-periods-mixed@test
+            DTSTART:20251210T100000Z
+            RDATE;VALUE=PERIOD:20251220T100000Z/PT1H,20260110T100000Z/PT1H
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isFalse();
+    }
+
+    @Test
     void shouldNotBeExpiredWhenDtStartMissing() {
         VEvent vEvent = parseSingleVEvent("""
             BEGIN:VEVENT

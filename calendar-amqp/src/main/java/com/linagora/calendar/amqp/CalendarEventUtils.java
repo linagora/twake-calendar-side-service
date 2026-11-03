@@ -36,9 +36,11 @@ import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.storage.event.EventParseUtils;
 
+import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.Recur;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.parameter.Value;
 import net.fortuna.ical4j.model.property.DateListProperty;
 import net.fortuna.ical4j.model.property.ExDate;
 import net.fortuna.ical4j.model.property.RDate;
@@ -155,14 +157,33 @@ public class CalendarEventUtils {
             .anyMatch(property -> parseDates(property).isEmpty());
     }
 
+    /**
+     * An RDATE of PERIOD value carries periods instead of dates: each period start is an occurrence.
+     */
     private static Optional<List<Temporal>> parseDates(DateListProperty<?> property) {
         try {
+            if (property instanceof RDate<?> rDate && isPeriodValued(rDate)) {
+                return periodStarts(rDate);
+            }
             return Optional.of((List<Temporal>) property.getDates());
         } catch (DateTimeException e) {
             // getValue() would parse again: the exception message carries the faulty text
             LOGGER.info("Unreadable {} property", property.getName(), e);
             return Optional.empty();
         }
+    }
+
+    private static boolean isPeriodValued(RDate<?> rDate) {
+        return rDate.getParameter(Parameter.VALUE)
+            .map(Value.PERIOD::equals)
+            .orElse(false);
+    }
+
+    private static Optional<List<Temporal>> periodStarts(RDate<?> rDate) {
+        return rDate.getPeriods()
+            .map(periods -> periods.stream()
+                .map(period -> (Temporal) period.getStart())
+                .toList());
     }
 
     private static Optional<Instant> toInstant(Temporal temporal) {
