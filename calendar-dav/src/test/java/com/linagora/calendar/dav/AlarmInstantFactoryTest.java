@@ -925,6 +925,37 @@ public class AlarmInstantFactoryTest {
             .isEqualTo(Instant.parse("2025-08-29T11:00:00Z"));
     }
 
+    @Test
+    void shouldIgnoreOverrideWithUnparsableRecurrenceId() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:weekly
+            DTSTART:20260608T083000Z
+            RRULE:FREQ=WEEKLY
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT15M
+            END:VALARM
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:weekly
+            RECURRENCE-ID;TZID=Unknown/Zone:20260165T083000
+            DTSTART:20260615T093000Z
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Optional<AlarmInstantFactory.AlarmInstant> alarm = testee(Instant.parse("2026-06-01T00:00:00Z"))
+            .computeNextAlarmInstant(CalendarUtil.parseIcs(ics), Username.of("bob@example.com"));
+
+        assertThat(alarm.map(AlarmInstantFactory.AlarmInstant::alarmTime))
+            .contains(Instant.parse("2026-06-08T08:15:00Z"));
+    }
+
     @Nested
     class RecurrenceEventTest {
         @Test
