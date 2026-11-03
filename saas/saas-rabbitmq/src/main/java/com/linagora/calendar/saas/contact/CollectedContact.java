@@ -23,10 +23,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.stream.StreamSupport;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Splitter;
 import com.google.common.hash.Hashing;
@@ -51,6 +53,9 @@ final class CollectedContact {
     private static final char MATRIX_ID_SEPARATOR = ':';
     private static final char EMAIL_SEPARATOR = '@';
     private static final int NO_PREFERENCE = Integer.MAX_VALUE;
+    private static final String PREF = "pref";
+    private static final int MIN_PREF = 1;
+    private static final int MAX_PREF = 100;
 
     private static final JSContact2VCard JSCONTACT_TO_VCARD = JSContact2VCard.builder()
         // Validation requires a Java EL implementation, which jscontact-tools does not declare as a dependency.
@@ -77,7 +82,7 @@ final class CollectedContact {
 
     static CollectedContact parse(ObjectNode contactData) {
         try {
-            return parse(Card.toJSCard(contactData.toString()));
+            return parse(Card.toJSCard(withPrefsInRange(contactData).toString()));
         } catch (CollectedContactException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
@@ -131,6 +136,21 @@ final class CollectedContact {
             .orElseThrow(() -> new CollectedContactException("Cannot generate contact UID: missing email, Matrix ID and phone number"));
         Card cardWithUid = explicitUid.isPresent() ? card : copyWithUid(card, uid);
         return new CollectedContact(cardWithUid, uid, preferredEmailAddress.isPresent(), preferredMatrixId.isPresent());
+    }
+
+    // vCard readers reject PREF outside 1..100 (RFC 6350), so clamp it to keep stored cards readable back.
+    private static ObjectNode withPrefsInRange(ObjectNode contactData) {
+        ObjectNode copy = contactData.deepCopy();
+        clampPrefs(copy);
+        return copy;
+    }
+
+    private static void clampPrefs(JsonNode node) {
+        if (node instanceof ObjectNode objectNode && objectNode.path(PREF).isIntegralNumber()) {
+            objectNode.put(PREF, Math.clamp(objectNode.get(PREF).asLong(), MIN_PREF, MAX_PREF));
+        }
+        StreamSupport.stream(node.spliterator(), false)
+            .forEach(CollectedContact::clampPrefs);
     }
 
     private static Card parseVCard(byte[] vCard) {
