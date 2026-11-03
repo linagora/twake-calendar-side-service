@@ -547,19 +547,16 @@ public class EventParseUtils {
     public static Period calculateRecurrenceSet(VEvent master, Temporal recurrenceDate) {
         try {
             Period period = switch (recurrenceDate) {
-                case LocalDate localDate -> {
-                    LocalDate nextDay = localDate.plusDays(1);
-                    yield new Period(nextDay, nextDay);
-                }
+                case LocalDate localDate -> new Period(localDate, localDate.plusDays(1));
                 default -> datetimePeriod(master, toInstant(recurrenceDate));
             };
 
             Set<Period<Temporal>> occurrences = withoutUnreadableDateLists(master).calculateRecurrenceSet(period);
-            // The lookup period spans the whole day: pick the occurrence starting at the recurrence date (e.g. hourly series)
+            // The lookup period spans the whole day: pick the occurrence starting at the recurrence date (e.g. hourly series).
+            // A recurrence date that is not an occurrence is rejected rather than substituted by another occurrence of the day.
             return occurrences.stream()
                 .filter(occurrence -> startsAt(occurrence, recurrenceDate))
                 .findFirst()
-                .or(() -> occurrences.stream().findFirst())
                 .orElseThrow();
         } catch (Exception exception) {
             // Serializing the master would parse its leniently parsed values again
