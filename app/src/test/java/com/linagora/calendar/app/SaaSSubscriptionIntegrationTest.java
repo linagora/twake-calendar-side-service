@@ -52,14 +52,12 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.inject.Inject;
 import com.google.inject.multibindings.Multibinder;
-import com.linagora.calendar.amqp.AddressBookListNotificationConsumer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.saas.TWPCalendarSubscriptionModule;
-import com.linagora.calendar.saas.TWPUserCreationConsumer;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSDomainSubscriptionConsumer;
 import com.linagora.tmail.saas.rabbitmq.subscription.SaaSSubscriptionConsumer;
@@ -90,7 +88,8 @@ class SaaSSubscriptionIntegrationTest {
 
     @RegisterExtension
     @Order(1)
-    static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
+    // Health checks inspect every dead letter queue, including messages left by other test classes.
+    static SabreDavExtension sabreDavExtension = SabreDavExtension.perClass();
 
     @RegisterExtension
     @Order(2)
@@ -165,10 +164,6 @@ class SaaSSubscriptionIntegrationTest {
             RabbitMQManagementAPI rabbitMQManagementAPI = RabbitMQManagementAPI.from(sabreDavExtension.dockerSabreDavSetup().rabbitMQConfiguration());
             rabbitMQManagementAPI.purgeQueue("/", TWPCalendarSubscriptionModule.SUBSCRIPTION_CONSUMER_CONFIG.deadLetterQueue());
             rabbitMQManagementAPI.purgeQueue("/", TWPCalendarSubscriptionModule.DOMAIN_SUBSCRIPTION_CONSUMER_CONFIG.deadLetterQueue());
-            // The Sabre stack is shared: other test classes leave address book list notifications for unknown users behind
-            rabbitMQManagementAPI.purgeQueue("/", AddressBookListNotificationConsumer.DEAD_LETTER_QUEUE);
-            // ... and TWPUserCreationIntegrationTest dead letters an invalid user.created message
-            rabbitMQManagementAPI.purgeQueue("/", TWPUserCreationConsumer.DEAD_LETTER_QUEUE);
         } catch (Exception e) {
             throw new RuntimeException("Unable to purge SaaS subscription dead letter queues before test", e);
         }

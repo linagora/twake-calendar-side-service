@@ -343,7 +343,7 @@ public class EventParseUtils {
             .orElseThrow(() -> new IllegalStateException("DTSTART property is missing or invalid for event with UID " + describeUid(vEvent)));
     }
 
-    private static String describeUid(VEvent vEvent) {
+    static String describeUid(VEvent vEvent) {
         return vEvent.getUid()
             .map(Uid::getValue)
             .orElse("<none>");
@@ -487,6 +487,10 @@ public class EventParseUtils {
         } catch (DateTimeException e) {
             LOGGER.info("Ignoring unparsable RECURRENCE-ID: {}", e.getMessage());
             return Optional.empty();
+        } catch (NullPointerException e) {
+            // Relaxed parsing keeps a RECURRENCE-ID with a TZID but an empty value: ical4j getValue() then dereferences a null date
+            LOGGER.info("Ignoring RECURRENCE-ID with an empty value");
+            return Optional.empty();
         }
     }
 
@@ -542,12 +546,11 @@ public class EventParseUtils {
     public static Period calculateRecurrenceSet(VEvent master, Temporal recurrenceDate) {
         try {
             Period period = switch (recurrenceDate) {
-                case Instant instant -> datetimePeriod(master, instant);
                 case LocalDate localDate -> {
                     LocalDate nextDay = localDate.plusDays(1);
                     yield new Period(nextDay, nextDay);
                 }
-                default -> new Period(recurrenceDate, recurrenceDate);
+                default -> datetimePeriod(master, toInstant(recurrenceDate));
             };
 
             Set<Period<Temporal>> occurrences = master.calculateRecurrenceSet(period);
@@ -570,6 +573,13 @@ public class EventParseUtils {
         return temporalToZonedDateTime(occurrence.getStart())
             .map(ZonedDateTime::toInstant)
             .equals(temporalToZonedDateTime(recurrenceDate).map(ZonedDateTime::toInstant));
+    }
+
+    private static Instant toInstant(Temporal recurrenceDate) {
+        // Floating LocalDateTime recurrence dates are read as UTC, like floating occurrences in datetimePeriod
+        return temporalToZonedDateTime(recurrenceDate)
+            .map(ZonedDateTime::toInstant)
+            .orElseThrow(() -> new IllegalArgumentException("Unsupported recurrence date type: " + recurrenceDate));
     }
 
     private static Period datetimePeriod(VEvent master, Instant recurrenceDate) {

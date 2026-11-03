@@ -25,6 +25,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.temporal.Temporal;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -34,20 +35,27 @@ import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
+import net.fortuna.ical4j.model.ComponentList;
 import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
+import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.Recur;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.Value;
 import net.fortuna.ical4j.model.property.DateListProperty;
+import net.fortuna.ical4j.model.property.DateProperty;
 import net.fortuna.ical4j.model.property.ExDate;
 import net.fortuna.ical4j.model.property.RDate;
 import net.fortuna.ical4j.model.property.RRule;
 
 public class CalendarEventUtils {
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarEventUtils.class);
+    @VisibleForTesting
+    static final int MAX_EXAMINED_OCCURRENCES = Integer.getInteger("tcalendar.itip.max.examined.occurences", 20_000);
+    private static final ZonedDateTime LAST_EXPANDED_DATE = ZonedDateTime.of(9999, 12, 31, 23, 59, 59, 0, ZoneOffset.UTC);
 
     public static boolean vEventExpired(VEvent vevent, Clock clock) {
         Optional<ZonedDateTime> startDateTime = vevent.getProperty(Property.DTSTART)
@@ -109,27 +117,38 @@ public class CalendarEventUtils {
         return recur.getUntil() == null && recur.getCount() <= 0;
     }
 
+    /**
+     * Walks the occurrences once, from DTSTART on: ical4j regenerates them from the seed on each call, as COUNT
+     * applies from DTSTART. A rule with more than {@link #MAX_EXAMINED_OCCURRENCES} occurrences before {@code now} is
+     * deemed not expired, like infinite rules: expiry is then uncertain and the event is kept.
+     */
     private static boolean hasUpcomingOccurrenceFromRRule(ZonedDateTime startDateTime,
                                                           Recur<Temporal> recur,
                                                           Set<Instant> excludedDates,
                                                           Instant now) {
-        Temporal current = startDateTime;
-
-        while (true) {
-            Optional<Instant> instantOpt = toInstant(current);
-            if (instantOpt.isPresent()) {
-                Instant instant = instantOpt.get();
-                if (!excludedDates.contains(instant) && !instant.isBefore(now)) {
-                    return true;
-                }
-            }
-
-            Temporal next = recur.getNextDate(startDateTime, current);
-            if (next == null || next.equals(current)) {
+        if (endsBefore(recur, now)) {
+            return false;
+        }
+        Iterator<Temporal> occurrences = recur.getDatesAsStream(startDateTime, startDateTime, LAST_EXPANDED_DATE, -1)
+            .iterator();
+        for (int examined = 0; examined < MAX_EXAMINED_OCCURRENCES; examined++) {
+            if (!occurrences.hasNext()) {
                 return false;
             }
-            current = next;
+            Optional<Instant> instant = toInstant(occurrences.next());
+            if (instant.isPresent() && !excludedDates.contains(instant.get()) && !instant.get().isBefore(now)) {
+                return true;
+            }
         }
+        LOGGER.info("More than {} occurrences of {} before {}: considering the event as not expired", MAX_EXAMINED_OCCURRENCES, recur, now);
+        return true;
+    }
+
+    private static boolean endsBefore(Recur<Temporal> recur, Instant now) {
+        return Optional.ofNullable(recur.getUntil())
+            .flatMap(CalendarEventUtils::toInstant)
+            .map(until -> until.isBefore(now))
+            .orElse(false);
     }
 
     private static Set<Instant> extractExcludedDates(VEvent vevent) {
@@ -155,6 +174,36 @@ public class CalendarEventUtils {
             .filter(DateListProperty.class::isInstance)
             .map(property -> (DateListProperty<?>) property)
             .anyMatch(property -> parseDates(property).isEmpty());
+    }
+
+    /**
+     * ical4j keeps leniently parsed date values as text and parses them again on rendering: such a VEVENT cannot be
+     * serialized. Returns the VEVENT without its unreadable date properties, consistent with {@link #readableDates}.
+     *
+     * <p>The supplied VEVENT is left untouched: it may be shared with other calendars.
+     */
+    public static VEvent withoutUnreadableDates(VEvent vevent) {
+        List<Property> readableProperties = vevent.getProperties().stream()
+            .filter(CalendarEventUtils::isRenderable)
+            .toList();
+        if (readableProperties.size() == vevent.getProperties().size()) {
+            return vevent;
+        }
+        return new VEvent(new PropertyList(readableProperties), new ComponentList<>(vevent.getAlarms()));
+    }
+
+    private static boolean isRenderable(Property property) {
+        if (!(property instanceof DateProperty<?> || property instanceof DateListProperty<?>)) {
+            return true;
+        }
+        try {
+            property.getValue();
+            return true;
+        } catch (DateTimeException e) {
+            // getValue() is the failing parse: the exception message carries the faulty text
+            LOGGER.info("Dropping unreadable {} property from the notification payload", property.getName(), e);
+            return false;
+        }
     }
 
     /**

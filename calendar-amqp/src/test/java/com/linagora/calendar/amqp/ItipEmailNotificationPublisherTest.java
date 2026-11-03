@@ -433,6 +433,36 @@ class ItipEmailNotificationPublisherTest {
         }
 
         @Test
+        void requestWithEmptyRecurrenceIdShouldStillNotifyChangedMaster() {
+            String current = RECURRING_MASTER_AND_OVERRIDE
+                .replace("SUMMARY:Weekly sync\n", "SUMMARY:Weekly sync updated\n");
+
+            List<NotificationEmailDTO> notifications = requestWithEmptyRecurrenceId(current);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.isNewEvent()).isFalse();
+                    assertThat(notification.event()).contains("SUMMARY:Weekly sync updated")
+                        .doesNotContain("RECURRENCE-ID");
+                });
+        }
+
+        @Test
+        void requestWithChangedRuleAndEmptyRecurrenceIdShouldStillNotifyNewSeries() {
+            String current = RECURRING_MASTER_AND_OVERRIDE
+                .replace("RRULE:FREQ=WEEKLY;COUNT=3", "RRULE:FREQ=WEEKLY;COUNT=4");
+
+            List<NotificationEmailDTO> notifications = requestWithEmptyRecurrenceId(current);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.isNewEvent()).isTrue();
+                    assertThat(notification.event()).contains("RRULE:FREQ=WEEKLY;COUNT=4")
+                        .doesNotContain("RECURRENCE-ID");
+                });
+        }
+
+        @Test
         void requestWithUnreadableRDateShouldNotBeSuppressedWhenExpiryIsUnknown() {
             String current = RECURRING_OLD_NO_EXDATE.replace("RRULE:FREQ=WEEKLY;COUNT=3", "RDATE;TZID=Europe/Paris:20261340T100000");
             Clock afterStart = Clock.fixed(Instant.parse("2026-04-02T00:00:00Z"), ZoneOffset.UTC);
@@ -982,6 +1012,56 @@ class ItipEmailNotificationPublisherTest {
         }
 
         @Test
+        void updateOfASeriesWithAnUnreadableExDateShouldBeNotified() {
+            String previous = parisSeries("LOCATION:Room 1\n");
+            String current = parisSeries("LOCATION:Room 2\n");
+
+            List<NotificationEmailDTO> notifications = request(current, previous);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> assertThat(notification.event())
+                    .contains("LOCATION:Room 2")
+                    .doesNotContain("20351341T140000"));
+        }
+
+        @Test
+        void updateOfASeriesWithAnUnreadableDtEndShouldBeNotified() {
+            String previous = parisSeries("LOCATION:Room 1\n").replace("EXDATE;TZID=Europe/Paris:20351341T140000\n", "");
+            String current = previous.replace("LOCATION:Room 1", "LOCATION:Room 2")
+                .replace("DTEND;TZID=Europe/Paris:20351002T150000", "DTEND;TZID=Europe/Paris;VALUE=DATE:150000");
+
+            List<NotificationEmailDTO> notifications = request(current, previous);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> assertThat(notification.event())
+                    .contains("LOCATION:Room 2")
+                    .doesNotContain("DTEND"));
+        }
+
+        @Test
+        void firstInvitationToASeriesWithAnUnreadableExDateShouldBeNotified() {
+            String ics = parisSeries("""
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:event-uid@test
+                DTSTAMP:20261001T100000Z
+                RECURRENCE-ID;TZID=Europe/Paris:20351003T140000
+                DTSTART;TZID=Europe/Paris:20351003T160000
+                DTEND;TZID=Europe/Paris:20351003T170000
+                SUMMARY:Daily moved
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE:mailto:alice@example.com
+                """);
+
+            List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(
+                dto(Method.VALUE_REQUEST, ics, Optional.empty()), EVENT_PATH, Optional.empty());
+
+            assertThat(notifications).hasSize(2)
+                .allSatisfy(notification -> assertThat(notification.event()).doesNotContain("20351341T140000"))
+                .anySatisfy(notification -> assertThat(notification.event()).contains("RECURRENCE-ID;TZID=Europe/Paris:20351003T140000"));
+        }
+
+        @Test
         void removedExDateShouldInviteAttendeeToTheRestoredOccurrence() {
             String previous = withExDate(RECURRING_OLD_NO_EXDATE, "20260408T100000Z");
 
@@ -1269,17 +1349,37 @@ class ItipEmailNotificationPublisherTest {
         }
 
         private List<NotificationEmailDTO> requestWithUnparsableRecurrenceId(String current) {
-            Calendar previousCalendar = parseIcs(RECURRING_OLD_NO_EXDATE);
-            Calendar currentCalendar = parseIcs(current);
-            VEvent override = currentCalendar.<VEvent>getComponents(Component.VEVENT).getLast();
-            override.remove(override.getRecurrenceId());
             // Same state as CalendarDiffCalculatorTest: relaxed ICS parsing clears invalid values, so inject a throwing RECURRENCE-ID.
-            override.add(new RecurrenceId<Temporal>("20260408T100000Z") {
+            return requestWithOverrideRecurrenceId(current, new RecurrenceId<Temporal>("20260408T100000Z") {
                 @Override
                 public Temporal getDate() {
                     throw new DateTimeParseException("Unparsable RECURRENCE-ID", "mailto:john@example.com", 0);
                 }
             });
+        }
+
+        private List<NotificationEmailDTO> requestWithEmptyRecurrenceId(String current) {
+            // ical4j keeps "RECURRENCE-ID;TZID=Europe/Paris:" with a null date. The value stays readable so that
+            // CalendarDiffCalculator still indexes the override: only the publisher handling of the null date is exercised.
+            return requestWithOverrideRecurrenceId(current, new RecurrenceId<Temporal>("20260408T100000Z") {
+                @Override
+                public Temporal getDate() {
+                    return null;
+                }
+
+                @Override
+                public String getValue() {
+                    return "20260408T100000Z";
+                }
+            });
+        }
+
+        private List<NotificationEmailDTO> requestWithOverrideRecurrenceId(String current, RecurrenceId<Temporal> recurrenceId) {
+            Calendar previousCalendar = parseIcs(RECURRING_OLD_NO_EXDATE);
+            Calendar currentCalendar = parseIcs(current);
+            VEvent override = currentCalendar.<VEvent>getComponents(Component.VEVENT).getLast();
+            override.remove(override.getRecurrenceId());
+            override.add(recurrenceId);
 
             // The calculator returns both the master and override diffs.
             assertThat(CalendarDiffCalculator.calculate("alice@example.com", currentCalendar, previousCalendar)).hasSize(2);
@@ -1303,6 +1403,47 @@ class ItipEmailNotificationPublisherTest {
 
         private String withDateExDate(String ics, String exDate) {
             return ics.replaceFirst("(RRULE:[^\\n]+\\n)", "$1EXDATE;VALUE=DATE:" + exDate + "\n");
+        }
+
+        /**
+         * With a known VTIMEZONE, relaxed parsing keeps the unreadable EXDATE value as text instead of dropping it.
+         */
+        private String parisSeries(String masterTail) {
+            return """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VTIMEZONE
+                TZID:Europe/Paris
+                BEGIN:DAYLIGHT
+                TZOFFSETFROM:+0100
+                TZOFFSETTO:+0200
+                TZNAME:CEST
+                DTSTART:19700329T020000
+                RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+                END:DAYLIGHT
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0200
+                TZOFFSETTO:+0100
+                TZNAME:CET
+                DTSTART:19701025T030000
+                RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+                END:STANDARD
+                END:VTIMEZONE
+                BEGIN:VEVENT
+                UID:event-uid@test
+                DTSTAMP:20261001T100000Z
+                DTSTART;TZID=Europe/Paris:20351002T140000
+                DTEND;TZID=Europe/Paris:20351002T150000
+                RRULE:FREQ=DAILY;COUNT=5
+                EXDATE;TZID=Europe/Paris:20351341T140000
+                SUMMARY:Daily
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE:mailto:alice@example.com
+                %sEND:VEVENT
+                END:VCALENDAR
+                """.formatted(masterTail);
         }
 
     }

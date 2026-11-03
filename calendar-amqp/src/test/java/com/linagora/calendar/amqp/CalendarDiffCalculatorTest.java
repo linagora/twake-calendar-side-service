@@ -181,6 +181,30 @@ class CalendarDiffCalculatorTest {
         }
 
         @Test
+        void overrideWithEmptyRecurrenceIdShouldBeSkipped() {
+            Calendar calendar = parse("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:e1
+                DTSTART:20350925T090000Z
+                RRULE:FREQ=DAILY;COUNT=3
+                ORGANIZER:mailto:alice@example.com
+                ATTENDEE:mailto:bob@example.com
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:e1
+                RECURRENCE-ID;TZID=Europe/Paris:
+                DTSTART:20350926T090000Z
+                ATTENDEE:mailto:bob@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """);
+
+            assertThat(CalendarDiffCalculator.calculate(RECIPIENT, calendar, calendar)).isEmpty();
+        }
+
+        @Test
         void unparsableRecurrenceIdShouldNotShadowTheMaster() {
             String exceptionFirstOld = """
                 BEGIN:VCALENDAR

@@ -119,12 +119,16 @@ public interface AlarmInstantFactory {
             MailAddress userMailAddress = Throwing.supplier(username::asMailAddress).get();
             List<VEvent> allEvents = calendar.getComponents(Component.VEVENT);
 
-            boolean isRecurrence = allEvents.stream()
-                .anyMatch(e -> e.getProperty(Property.RRULE).isPresent());
-            if (isRecurrence) {
-                return computeNextRecurringAlarmInstant(allEvents, username, userMailAddress, sinceInstantValue);
-            }
-            return computeNextAlarmInstant(listUpcomingAcceptedVEvents(allEvents, username).stream(), userMailAddress, sinceInstantValue);
+            return findRecurringMaster(allEvents)
+                .map(master -> computeNextRecurringAlarmInstant(master, allEvents, username, userMailAddress, sinceInstantValue))
+                .orElseGet(() -> computeNextAlarmInstant(listUpcomingAcceptedVEvents(allEvents, username).stream(), userMailAddress, sinceInstantValue));
+        }
+
+        private Optional<VEvent> findRecurringMaster(List<VEvent> events) {
+            return events.stream()
+                .filter(e -> e.getRecurrenceId() == null)
+                .filter(e -> e.getProperty(Property.RRULE).isPresent())
+                .findFirst();
         }
 
         private Optional<AlarmInstant> computeNextAlarmInstant(Stream<VEvent> events, MailAddress userMailAddress, Instant sinceInstant) {
@@ -135,23 +139,12 @@ public interface AlarmInstantFactory {
                 .min(EARLIEST_FIRST_ALARM_COMPARATOR);
         }
 
-        private Optional<AlarmInstant> computeNextRecurringAlarmInstant(List<VEvent> events, Username username,
-                                                                        MailAddress userMailAddress, Instant sinceInstant) {
-            Optional<VEvent> masterOpt = events.stream()
-                .filter(e -> e.getRecurrenceId() == null)
-                .findFirst();
-
-            List<VEvent> overrideEvents = events.stream()
-                .filter(e -> e.getRecurrenceId() != null)
-                .toList();
-            return masterOpt.flatMap(master -> computeNextRecurringAlarmInstant(master, overrideEvents, username, userMailAddress, sinceInstant));
-        }
-
-        private Optional<AlarmInstant> computeNextRecurringAlarmInstant(VEvent master, List<VEvent> overrideEvents, Username username,
+        private Optional<AlarmInstant> computeNextRecurringAlarmInstant(VEvent master, List<VEvent> events, Username username,
                                                                         MailAddress userMailAddress, Instant sinceInstant) {
             UpcomingOccurrences upcomingOccurrences = new UpcomingOccurrences(master, clock.instant());
 
-            Map<Temporal, VEvent> overrideMap = overrideEvents.stream()
+            Map<Temporal, VEvent> overrideMap = events.stream()
+                .filter(e -> e.getRecurrenceId() != null)
                 .collect(Collectors.toMap(event -> normalizeTemporal(event.getRecurrenceId().getDate()),
                     Function.identity(),
                     Default::selectLatestOverride));
@@ -379,7 +372,7 @@ public interface AlarmInstantFactory {
             UpcomingOccurrences(VEvent master, Instant now) {
                 RRule<Temporal> rrule = master.getProperty(Property.RRULE)
                     .map(property -> (RRule<Temporal>) property)
-                    .orElseThrow(() -> new IllegalArgumentException("Master event must have an RRULE: " + master));
+                    .orElseThrow(() -> new IllegalArgumentException("Master event must have an RRULE, UID " + EventParseUtils.describeUid(master)));
                 this.recur = capCount(rrule.getRecur());
                 this.zoneId = EventParseUtils.getZoneIdFromStartDate(master).orElse(EventParseUtils.ZONE_ID_DEFAULT);
                 this.excludedDates = extractExDates(master);

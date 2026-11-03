@@ -26,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
@@ -861,6 +863,48 @@ class EventParseUtilsTest {
 
             assertThat(instance.getProperties(Property.EXRULE)).isEmpty();
         }
+
+        private static final String DAILY_FLOATING_ICS = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:floating@test
+            DTSTART:20261013T013000
+            DTEND:20261013T023000
+            RRULE:FREQ=DAILY
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        @Test
+        void createInstanceVEventShouldFindAnOccurrenceOfAFloatingSeriesFromAZonedDateTime() {
+            VEvent master = (VEvent) CalendarUtil.parseIcs(DAILY_FLOATING_ICS).getComponent(Component.VEVENT).orElseThrow();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, ZonedDateTime.parse("2027-08-04T01:30:00Z[UTC]"));
+
+            assertThat(instance.getDateTimeStart().getDate()).isEqualTo(Instant.parse("2027-08-04T01:30:00Z"));
+        }
+
+        @Test
+        void createInstanceVEventShouldFindAnOccurrenceOfAFloatingSeriesFromAnOffsetDateTime() {
+            VEvent master = (VEvent) CalendarUtil.parseIcs(DAILY_FLOATING_ICS).getComponent(Component.VEVENT).orElseThrow();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, OffsetDateTime.parse("2027-08-04T01:30:00Z"));
+
+            assertThat(instance.getDateTimeStart().getDate()).isEqualTo(Instant.parse("2027-08-04T01:30:00Z"));
+        }
+
+        @Test
+        void createInstanceVEventShouldFindAnOccurrenceOfAZonedSeriesFromALocalDateTime() {
+            VEvent master = (VEvent) CalendarUtil.parseIcs(DAILY_FLOATING_ICS
+                    .replace("DTSTART:20261013T013000", "DTSTART;TZID=Europe/Paris:20261013T033000")
+                    .replace("DTEND:20261013T023000", "DTEND;TZID=Europe/Paris:20261013T043000"))
+                .getComponent(Component.VEVENT).orElseThrow();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, LocalDateTime.parse("2027-08-04T01:30:00"));
+
+            assertThat(EventParseUtils.getStartTime(instance).toInstant()).isEqualTo(Instant.parse("2027-08-04T01:30:00Z"));
+        }
     }
 
     @Test
@@ -950,6 +994,26 @@ class EventParseUtilsTest {
             };
             VEvent event = new VEvent();
             event.add(unparsableRecurrenceId);
+
+            assertSoftly(softly -> {
+                softly.assertThat(EventParseUtils.getRecurrenceId(event)).isEmpty();
+                softly.assertThat(EventParseUtils.hasUnparsableRecurrenceId(event)).isTrue();
+            });
+        }
+
+        @Test
+        void shouldReturnEmptyWhenValueIsEmptyWithTzid() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:event-1
+                RECURRENCE-ID;TZID=Europe/Paris:
+                DTSTART:20350926T090000Z
+                END:VEVENT
+                END:VCALENDAR
+                """);
+            VEvent event = EventParseUtils.getFirstEvent(calendar);
 
             assertSoftly(softly -> {
                 softly.assertThat(EventParseUtils.getRecurrenceId(event)).isEmpty();
