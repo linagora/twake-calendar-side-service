@@ -49,7 +49,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
@@ -299,16 +298,12 @@ class EventParticipationRouteTest {
             organizer,
             generateCalendarData(eventUid, organizer.username().asString(), externalUser),
             eventUid);
-        Supplier<JsonPath> smtpMailsResponseSupplier = () -> given(mockSMTPRequestSpecification())
-            .get("/smtpMails")
-            .jsonPath();
-
         AtomicReference<String> actionLink = new AtomicReference<>();
 
         CALMLY_AWAIT
             .atMost(Duration.ofSeconds(10))
             .untilAsserted(() -> {
-                JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+                JsonPath smtpMailsResponse = smtpMails();
                 assertThat(smtpMailsResponse.getList("")).hasSize(1);
                 assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(externalUser);
                 String message = smtpMailsResponse.getString("[0].message");
@@ -621,9 +616,7 @@ class EventParticipationRouteTest {
         CALMLY_AWAIT
             .atMost(Duration.ofSeconds(10))
             .untilAsserted(() -> {
-                JsonPath smtpMailsResponse = given(mockSMTPRequestSpecification())
-                    .get("/smtpMails")
-                    .jsonPath();
+                JsonPath smtpMailsResponse = smtpMails();
                 assertThat(smtpMailsResponse.getList("")).hasSize(1);
                 assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(externalAttendee);
                 List<String> actionLinks = extractActionLinks(getHtml(smtpMailsResponse.getString("[0].message")));
@@ -687,9 +680,7 @@ class EventParticipationRouteTest {
         CALMLY_AWAIT
             .atMost(Duration.ofSeconds(10))
             .untilAsserted(() -> {
-                JsonPath smtpMailsResponse = given(mockSMTPRequestSpecification())
-                    .get("/smtpMails")
-                    .jsonPath();
+                JsonPath smtpMailsResponse = smtpMails();
                 assertThat(smtpMailsResponse.getList("")).hasSize(1);
                 assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
                 List<String> actionLinks = extractActionLinks(getHtml(smtpMailsResponse.getString("[0].message")));
@@ -739,9 +730,13 @@ class EventParticipationRouteTest {
     }
 
     private JsonPath smtpMails() {
+        // Shared DAV queues may deliver a previous test's notifications after SMTP cleanup.
+        // Each test provisions a fresh organizer; keep all messages for that organizer.
         return given(mockSMTPRequestSpecification())
             .get("/smtpMails")
-            .jsonPath();
+            .jsonPath()
+            .param("organizerEmail", organizer.username().asString())
+            .setRootPath("findAll { mail -> mail.from == organizerEmail || mail.recipients.address.contains(organizerEmail) }");
     }
 
     private String inviteMailOf(JsonPath smtpMailsResponse, String recipient) {
