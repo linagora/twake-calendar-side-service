@@ -287,6 +287,34 @@ public class BookingLinkReservationRequestDTOTest {
     }
 
     @Test
+    void additionalAttendeeEqualToCreatorAfterTrimmingShouldBeRejected() {
+        byte[] body = """
+            {"startUtc":"2026-11-03T14:15:00Z",
+             "creator":{"name":"Carol","email":"carol@visitor.com"},
+             "additional_attendees":[{"name":"Carol again","email":" carol@visitor.com"}],
+             "eventTitle":"Demo"}
+            """.getBytes(StandardCharsets.UTF_8);
+
+        assertThatThrownBy(() -> ReservationRequestDTO.parse(body).toBookingRequest())
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("'additional_attendees' must not contain creator email");
+    }
+
+    @Test
+    void additionalAttendeesEqualAfterTrimmingShouldBeRejected() {
+        ReservationRequestDTO request = parse("""
+            {"startUtc":"2036-01-26T09:30:00Z",
+             "creator":{"name":"BOB","email":"creator@example.com"},
+             "additional_attendees":[{"name":"A","email":"a@x.org"},{"name":"A again","email":" a@x.org"}],
+             "eventTitle":"Demo"}
+            """);
+
+        assertThatThrownBy(request::toBookingRequest)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("'additional_attendees' contains duplicate email");
+    }
+
+    @Test
     void toBookingRequestShouldApplyDefaultsWhenOptionalFieldsAreMissing() {
         ReservationRequestDTO request = parse("""
             {
