@@ -828,6 +828,65 @@ class EventParseUtilsTest {
         }
 
         @Test
+        void shouldBuildTheRequestedDayForZeroDurationAllDaySeries() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:allday-uid@test
+                DTSTART;VALUE=DATE:20260402
+                DTEND;VALUE=DATE:20260402
+                RRULE:FREQ=DAILY;COUNT=5
+                SUMMARY:Off site
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            VEvent master = (VEvent) CalendarUtil.parseIcs(ics).getComponent(Component.VEVENT).orElseThrow();
+
+            assertThat(EventParseUtils.calculateRecurrenceSet(master, LocalDate.of(2026, 4, 3)).getStart())
+                .isEqualTo(LocalDate.of(2026, 4, 3));
+        }
+
+        @Test
+        void shouldRejectARecurrenceDateThatIsNotAnOccurrence() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:daily@test
+                DTSTART;TZID=Europe/Paris:20261013T090000
+                DTEND;TZID=Europe/Paris:20261013T100000
+                RRULE:FREQ=DAILY
+                SUMMARY:Standup
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            VEvent master = (VEvent) CalendarUtil.parseIcs(ics).getComponent(Component.VEVENT).orElseThrow();
+
+            assertThatThrownBy(() -> EventParseUtils.createInstanceVEvent(master, Instant.parse("2026-12-26T12:52:00Z")))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        void shouldRejectAnAllDayRecurrenceDateThatIsNotAnOccurrence() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:event-1
+                DTSTART;VALUE=DATE:20250411
+                DTEND;VALUE=DATE:20250412
+                RRULE:FREQ=WEEKLY;BYDAY=FR
+                END:VEVENT
+                END:VCALENDAR
+                """;
+            VEvent master = (VEvent) CalendarUtil.parseIcs(ics).getComponent(Component.VEVENT).orElseThrow();
+
+            assertThatThrownBy(() -> EventParseUtils.createInstanceVEvent(master, LocalDate.of(2025, 4, 12)))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
         void shouldHandleTimezoneDateTime() {
             String ics = """
                 BEGIN:VCALENDAR
