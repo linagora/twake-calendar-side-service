@@ -761,35 +761,27 @@ public class EventPublicAgendaEmailConsumerTest {
     }
 
     @Test
-    void shouldSendInvitationWhenPubliclyCreatorIsNotAnAttendee() throws Exception {
+    void shouldAcknowledgeWithoutEmailWhenPubliclyCreatorIsNotAnAttendee() throws Exception {
         String absentCreator = "absent-booker-" + UUID.randomUUID() + "@example.com";
 
-        assertInvitationSentForPublicAgendaEventCreatedBy(absentCreator);
+        assertDroppedPublicAgendaEventCreatedBy(absentCreator);
     }
 
     @Test
-    void shouldSendInvitationWhenPubliclyCreatorIsInvalid() throws Exception {
-        assertInvitationSentForPublicAgendaEventCreatedBy("not-an-email");
+    void shouldAcknowledgeWithoutEmailWhenPubliclyCreatorIsInvalid() throws Exception {
+        assertDroppedPublicAgendaEventCreatedBy("not-an-email");
     }
 
-    private void assertInvitationSentForPublicAgendaEventCreatedBy(String creator) throws Exception {
+    private void assertDroppedPublicAgendaEventCreatedBy(String creator) throws Exception {
         String eventUid = UUID.randomUUID().toString();
         String calendarData = generatePublicAgendaCalendarWithCustomCreator(eventUid, organizer.username().asString(),
             attendee.username().asString(), PartStat.ACCEPTED, INITIAL_SEQUENCE, creator, null);
 
         publishNotificationEmailMessage(newEventRequestMessage(eventUid, calendarData, attendee.username().asString()));
 
-        awaitAtMostForEmailDelivery
-            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
-
-        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
-        assertSoftly(Throwing.consumer(softly -> {
-            softly.assertThat(smtpMailsResponse.getString("[0].recipients[0].address")).isEqualTo(attendee.username().asString());
-            softly.assertThat(smtpMailsResponse.getString("[0].message"))
-                .contains("Subject: New event from Van Tung TRAN: Publicly created meeting")
-                .doesNotContain("has accepted your event proposal");
-            softly.assertThat(deadLetteredMessageCount()).isZero();
-        }));
+        calmlyAwaitDuringNoEmail
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
+        assertThat(deadLetteredMessageCount()).isZero();
     }
 
     private String newEventRequestMessage(String eventUid, String calendarData, String recipient) throws Exception {
