@@ -963,6 +963,56 @@ class ItipEmailNotificationPublisherTest {
         }
 
         @Test
+        void cancellingAnOccurrenceShouldTolerateAnUnreadableExDate() {
+            String oldIcs = seriesWithUnreadableExDate("");
+            String newIcs = seriesWithUnreadableExDate("EXDATE;TZID=Europe/Paris:20351003T140000\n");
+
+            List<NotificationEmailDTO> notifications = request(newIcs, oldIcs);
+
+            assertThat(notifications).singleElement()
+                .satisfies(notification -> {
+                    assertThat(notification.method()).isEqualTo(Method.VALUE_CANCEL);
+                    assertThat(notification.event()).contains("RECURRENCE-ID;TZID=Europe/Paris:20351003T140000");
+                });
+        }
+
+        private String seriesWithUnreadableExDate(String extraExDates) {
+            return """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Test//EN
+                METHOD:REQUEST
+                BEGIN:VTIMEZONE
+                TZID:Europe/Paris
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0200
+                TZOFFSETTO:+0100
+                DTSTART:19701025T030000
+                RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+                END:STANDARD
+                BEGIN:DAYLIGHT
+                TZOFFSETFROM:+0100
+                TZOFFSETTO:+0200
+                DTSTART:19700329T020000
+                RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+                END:DAYLIGHT
+                END:VTIMEZONE
+                BEGIN:VEVENT
+                UID:event-uid@test
+                DTSTAMP:20261001T100000Z
+                DTSTART;TZID=Europe/Paris:20351002T140000
+                DTEND;TZID=Europe/Paris:20351002T150000
+                RRULE:FREQ=DAILY;COUNT=5
+                %sEXDATE;TZID=Europe/Paris:20351341T140000
+                SUMMARY:Daily
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(extraExDates);
+        }
+
+        @Test
         void unparsableExDateShouldNotPreventProcessingTheReadableOnes() {
             String previous = withExDate(withExDate(RECURRING_OLD_NO_EXDATE, "20260408T100000Z"), "20261340T100000Z");
             String current = withExDate(withExDate(RECURRING_OLD_NO_EXDATE, "20260415T100000Z"), "20261340T100000Z");

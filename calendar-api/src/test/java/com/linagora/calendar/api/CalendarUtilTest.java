@@ -223,6 +223,46 @@ class CalendarUtilTest {
     }
 
     @Test
+    void copyShouldKeepUnreadableDateListValues() {
+        VEvent vEvent = firstVEventWithTimezone("EXDATE;TZID=Europe/Paris:20351341T140000");
+
+        assertThat(CalendarUtil.copy(vEvent).getProperty(Property.EXDATE)).get()
+            .isSameAs(vEvent.getProperty(Property.EXDATE).orElseThrow());
+    }
+
+    @Test
+    void copyShouldKeepDatePropertiesWithAnEmptyValue() {
+        VEvent vEvent = firstVEventWithTimezone("DTSTART;TZID=Europe/Paris:");
+
+        assertThat(CalendarUtil.copy(vEvent).getProperty(Property.DTSTART)).get()
+            .isSameAs(vEvent.getProperty(Property.DTSTART).orElseThrow());
+    }
+
+    private static VEvent firstVEventWithTimezone(String extraProperty) {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Calendar//EN
+            BEGIN:VTIMEZONE
+            TZID:Europe/Paris
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0200
+            TZOFFSETTO:+0100
+            DTSTART:19701025T030000
+            RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:event-uid@test
+            %s
+            SUMMARY:Weekly meeting
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(extraProperty));
+        return (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
+    }
+
+    @Test
     void withSingleVEventShouldIgnoreUnparsableTemplateVEvents() {
         Calendar template = CalendarUtil.parseIcs("""
             BEGIN:VCALENDAR
