@@ -143,6 +143,10 @@ public class EventIndexerConsumer implements Closeable, Startable {
     private final CalendarEventHandler handlerAddOrUpdate = new CalendarEventHandler() {
         @Override
         public Mono<?> handle(CalendarEventMessage calendarEventMessage) {
+            if (!calendarEventMessage.hasVEvent()) {
+                LOGGER.debug("Skipping indexing of '{}': no VEVENT to index", calendarEventMessage.eventPath);
+                return Mono.empty();
+            }
             return Mono.fromCallable(calendarEventMessage::extractCalendarEvents)
                 .flatMap(calendarSearchService::index)
                 .then();

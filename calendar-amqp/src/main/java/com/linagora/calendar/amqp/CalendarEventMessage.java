@@ -60,6 +60,14 @@ public abstract class CalendarEventMessage {
         return EventFieldConverter.from(this);
     }
 
+    /**
+     * Calendar objects may carry no VEVENT at all (e.g. a VTODO created by Thunderbird): there is then no event to
+     * index or to build {@link CalendarEvents} from.
+     */
+    public boolean hasVEvent() {
+        return !EventFieldConverter.extractVEventProperties(calendarEvent).isEmpty();
+    }
+
     protected static <T extends CalendarEventMessage> T deserialize(byte[] json, Class<T> clazz) {
         try {
             return MAPPER.readValue(json, clazz);

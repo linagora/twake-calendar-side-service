@@ -1775,4 +1775,26 @@ public class EventFieldConverterTest {
         assertThat(deletedMessage.extractEventUid())
             .containsExactly(new EventUid("malformed-organizer-event"));
     }
+
+    @Test
+    void hasVEventShouldBeFalseWhenCalendarOnlyContainsAVTodo() {
+        String json = """
+            {
+                "eventPath": "/calendars/5f859a35e488d7002632459a/28762502-ad59-4044-8467-ddbb4a3aa0f1/d91e9fa9-ab9d-4745-bc04-f5fd0d490fc7.ics",
+                "event": ["vcalendar",
+                    [["prodid", {}, "text", "-//Mozilla.org/NONSGML Mozilla Calendar V1.1//EN"], ["version", {}, "text", "2.0"]],
+                    [["vtodo",
+                        [["dtstamp", {}, "date-time", "2026-11-03T15:10:51Z"],
+                         ["uid", {}, "text", "d91e9fa9-ab9d-4745-bc04-f5fd0d490fc7"],
+                         ["summary", {}, "text", "suivi AKH"],
+                         ["percent-complete", {}, "integer", 0]],
+                        []]]],
+                "import": false
+            }
+            """;
+
+        CalendarEventMessage.CreatedOrUpdated message = CalendarEventMessage.CreatedOrUpdated.deserialize(json.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(message.hasVEvent()).isFalse();
+    }
 }

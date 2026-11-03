@@ -76,6 +76,7 @@ import com.linagora.calendar.storage.eventsearch.EventUid;
 import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
 import com.linagora.calendar.storage.model.ResourceId;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
+import com.rabbitmq.client.Channel;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -1106,6 +1107,32 @@ public class EventIndexerConsumerTest {
             davTestHelper.deleteCalendar(openPaasUser, eventUid2);
 
             assertEventNotInSearch(openPaasUser.username(), "Test2", eventUid2);
+        }
+
+        @Test
+        void calendarObjectWithoutVEventShouldBeSkippedWithoutBeingDeadLettered() throws Exception {
+            String todoUid = UUID.randomUUID().toString();
+            String amqpMessage = """
+                {"eventPath":"/calendars/%s/%s/%s.ics","event":["vcalendar",[["prodid",{},"text","-//Mozilla.org/NONSGML Mozilla Calendar V1.1//EN"],["version",{},"text","2.0"]],[["vtodo",[["dtstamp",{},"date-time","2026-11-03T15:10:51Z"],["uid",{},"text","%s"],["summary",{},"text","suivi AKH"],["percent-complete",{},"integer",0]],[]]]],"import":false}"""
+                .formatted(openPaasUser.id().value(), openPaasUser.id().value(), todoUid, todoUid);
+
+            try (Channel channel = connectionPool.getResilientConnection().block().createChannel()) {
+                channel.queuePurge(EventIndexerConsumer.Queue.ADD.deadLetter());
+
+                channelPool.getSender()
+                    .send(Mono.just(new OutboundMessage("calendar:event:created",
+                        EMPTY_ROUTING_KEY,
+                        amqpMessage.getBytes(UTF_8))))
+                    .block();
+
+                String eventUid = UUID.randomUUID().toString();
+                davTestHelper.upsertCalendar(openPaasUser, getSampleCalendar(eventUid), eventUid);
+                assertEventExistsInSearch(openPaasUser.username(), "Test1", eventUid);
+
+                assertThat(channel.messageCount(EventIndexerConsumer.Queue.ADD.deadLetter())).isZero();
+                Mockito.verify(calendarSearchService, Mockito.never())
+                    .index(Mockito.argThat(events -> events.eventUid().value().equals(todoUid)));
+            }
         }
 
         @Test
