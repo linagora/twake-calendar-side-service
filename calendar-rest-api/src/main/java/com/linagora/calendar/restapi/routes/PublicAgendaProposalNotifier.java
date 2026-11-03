@@ -180,7 +180,7 @@ public class PublicAgendaProposalNotifier {
 
         private static Map<String, Object> attendeesAsPugModel(BookingCreated bookingCreated) {
             return Stream.concat(Stream.of(bookingCreated.request().creator()), bookingCreated.request().additionalAttendees().stream())
-                .collect(Collectors.toMap(attendee -> attendee.email().asString(), PugModel::attendeeToPugModel));
+                .collect(Collectors.toMap(attendee -> attendee.email().asString(), PugModel::attendeeToPugModel, (first, second) -> first));
         }
 
         private static Map<String, Object> attendeeToPugModel(BookingAttendee attendee) {

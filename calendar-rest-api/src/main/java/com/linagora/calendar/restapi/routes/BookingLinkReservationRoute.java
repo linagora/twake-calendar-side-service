@@ -30,7 +30,6 @@ import java.util.Set;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Strings;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
@@ -177,21 +176,35 @@ public class BookingLinkReservationRoute extends PublicRoute {
         }
 
         private void validateAdditionalAttendees() {
-            Set<String> set = new HashSet<>();
             for (AttendeeDTO attendeeDTO : Optional.ofNullable(additionalAttendees).orElse(Set.of())) {
                 Preconditions.checkArgument(attendeeDTO != null, "'additional_attendees' must not contain null items");
                 Preconditions.checkArgument(StringUtils.isNotBlank(attendeeDTO.email()), "'additional_attendees[].email' must not be blank");
-                Preconditions.checkArgument(!Strings.CI.equals(attendeeDTO.email(), creator.email()),
-                    "'additional_attendees' must not contain creator email");
-                Preconditions.checkArgument(set.add(attendeeDTO.email().toLowerCase(Locale.US)),
-                    "'additional_attendees' contains duplicate email: " + attendeeDTO.email());
             }
+        }
+
+        /**
+         * Compares parsed addresses: {@link org.apache.james.core.MailAddress} trims surrounding whitespace, so two
+         * different raw strings can denote the same attendee.
+         */
+        private static void validateDistinctAttendees(BookingAttendee bookingCreator, List<BookingAttendee> attendees) {
+            String creatorEmail = normalizedEmail(bookingCreator);
+            Preconditions.checkArgument(attendees.stream().map(ReservationRequestDTO::normalizedEmail).noneMatch(creatorEmail::equals),
+                "'additional_attendees' must not contain creator email");
+            Set<String> seenEmails = new HashSet<>();
+            attendees.forEach(attendee -> Preconditions.checkArgument(seenEmails.add(normalizedEmail(attendee)),
+                "'additional_attendees' contains duplicate email: " + attendee.email().asString()));
+        }
+
+        private static String normalizedEmail(BookingAttendee attendee) {
+            return attendee.email().asString().toLowerCase(Locale.US);
         }
 
         BookingRequest toBookingRequest() {
             validate();
+            BookingAttendee bookingCreator = creator.toAttendee();
             List<BookingAttendee> validatedAdditionalAttendees = AttendeeDTO.toAttendees(additionalAttendees);
-            return new BookingRequest(startUtc, creator.toAttendee(), validatedAdditionalAttendees,
+            validateDistinctAttendees(bookingCreator, validatedAdditionalAttendees);
+            return new BookingRequest(startUtc, bookingCreator, validatedAdditionalAttendees,
                 title, Boolean.TRUE.equals(visioLink), notes);
         }
     }

@@ -1208,6 +1208,43 @@ class BookingLinkReservationRouteTest {
     }
 
     @Test
+    void shouldReturnBadRequestWhenAdditionalAttendeesContainCreatorEmailWithSurroundingSpaces(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+            {
+              "startUtc": "2036-01-26T09:00:00Z",
+              "creator": {
+                "name": "BOB",
+                "email": "creator@example.com"
+              },
+              "additional_attendees": [
+                {
+                  "name": "BOB duplicate",
+                  "email": " creator@example.com"
+                }
+              ],
+              "eventTitle": "30-min intro call"
+            }
+            """)
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 400,
+                  "type": "BadRequest",
+                  "message": "Bad Request",
+                  "details": "'additional_attendees' must not contain creator email"
+                }
+                """));
+    }
+
+    @Test
     void shouldReturnBadRequestWhenAdditionalAttendeesContainDuplicateEmailsIgnoreCase(TwakeCalendarGuiceServer server) {
         // Given: a request containing duplicate attendee emails differing only by letter case.
         BookingLink inserted = insertActiveBookingLink(server);
