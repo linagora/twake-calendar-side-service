@@ -178,6 +178,43 @@ public class CalendarEventModifierTest {
             assertThat(attendees.get(2).getParameter("ROLE").get().getValue()).isEqualTo("OPT-PARTICIPANT");
             assertThat(attendees.get(2).getParameter("PARTSTAT").get().getValue()).isEqualTo("NEEDS-ACTION");
         }
+
+        @Test
+        void shouldUpdateOrganizerAttendeeLineWithoutTouchingOrganizerNorOtherAttendees() {
+            Calendar calendar = CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//EN
+                BEGIN:VEVENT
+                UID:dup-attendee
+                DTSTAMP:20251001T000000Z
+                DTSTART:20251020T100000Z
+                DURATION:PT1H
+                SUMMARY:Meeting
+                ORGANIZER;CN=Organizer:mailto:organizer@example.com
+                ATTENDEE;PARTSTAT=ACCEPTED:mailto:organizer@example.com
+                ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=Bob:mailto:bob@example.com
+                ATTENDEE;PARTSTAT=NEEDS-ACTION;ROLE=OPT-PARTICIPANT:mailto:bob@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """.replace("\n", "\r\n"));
+
+            Calendar updated = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("organizer@example.com", PartStat.TENTATIVE))
+                .apply(calendar);
+
+            VEvent updatedVEvent = (VEvent) updated.getComponent(VEvent.VEVENT).get();
+            List<Attendee> attendees = updatedVEvent.getAttendees();
+
+            assertThat(attendees.size()).isEqualTo(3);
+            assertThat(attendees.get(0).getCalAddress().toASCIIString()).isEqualTo("mailto:organizer@example.com");
+            assertThat(attendees.get(0).getParameter("PARTSTAT").get().getValue()).isEqualTo("TENTATIVE");
+            assertThat(attendees.get(1).getParameter("CN").get().getValue()).isEqualTo("Bob");
+            assertThat(attendees.get(1).getParameter("PARTSTAT").get().getValue()).isEqualTo("NEEDS-ACTION");
+            assertThat(attendees.get(2).getParameter("ROLE").get().getValue()).isEqualTo("OPT-PARTICIPANT");
+            assertThat(attendees.get(2).getParameter("PARTSTAT").get().getValue()).isEqualTo("NEEDS-ACTION");
+            assertThat(updatedVEvent.getOrganizer().getParameter("CN").get().getValue()).isEqualTo("Organizer");
+            assertThat(updatedVEvent.getOrganizer().getCalAddress().toASCIIString()).isEqualTo("mailto:organizer@example.com");
+        }
     }
 
     @Test
