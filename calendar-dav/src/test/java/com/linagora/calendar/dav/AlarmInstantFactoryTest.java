@@ -20,6 +20,7 @@ package com.linagora.calendar.dav;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -3090,6 +3091,34 @@ public class AlarmInstantFactoryTest {
 
         assertThat(alarm.map(AlarmInstantFactory.AlarmInstant::alarmTime))
             .contains(Instant.parse("2026-06-15T08:15:00Z"));
+    }
+
+    @Test
+    void shouldRejectRecurringAllDayEventWithUnparsableDtStartWithIllegalStateException() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VTIMEZONE
+            TZID:Europe/Paris
+            BEGIN:STANDARD
+            DTSTART:19701025T030000
+            TZOFFSETFROM:+0200
+            TZOFFSETTO:+0100
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:allday
+            DTSTART;TZID=Unknown/Zone;VALUE=DATE:2026016
+            RRULE:FREQ=WEEKLY
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        assertThatThrownBy(() -> testee(Instant.parse("2025-03-13T00:00:00Z"))
+                .computeNextAlarmInstant(CalendarUtil.parseIcs(ics), Username.of("bob@example.com")))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("DTSTART property is missing or invalid for event with UID allday");
     }
 
     private MailAddress asMailAddress(String email) {

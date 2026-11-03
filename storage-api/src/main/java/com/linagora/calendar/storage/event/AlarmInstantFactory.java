@@ -379,7 +379,7 @@ public interface AlarmInstantFactory {
                 this.excludedDates = extractExDates(master);
                 this.now = now;
                 if (EventParseUtils.isAllDay(master)) {
-                    this.seed = master.getDateTimeStart().getDate();
+                    this.seed = EventParseUtils.getStartTime(master).toLocalDate();
                     this.periodEnd = LocalDate.ofInstant(now, ZoneOffset.UTC).plusYears(1);
                 } else {
                     ZonedDateTime seedStart = EventParseUtils.getStartTime(master);
