@@ -22,15 +22,18 @@ import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
 import static com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader.BUSINESS_HOURS_IDENTIFIER;
 
+import java.time.DateTimeException;
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.ResolverStyle;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -39,6 +42,8 @@ import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -119,9 +124,12 @@ public class BookingLinkCreateRoute extends CalendarRoute {
                 .map(AvailabilityRules::new);
         }
     }
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkCreateRoute.class);
     private static final String BOOKING_LINK_PUBLIC_ID = "bookingLinkPublicId";
 
-    private static final DateTimeFormatter BUSINESS_HOURS_TIME_FORMATTER = DateTimeFormatter.ofPattern("H:m");
+    private static final DateTimeFormatter BUSINESS_HOURS_TIME_FORMATTER = DateTimeFormatter.ofPattern("H:m")
+        .withResolverStyle(ResolverStyle.STRICT);
 
     private final BookingLinkDAO bookingLinkDAO;
     private final CalDavClient calDavClient;
@@ -194,20 +202,48 @@ public class BookingLinkCreateRoute extends CalendarRoute {
         return dto;
     }
 
-    private Optional<AvailabilityRules> getDefaultAvailabilityRules(SettingsBasedResolver.ResolvedSettings resolvedSettings) {
+    static Optional<AvailabilityRules> getDefaultAvailabilityRules(SettingsBasedResolver.ResolvedSettings resolvedSettings) {
         return resolvedSettings.get(BUSINESS_HOURS_IDENTIFIER, List.class)
             .map(list -> ((List<BusinessHoursSettingReader.BusinessHoursDto>) list).stream()
-                .flatMap(dto -> toAvailabilityRuleList(dto, resolvedSettings.zoneId()).stream())
+                .filter(Objects::nonNull)
+                .flatMap(dto -> toAvailabilityRules(dto, resolvedSettings.zoneId()))
                 .toList())
+            .filter(rules -> !rules.isEmpty())
             .map(AvailabilityRules::new);
     }
 
-    private List<AvailabilityRule> toAvailabilityRuleList(BusinessHoursSettingReader.BusinessHoursDto dto, ZoneId zoneId) {
-        LocalTime start = LocalTime.parse(dto.start(), BUSINESS_HOURS_TIME_FORMATTER);
-        LocalTime end = LocalTime.parse(dto.end(), BUSINESS_HOURS_TIME_FORMATTER);
-        return dto.daysOfWeek().stream()
-            .map(DayOfWeek::of)
-            .map(day -> (AvailabilityRule) new AvailabilityRule.WeeklyAvailabilityRule(day, start, end, zoneId))
-            .toList();
+    private static Stream<AvailabilityRule> toAvailabilityRules(BusinessHoursSettingReader.BusinessHoursDto dto, ZoneId zoneId) {
+        Optional<LocalTime> start = parseBusinessHoursTime(dto.start());
+        Optional<LocalTime> end = parseBusinessHoursTime(dto.end());
+        if (start.isEmpty() || end.isEmpty() || !start.get().isBefore(end.get())) {
+            LOGGER.warn("Ignoring stored business hours with invalid time range: {}", dto);
+            return Stream.empty();
+        }
+        return validDaysOfWeek(dto)
+            .map(day -> new AvailabilityRule.WeeklyAvailabilityRule(day, start.get(), end.get(), zoneId));
+    }
+
+    private static Optional<LocalTime> parseBusinessHoursTime(String time) {
+        try {
+            return Optional.ofNullable(time)
+                .map(value -> LocalTime.parse(value, BUSINESS_HOURS_TIME_FORMATTER));
+        } catch (DateTimeException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static Stream<DayOfWeek> validDaysOfWeek(BusinessHoursSettingReader.BusinessHoursDto dto) {
+        return Optional.ofNullable(dto.daysOfWeek()).stream()
+            .flatMap(List::stream)
+            .filter(day -> isValidDayOfWeek(day, dto))
+            .map(DayOfWeek::of);
+    }
+
+    private static boolean isValidDayOfWeek(Integer day, BusinessHoursSettingReader.BusinessHoursDto dto) {
+        boolean valid = day != null && day >= DayOfWeek.MONDAY.getValue() && day <= DayOfWeek.SUNDAY.getValue();
+        if (!valid) {
+            LOGGER.warn("Ignoring invalid day of week {} in stored business hours: {}", day, dto);
+        }
+        return valid;
     }
 }
