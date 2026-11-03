@@ -236,7 +236,17 @@ public class CalendarUtil {
             .toList());
     }
 
+    /**
+     * ical4j's {@link Property#copy()} drops the group prefix (eg {@code X-APPLE} in {@code X-APPLE.FOO}) of every
+     * property, and throws on {@link XProperty} whose name does not start with {@code X-}.
+     */
     private static Property copy(Property property) {
+        Property copy = copyIgnoringPrefix(property);
+        copy.setPrefix(property.getPrefix());
+        return copy;
+    }
+
+    private static Property copyIgnoringPrefix(Property property) {
         if (property instanceof XProperty) {
             return new XProperty(property.getName(), property.getParameterList(), property.getValue());
         }

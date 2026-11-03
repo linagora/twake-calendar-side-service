@@ -239,4 +239,63 @@ class CalendarUtilTest {
             .contains("METHOD:REQUEST", "SUMMARY:Weekly meeting")
             .doesNotContain("RECURRENCE-ID", "Weekly meeting moved");
     }
+
+    @Test
+    void copyShouldKeepThePropertyGroupPrefix() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:a
+            DTSTART:20251020T100000Z
+            X-APPLE.FOO:bar
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
+
+        VEvent copy = CalendarUtil.copy(vEvent);
+
+        assertThat(copy.toString()).isEqualTo(vEvent.toString());
+    }
+
+    @Test
+    void copyShouldKeepTheGroupPrefixOfKnownProperties() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:a
+            DTSTART:20251020T100000Z
+            SUMMARY:Weekly meeting
+            A.SUMMARY:Grouped summary
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
+
+        VEvent copy = CalendarUtil.copy(vEvent);
+
+        assertThat(copy.toString()).isEqualTo(vEvent.toString());
+    }
+
+    @Test
+    void copyShouldKeepGroupedPropertiesNamedAsComponentDelimiters() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:a
+            DTSTART:20251020T100000Z
+            D.END:Weekly meeting moved
+            END:VEVENT
+            END:VCALENDAR
+            """);
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
+
+        Calendar result = CalendarUtil.withSingleVEvent(calendar, CalendarUtil.copy(vEvent));
+
+        assertThat(CalendarUtil.parseIcs(result.toString()).toString())
+            .contains("D.END:Weekly meeting moved");
+    }
 }
