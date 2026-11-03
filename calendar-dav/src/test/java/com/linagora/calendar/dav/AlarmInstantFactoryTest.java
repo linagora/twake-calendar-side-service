@@ -19,6 +19,7 @@
 package com.linagora.calendar.dav;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -1638,6 +1639,92 @@ public class AlarmInstantFactoryTest {
             Optional<Instant> result = computeNextAlarmTime(ics, Instant.parse("2026-06-08T09:00:00Z"), Username.of("john@example.com"));
 
             assertThat(result).contains(Instant.parse("2026-06-15T08:15:00Z"));
+        }
+
+        @Test
+        void shouldNotThrowDateTimeParseExceptionWhenMasterHasNoRRule() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VTIMEZONE
+                TZID:Europe/Paris
+                BEGIN:STANDARD
+                DTSTART:19701025T030000
+                TZOFFSETFROM:+0200
+                TZOFFSETTO:+0100
+                END:STANDARD
+                END:VTIMEZONE
+                BEGIN:VEVENT
+                UID:first
+                DTSTART;TZID=Unknown/Zone;VALUE=DATE:2026016
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:second
+                DTSTART:20260608T083000Z
+                RRULE:FREQ=WEEKLY
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            assertThatCode(() -> testee(Instant.parse("2025-03-13T00:00:00Z"))
+                    .computeNextAlarmInstant(CalendarUtil.parseIcs(ics), Username.of("bob@example.com")))
+                .doesNotThrowAnyException();
+        }
+
+        @Test
+        void shouldUseTheVEventCarryingTheRRuleAsMaster() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:first
+                DTSTART:20260601T083000Z
+                ATTENDEE;CN=John Doe;PARTSTAT=ACCEPTED:mailto:john@example.com
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:second
+                DTSTART:20260608T083000Z
+                RRULE:FREQ=WEEKLY
+                ATTENDEE;CN=John Doe;PARTSTAT=ACCEPTED:mailto:john@example.com
+                BEGIN:VALARM
+                ACTION:EMAIL
+                TRIGGER:-PT15M
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            Optional<Instant> result = computeNextAlarmTime(ics, Instant.parse("2026-06-08T09:00:00Z"), Username.of("john@example.com"));
+
+            assertThat(result).contains(Instant.parse("2026-06-15T08:15:00Z"));
+        }
+
+        @Test
+        void shouldFallBackToNonRecurringComputationWhenNoMasterCarriesTheRRule() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:event
+                DTSTART:20260608T083000Z
+                ATTENDEE;CN=John Doe;PARTSTAT=ACCEPTED:mailto:john@example.com
+                BEGIN:VALARM
+                ACTION:EMAIL
+                TRIGGER:-PT15M
+                END:VALARM
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:event
+                RECURRENCE-ID:20260615T083000Z
+                DTSTART:20260615T083000Z
+                RRULE:FREQ=WEEKLY
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            Optional<Instant> result = computeNextAlarmTime(ics, Instant.parse("2026-06-01T00:00:00Z"), Username.of("john@example.com"));
+
+            assertThat(result).contains(Instant.parse("2026-06-08T08:15:00Z"));
         }
     }
 

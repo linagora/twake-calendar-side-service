@@ -314,7 +314,7 @@ public class EventParseUtils {
             .orElseThrow(() -> new IllegalStateException("DTSTART property is missing or invalid for event with UID " + describeUid(vEvent)));
     }
 
-    private static String describeUid(VEvent vEvent) {
+    static String describeUid(VEvent vEvent) {
         return vEvent.getUid()
             .map(Uid::getValue)
             .orElse("<none>");
