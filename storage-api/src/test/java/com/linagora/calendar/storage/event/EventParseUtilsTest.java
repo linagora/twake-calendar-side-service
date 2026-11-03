@@ -905,6 +905,15 @@ class EventParseUtilsTest {
 
             assertThat(EventParseUtils.getStartTime(instance).toInstant()).isEqualTo(Instant.parse("2027-08-04T01:30:00Z"));
         }
+
+        @Test
+        void createInstanceVEventShouldFindAnOccurrenceOfAFloatingSeriesFromALocalDateTime() {
+            VEvent master = (VEvent) CalendarUtil.parseIcs(DAILY_FLOATING_ICS).getComponent(Component.VEVENT).orElseThrow();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, LocalDateTime.parse("2027-08-04T01:30:00"));
+
+            assertThat(EventParseUtils.getStartTime(instance).toInstant()).isEqualTo(Instant.parse("2027-08-04T01:30:00Z"));
+        }
     }
 
     @Test
