@@ -28,4 +28,11 @@ public class SmtpSendingFailedException extends RuntimeException {
             super(message);
         }
     }
+
+    // Permanent: the envelope carries characters that could inject SMTP commands.
+    public static class UnsafeEnvelope extends SmtpSendingFailedException {
+        public UnsafeEnvelope(String message) {
+            super(message);
+        }
+    }
 }
