@@ -23,6 +23,7 @@ import static net.fortuna.ical4j.model.Property.ATTENDEE;
 import static net.fortuna.ical4j.model.Property.TRIGGER;
 
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -38,7 +39,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -145,8 +145,11 @@ public interface AlarmInstantFactory {
 
             Map<Temporal, VEvent> overrideMap = events.stream()
                 .filter(e -> e.getRecurrenceId() != null)
-                .collect(Collectors.toMap(event -> normalizeTemporal(event.getRecurrenceId().getDate()),
-                    Function.identity(),
+                .flatMap(event -> overrideRecurrenceDate(event)
+                    .map(recurrenceDate -> Map.entry(recurrenceDate, event))
+                    .stream())
+                .collect(Collectors.toMap(Map.Entry::getKey,
+                    Map.Entry::getValue,
                     Default::selectLatestOverride));
 
             Optional<AlarmInstant> nextOverrideAlarm = computeNextAlarmInstant(overrideMap.entrySet().stream()
@@ -332,6 +335,16 @@ public interface AlarmInstantFactory {
             return EventParseUtils.temporalToZonedDateTime(temporal)
                 .map(ZonedDateTime::toInstant)
                 .orElseThrow(() -> new IllegalArgumentException("Cannot convert: " + temporal));
+        }
+
+        // ical4j parses the RECURRENCE-ID value lazily: an override whose value can not be read is ignored
+        private static Optional<Temporal> overrideRecurrenceDate(VEvent override) {
+            try {
+                return Optional.of(normalizeTemporal(override.getRecurrenceId().getDate()));
+            } catch (DateTimeException | IllegalArgumentException e) {
+                LOGGER.info("Ignoring override with unparsable RECURRENCE-ID: {}", e.getMessage());
+                return Optional.empty();
+            }
         }
 
         private static VEvent selectLatestOverride(VEvent first, VEvent second) {
