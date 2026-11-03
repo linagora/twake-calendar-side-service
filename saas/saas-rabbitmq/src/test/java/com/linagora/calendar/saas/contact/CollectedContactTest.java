@@ -22,12 +22,19 @@ import static com.linagora.calendar.saas.contact.CollectedContact.CollectedConta
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 
+import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linagora.calendar.storage.AddressBookURL;
+import com.linagora.calendar.storage.OpenPaaSId;
 
 class CollectedContactTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -188,6 +195,44 @@ class CollectedContactTest {
         assertThatThrownBy(() -> CollectedContact.parse("not-a-vcard".getBytes(StandardCharsets.UTF_8)))
             .isInstanceOf(CollectedContactException.class)
             .hasMessage("Unable to parse collected vCard");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"a b@c", "x?y", "x#y", "%2F..%2Fx", "../x", "a/b", "{uid}", "50%"})
+    void collectedContactShouldMapAnyUidToASingleSafeResourceName(String uid) throws Exception {
+        ObjectNode contact = contact("""
+            {"@type": "Card", "version": "2.0", "uid": "%s",
+             "emails": {"e": {"@type": "EmailAddress", "address": "alice@example.com"}}}
+            """.formatted(uid));
+
+        CollectedContact result = CollectedContact.parse(contact);
+        AddressBookURL collected = new AddressBookURL(new OpenPaaSId("65f1c0de0123456789abcdef"), "collected");
+
+        URI uri = collected.vcardUri(result.resourceName().value());
+        assertThat(uri.getRawQuery()).isNull();
+        assertThat(uri.getRawFragment()).isNull();
+        String name = StringUtils.removeStart(uri.getRawPath(), collected.asUri().toASCIIString() + "/");
+        assertThat(URLDecoder.decode(name, StandardCharsets.UTF_8)).doesNotContain("/", "\\");
+        assertThat(CollectedContact.parse(result.toVCardAsBytes()).uid().value()).isEqualTo(uid);
+    }
+
+    @Test
+    void resourceNameShouldBeTheUidWhenSafe() throws Exception {
+        ObjectNode contact = contact("""
+            {"@type": "Card", "version": "2.0", "uid": "contact-uid@example.com"}
+            """);
+
+        assertThat(CollectedContact.parse(contact).resourceName().value()).isEqualTo("contact-uid@example.com");
+    }
+
+    @Test
+    void resourceNameShouldBeStableForUnsafeUid() throws Exception {
+        String json = """
+            {"@type": "Card", "version": "2.0", "uid": "a b@c"}
+            """;
+
+        assertThat(CollectedContact.parse(contact(json)).resourceName())
+            .isEqualTo(CollectedContact.parse(contact(json)).resourceName());
     }
 
     private ObjectNode contact(String value) throws Exception {

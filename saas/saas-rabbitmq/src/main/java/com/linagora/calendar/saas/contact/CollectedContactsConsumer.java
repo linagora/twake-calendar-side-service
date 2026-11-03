@@ -33,6 +33,8 @@ import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.core.Username;
 import org.apache.james.lifecycle.api.Startable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linagora.calendar.dav.CardDavClient;
@@ -48,6 +50,8 @@ import reactor.core.publisher.Mono;
 import reactor.rabbitmq.AcknowledgableDelivery;
 
 public class CollectedContactsConsumer implements Closeable, Startable {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CollectedContactsConsumer.class);
+
     public static final String QUEUE = "tcalendar:contacts:collected";
     public static final String DEAD_LETTER_QUEUE = "tcalendar:contacts:collected-dead-letter";
 
@@ -116,21 +120,25 @@ public class CollectedContactsConsumer implements Closeable, Startable {
 
     private Mono<Void> handleContact(Username username, AddressBookURL addressBook, ObjectNode contactData) {
         return Mono.fromCallable(() -> CollectedContact.parse(contactData))
-            .flatMap(incomingContact -> cardDavClient.retrieveContact(username, addressBook, incomingContact.uid())
+            .flatMap(incomingContact -> cardDavClient.retrieveContact(username, addressBook, incomingContact.resourceName())
                 .singleOptional()
                 .flatMap(maybeExistingVCard -> maybeExistingVCard
                     .map(CollectedContact::parse)
                     .map(existingContact -> updateExistingContact(username, addressBook, existingContact, incomingContact))
-                    .orElseGet(() -> createNewContact(username, addressBook, incomingContact))));
+                    .orElseGet(() -> createNewContact(username, addressBook, incomingContact))))
+            .onErrorResume(e -> {
+                LOGGER.warn("Failed to collect a contact for user {}, skipping it", username.asString(), e);
+                return Mono.empty();
+            });
     }
 
     private Mono<Void> updateExistingContact(Username username, AddressBookURL addressBook, CollectedContact existingContact, CollectedContact incomingContact) {
         return Mono.fromCallable(() -> contactUpdateCalculator.calculate(existingContact, incomingContact))
             .flatMap(Mono::justOrEmpty)
-            .flatMap(vCard -> cardDavClient.upsertContact(username, addressBook, incomingContact.uid().value(), vCard));
+            .flatMap(vCard -> cardDavClient.upsertContact(username, addressBook, incomingContact.resourceName().value(), vCard));
     }
 
     private Mono<Void> createNewContact(Username username, AddressBookURL addressBook, CollectedContact incomingContact) {
-        return cardDavClient.upsertContact(username, addressBook, incomingContact.uid().value(), incomingContact.toVCardAsBytes());
+        return cardDavClient.upsertContact(username, addressBook, incomingContact.resourceName().value(), incomingContact.toVCardAsBytes());
     }
 }

@@ -31,6 +31,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Splitter;
 import com.google.common.hash.Hashing;
 import com.linagora.calendar.dav.ContactUid;
+import com.linagora.calendar.dav.importer.DavResourceName;
 
 import ezvcard.Ezvcard;
 import it.cnr.iit.jscontact.tools.dto.Card;
@@ -91,6 +92,17 @@ final class CollectedContact {
 
     ContactUid uid() {
         return uid;
+    }
+
+    /**
+     * Name of the CardDAV resource storing this contact: the UID when it is a safe path segment, its SHA-1 otherwise.
+     * Deterministic so that the next message for the same UID finds the stored card again.
+     */
+    ContactUid resourceName() {
+        return Optional.of(uid.value())
+            .filter(DavResourceName::isSafe)
+            .map(ContactUid::new)
+            .orElseGet(() -> new ContactUid(sha1(uid.value())));
     }
 
     boolean hasEmailAddress() {

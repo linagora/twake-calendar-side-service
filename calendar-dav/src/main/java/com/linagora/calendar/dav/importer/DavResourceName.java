@@ -35,8 +35,15 @@ public final class DavResourceName {
     public static String fromUid(String uid) {
         return Optional.ofNullable(uid)
             .map(StringUtils::trimToNull)
-            .filter(value -> SAFE_RESOURCE_NAME.matcher(value).matches())
+            .filter(DavResourceName::isSafe)
             .orElseGet(() -> UUID.randomUUID().toString());
+    }
+
+    /**
+     * Whether the value can be used as is as a DAV resource name: a single, non escaping, path segment.
+     */
+    public static boolean isSafe(String value) {
+        return value != null && SAFE_RESOURCE_NAME.matcher(value).matches();
     }
 
     private DavResourceName() {

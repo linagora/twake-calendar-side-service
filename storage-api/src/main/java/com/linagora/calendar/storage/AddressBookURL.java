@@ -71,6 +71,7 @@ public record AddressBookURL(OpenPaaSId baseId, String addressBookId) {
 
     public URI vcardUri(String vcardUid) {
         Preconditions.checkArgument(StringUtils.isNotBlank(vcardUid), "vcardUid must not be null or empty");
+        DavPathSegment.validate(vcardUid, "vcardUid");
         return URI.create(asUri().toASCIIString() + "/" + vcardUid + VCARD_EXTENSION);
     }
 }
