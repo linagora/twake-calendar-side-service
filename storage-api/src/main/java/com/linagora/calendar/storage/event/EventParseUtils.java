@@ -542,12 +542,11 @@ public class EventParseUtils {
     public static Period calculateRecurrenceSet(VEvent master, Temporal recurrenceDate) {
         try {
             Period period = switch (recurrenceDate) {
-                case Instant instant -> datetimePeriod(master, instant);
                 case LocalDate localDate -> {
                     LocalDate nextDay = localDate.plusDays(1);
                     yield new Period(nextDay, nextDay);
                 }
-                default -> new Period(recurrenceDate, recurrenceDate);
+                default -> datetimePeriod(master, toInstant(recurrenceDate));
             };
 
             Set<Period<Temporal>> occurrences = master.calculateRecurrenceSet(period);
@@ -570,6 +569,13 @@ public class EventParseUtils {
         return temporalToZonedDateTime(occurrence.getStart())
             .map(ZonedDateTime::toInstant)
             .equals(temporalToZonedDateTime(recurrenceDate).map(ZonedDateTime::toInstant));
+    }
+
+    private static Instant toInstant(Temporal recurrenceDate) {
+        // Floating LocalDateTime recurrence dates are read as UTC, like floating occurrences in datetimePeriod
+        return temporalToZonedDateTime(recurrenceDate)
+            .map(ZonedDateTime::toInstant)
+            .orElseThrow(() -> new IllegalArgumentException("Unsupported recurrence date type: " + recurrenceDate));
     }
 
     private static Period datetimePeriod(VEvent master, Instant recurrenceDate) {
