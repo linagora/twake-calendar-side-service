@@ -364,8 +364,9 @@ public class EventParseUtils {
     }
 
     public static Optional<ZoneId> getZoneIdFromStartDate(VEvent calendarEvent) {
-        return calendarEvent.getDateTimeStart()
-            .getParameter(Parameter.TZID)
+        DtStart<?> dtStart = calendarEvent.getDateTimeStart();
+        Preconditions.checkArgument(dtStart != null, "DTSTART property is required for event with UID %s", describeUid(calendarEvent));
+        return dtStart.getParameter(Parameter.TZID)
             .map(Content::getValue)
             .flatMap(EventParseUtils::extractZoneId);
     }

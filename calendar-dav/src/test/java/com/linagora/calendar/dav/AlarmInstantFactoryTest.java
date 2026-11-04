@@ -68,6 +68,25 @@ public class AlarmInstantFactoryTest {
     }
 
     @Test
+    void shouldRejectRecurringEventWithoutDtStartWithIllegalArgumentException() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:no-start
+            RRULE:FREQ=DAILY
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        assertThatThrownBy(() -> testee(Instant.parse("2025-03-13T00:00:00Z"))
+                .computeNextAlarmInstant(CalendarUtil.parseIcs(ics), Username.of("bob@example.com")))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("DTSTART property is required for event with UID no-start");
+    }
+
+    @Test
     void shouldReturnEmptyWhenAttendeeHasNotAccepted() {
         String ics = """
             BEGIN:VCALENDAR
