@@ -200,6 +200,46 @@ class CollectedContactTest {
             .doesNotContain("PREF=0", "PREF=101", "PREF=500");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"work_1", "wérk", "a.b", "a b", ""})
+    void vCardOfALabelledEntryWithUnsafeIdShouldBeReadableBack(String id) throws Exception {
+        ObjectNode contact = contact("""
+            {"@type": "Card", "version": "2.0",
+             "emails": {"%1$s": {"@type": "EmailAddress", "address": "bob@example.com", "label": "Work"}},
+             "onlineServices": {"%1$s": {"@type": "OnlineService", "service": "matrix", "user": "@bob:example.com", "label": "Chat"}}}
+            """.formatted(id));
+
+        CollectedContact incoming = CollectedContact.parse(contact);
+        CollectedContact reread = CollectedContact.parse(incoming.toVCardAsBytes());
+
+        assertThat(reread.uid()).isEqualTo(incoming.uid());
+        assertThat(reread.hasEmailAddress()).isTrue();
+        assertThat(reread.hasMatrixId()).isTrue();
+    }
+
+    @Test
+    void safeIdsShouldBeKept() throws Exception {
+        ObjectNode contact = contact("""
+            {"@type": "Card", "version": "2.0",
+             "emails": {"work-1": {"@type": "EmailAddress", "address": "bob@example.com", "label": "Work"}}}
+            """);
+
+        assertThat(CollectedContact.parse(contact).toVCardAsBytes()).asString(StandardCharsets.UTF_8)
+            .contains("G-work-1.EMAIL");
+    }
+
+    @Test
+    void unsafeIdsShouldBeRenamedDeterministically() throws Exception {
+        String json = """
+            {"@type": "Card", "version": "2.0",
+             "emails": {"work_1": {"@type": "EmailAddress", "address": "bob@example.com", "label": "Work"}}}
+            """;
+
+        assertThat(CollectedContact.parse(contact(json)).toJson())
+            .isEqualTo(CollectedContact.parse(contact(json)).toJson())
+            .doesNotContain("work_1");
+    }
+
     @Test
     void parsingShouldNotMutateTheIncomingJSContact() throws Exception {
         ObjectNode contact = contact("""

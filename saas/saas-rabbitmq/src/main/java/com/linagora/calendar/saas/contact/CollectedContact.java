@@ -21,8 +21,12 @@ package com.linagora.calendar.saas.contact;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.StreamSupport;
 
 import org.apache.commons.lang3.StringUtils;
@@ -57,6 +61,10 @@ final class CollectedContact {
     private static final String PREF = "pref";
     private static final int MIN_PREF = 1;
     private static final int MAX_PREF = 100;
+    private static final Set<String> ID_KEYED_PROPERTIES = Set.of("addresses", "anniversaries", "calendars", "cryptoKeys",
+        "directories", "emails", "links", "media", "nicknames", "notes", "onlineServices", "organizations", "personalInfo",
+        "phones", "preferredLanguages", "schedulingAddresses", "titles");
+    private static final Pattern VCARD_GROUP_SAFE_ID = Pattern.compile("[A-Za-z0-9-]+");
 
     private static final JSContact2VCard JSCONTACT_TO_VCARD = JSContact2VCard.builder()
         // Validation requires a Java EL implementation, which jscontact-tools does not declare as a dependency.
@@ -83,7 +91,7 @@ final class CollectedContact {
 
     static CollectedContact parse(ObjectNode contactData) {
         try {
-            return parse(Card.toJSCard(withPrefsInRange(contactData).toString()));
+            return parse(Card.toJSCard(normalize(contactData).toString()));
         } catch (CollectedContactException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
@@ -150,12 +158,14 @@ final class CollectedContact {
         return new CollectedContact(cardWithUid, uid, preferredEmailAddress.isPresent(), preferredMatrixId.isPresent());
     }
 
-    // vCard readers reject PREF outside 1..100 (RFC 6350), so clamp it to keep stored cards readable back.
-    private static ObjectNode withPrefsInRange(ObjectNode contactData) {
+    private static ObjectNode normalize(ObjectNode contactData) {
         ObjectNode copy = contactData.deepCopy();
         clampPrefs(copy);
+        renameUnsafeIds(copy);
         return copy;
     }
+
+    // vCard readers reject PREF outside 1..100 (RFC 6350), so clamp it to keep stored cards readable back.
 
     private static void clampPrefs(JsonNode node) {
         if (node instanceof ObjectNode objectNode && objectNode.path(PREF).isIntegralNumber()) {
@@ -163,6 +173,29 @@ final class CollectedContact {
         }
         StreamSupport.stream(node.spliterator(), false)
             .forEach(CollectedContact::clampPrefs);
+    }
+
+    // Labelled entries are written as vCard group "G-<id>", and group names only allow [A-Za-z0-9-] (RFC 6350).
+    // Ids are local to the card, so replace unsafe ones by their SHA-1 to keep stored cards readable back.
+    private static void renameUnsafeIds(ObjectNode card) {
+        ID_KEYED_PROPERTIES.stream()
+            .map(card::get)
+            .filter(ObjectNode.class::isInstance)
+            .map(ObjectNode.class::cast)
+            .forEach(CollectedContact::renameUnsafeKeys);
+    }
+
+    private static void renameUnsafeKeys(ObjectNode idMap) {
+        List<Map.Entry<String, JsonNode>> entries = List.copyOf(idMap.properties());
+        idMap.removeAll();
+        entries.forEach(entry -> idMap.set(toVCardGroupSafeId(entry.getKey()), entry.getValue()));
+    }
+
+    private static String toVCardGroupSafeId(String id) {
+        if (VCARD_GROUP_SAFE_ID.matcher(id).matches()) {
+            return id;
+        }
+        return sha1(id);
     }
 
     private static Card parseVCard(byte[] vCard) {
