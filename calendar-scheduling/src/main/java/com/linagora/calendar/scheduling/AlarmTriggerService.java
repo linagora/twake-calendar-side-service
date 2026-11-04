@@ -115,26 +115,32 @@ public class AlarmTriggerService {
 
     public Mono<Void> sendAlarmAndCleanup(AlarmEvent alarmEvent) {
         Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
-        return sendAlarm(alarmEvent, now)
-            .then(cleanup(alarmEvent))
-            .doOnSuccess(unused -> LOGGER.info("Processed alarm for event: {}, recipient: {}, action: {}, eventStartTime: {}",
-                alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.action(), alarmEvent.eventStartTime()));
+        return Mono.fromCallable(() -> CalendarUtil.parseIcs(alarmEvent.ics()))
+            // Only parsing failures should drop the alarm; downstream failures must remain retryable.
+            .onErrorResume(error -> {
+                LOGGER.warn("Unparseable ICS for alarm of event {}, recipient: {}, dropping it",
+                    alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), error);
+                return alarmEventDAO.delete(alarmEvent.eventUid(), alarmEvent.recipient()).then(Mono.empty());
+            })
+            .flatMap(calendar -> sendAlarm(alarmEvent, now, calendar)
+                .then(cleanup(alarmEvent, calendar))
+                .doOnSuccess(unused -> LOGGER.info("Processed alarm for event: {}, recipient: {}, action: {}, eventStartTime: {}",
+                    alarmEvent.eventUid().value(), alarmEvent.recipient().asString(), alarmEvent.action(), alarmEvent.eventStartTime())));
     }
 
-    private Mono<Void> sendAlarm(AlarmEvent alarmEvent, Instant now) {
+    private Mono<Void> sendAlarm(AlarmEvent alarmEvent, Instant now, Calendar calendar) {
         if (alarmEvent.eventStartTime().isBefore(now)) {
             // If the event start time is before now, we do not send the alarm
             return Mono.empty();
         }
         if (alarmEvent.action() == AlarmAction.DISPLAY) {
-            return sendDisplayNotification(alarmEvent, now);
+            return sendDisplayNotification(alarmEvent, calendar);
         }
-        return sendMail(alarmEvent, now);
+        return sendMail(alarmEvent, now, calendar);
     }
 
-    private Mono<Void> sendDisplayNotification(AlarmEvent alarmEvent, Instant now) {
+    private Mono<Void> sendDisplayNotification(AlarmEvent alarmEvent, Calendar calendar) {
         Username recipientUser = Username.fromMailAddress(alarmEvent.recipient());
-        Calendar calendar = CalendarUtil.parseIcs(alarmEvent.ics());
         VEvent vEvent = alarmEvent.recurrenceId().flatMap(recurrenceId -> getVEvent(calendar, recurrenceId))
             .orElse(GET_FIRST_VEVENT_FUNCTION.apply(calendar));
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
@@ -150,23 +156,23 @@ public class AlarmTriggerService {
         return Mono.from(eventBus.dispatch(eventBusAlarmEvent, registrationKey));
     }
 
-    private Mono<Void> cleanup(AlarmEvent alarmEvent) {
+    private Mono<Void> cleanup(AlarmEvent alarmEvent, Calendar calendar) {
         Username username = Username.fromMailAddress(alarmEvent.recipient());
         Instant sinceInstant = alarmEvent.alarmTime();
 
-        return Mono.fromCallable(() -> alarmInstantFactory.computeNextAlarmInstant(CalendarUtil.parseIcs(alarmEvent.ics()), username, Optional.of(sinceInstant)))
+        return Mono.fromCallable(() -> alarmInstantFactory.computeNextAlarmInstant(calendar, username, Optional.of(sinceInstant)))
             .flatMap(alarmInstantOptional -> alarmInstantOptional
                 .map(alarmInstant -> alarmEventDAO.update(alarmEvent.withNextOccurrence(alarmInstant)))
                 .orElseGet(() -> alarmEventDAO.delete(alarmEvent.eventUid(), alarmEvent.recipient())));
     }
 
-    private Mono<Void> sendMail(AlarmEvent alarmEvent, Instant now) {
+    private Mono<Void> sendMail(AlarmEvent alarmEvent, Instant now, Calendar calendar) {
         Username recipientUser = Username.fromMailAddress(alarmEvent.recipient());
         return settingsResolver.resolveOrDefault(recipientUser)
             .filter(resolvedSettings -> resolvedSettings.get(ALARM_SETTING_IDENTIFIER, Boolean.class).orElse(ENABLE_ALARM))
             .flatMap(resolvedSettings -> {
                 Locale locale = resolvedSettings.locale();
-                Map<String, Object> model = toPugModel(CalendarUtil.parseIcs(alarmEvent.ics()),
+                Map<String, Object> model = toPugModel(calendar,
                     alarmEvent.recurrenceId(),
                     locale,
                     Duration.between(now, alarmEvent.eventStartTime()));

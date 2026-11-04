@@ -24,6 +24,7 @@ import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingR
 import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
 import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.reset;
@@ -64,6 +65,8 @@ import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mockito;
 
 import com.github.fge.lambdas.Throwing;
@@ -895,6 +898,50 @@ public class AlarmTriggerServiceTest {
         AlarmEvent persisted = alarmEventDAO.find(eventUid, bob).block();
         assertThat(persisted).isNotNull();
         assertThat(persisted.alarmTime()).isEqualTo(parse("30250801T095000Z"));
+    }
+
+    @ParameterizedTest
+    @EnumSource(AlarmAction.class)
+    void shouldDropUnparseableAlarmWithoutSending(AlarmAction action) throws AddressException {
+        Instant now = clock.instant();
+        AlarmEvent alarm = new AlarmEvent(new EventUid("event-uid"), now.minusSeconds(60), now.plusSeconds(3600),
+            NO_RECURRING, Optional.empty(), new MailAddress("attendee@abc.com"), """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:event-uid
+                this is not an iCalendar content line
+                END:VEVENT
+                END:VCALENDAR
+                """, "/calendars/user/calendar/event.ics", action);
+        alarmEventDAO.create(alarm).block();
+
+        testee.sendAlarmAndCleanup(alarm).block();
+
+        assertThat(alarmEventDAO.find(alarm.eventUid(), alarm.recipient()).blockOptional()).isEmpty();
+        assertThat(smtpMailsResponse().getList("")).isEmpty();
+    }
+
+    @Test
+    void shouldKeepAlarmWhenSettingsResolutionFails() throws AddressException {
+        Instant now = clock.instant();
+        AlarmEvent alarm = new AlarmEvent(new EventUid("event-uid"), now.minusSeconds(60), now.plusSeconds(3600),
+            NO_RECURRING, Optional.empty(), new MailAddress("attendee@abc.com"), """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:event-uid
+                DTSTART:30250801T100000Z
+                END:VEVENT
+                END:VCALENDAR
+                """, "/calendars/user/calendar/event.ics", AlarmAction.EMAIL);
+        alarmEventDAO.create(alarm).block();
+        RuntimeException failure = new RuntimeException("Settings unavailable");
+        when(settingsResolver.resolveOrDefault(any(Username.class))).thenReturn(Mono.error(failure));
+
+        assertThatThrownBy(() -> testee.sendAlarmAndCleanup(alarm).block()).isSameAs(failure);
+
+        assertThat(alarmEventDAO.find(alarm.eventUid(), alarm.recipient()).blockOptional()).contains(alarm);
     }
 
     private JsonPath smtpMailsResponse() {
