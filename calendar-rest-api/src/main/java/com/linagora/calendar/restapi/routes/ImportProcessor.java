@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 import jakarta.inject.Inject;
 
@@ -169,6 +170,9 @@ public class ImportProcessor {
         private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
         private static final String UTC = "UTC";
+        private static final Pattern LINE_BREAK = Pattern.compile("[\\r\\n]");
+        private static final Pattern CONTROL_CHARACTERS = Pattern.compile("\\p{Cntrl}");
+        private static final int MAX_ZONE_LABEL_LENGTH = 64;
 
         static String format(DateProperty<?> dateProperty) {
             Temporal temporal = dateProperty.getDate();
@@ -182,7 +186,17 @@ public class ImportProcessor {
         private static Optional<String> zoneLabel(DateProperty<?> dateProperty, Temporal temporal) {
             return dateProperty.getParameter(Parameter.TZID)
                 .map(Parameter::getValue)
+                .flatMap(EventDateFormatter::sanitizeTzid)
                 .or(() -> isUtc(temporal) ? Optional.of(UTC) : Optional.empty());
+        }
+
+        // A parameter line without a colon makes ical4j merge the next line into the TZID value
+        private static Optional<String> sanitizeTzid(String rawTzid) {
+            String firstLine = LINE_BREAK.split(rawTzid, 2)[0];
+            String withoutControlCharacters = CONTROL_CHARACTERS.matcher(firstLine).replaceAll(StringUtils.EMPTY);
+            return Optional.of(StringUtils.truncate(StringUtils.normalizeSpace(withoutControlCharacters), MAX_ZONE_LABEL_LENGTH))
+                .map(String::trim)
+                .filter(StringUtils::isNotEmpty);
         }
 
         private static boolean isUtc(Temporal temporal) {
