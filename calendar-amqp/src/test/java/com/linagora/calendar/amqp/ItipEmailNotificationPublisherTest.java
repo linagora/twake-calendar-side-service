@@ -1144,6 +1144,86 @@ class ItipEmailNotificationPublisherTest {
         }
 
         @Test
+        void firstInvitationWithAnUnreadableDateInANestedComponentShouldBeNotified() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Calendar//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:event-uid@test
+                DTSTART:20360401T100000Z
+                DTEND:20360401T110000Z
+                RRULE:FREQ=WEEKLY;COUNT=3
+                SUMMARY:Weekly sync
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE:mailto:alice@example.com
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:event-uid@test
+                RECURRENCE-ID:20360408T100000Z
+                DTSTART:20360408T120000Z
+                DTEND:20360408T130000Z
+                SUMMARY:Weekly sync moved
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE:mailto:alice@example.com
+                BEGIN:VEVENT
+                EXDATE;TZID=Europe/Paris:ple.com
+                END:VEVENT
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(
+                dto(Method.VALUE_REQUEST, ics, Optional.empty()), EVENT_PATH, Optional.empty());
+
+            assertThat(notifications).hasSize(2)
+                .allSatisfy(notification -> assertThat(notification.event()).doesNotContain(":ple.com"));
+        }
+
+        @Test
+        void firstInvitationWithAnUnreadableDateInAnAlarmShouldKeepTheAlarm() {
+            String ics = """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Calendar//EN
+                METHOD:REQUEST
+                BEGIN:VEVENT
+                UID:event-uid@test
+                DTSTART:20360401T100000Z
+                DTEND:20360401T110000Z
+                RRULE:FREQ=WEEKLY;COUNT=3
+                SUMMARY:Weekly sync
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE:mailto:alice@example.com
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:event-uid@test
+                RECURRENCE-ID:20360408T100000Z
+                DTSTART:20360408T120000Z
+                DTEND:20360408T130000Z
+                SUMMARY:Weekly sync moved
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE:mailto:alice@example.com
+                BEGIN:VALARM
+                ACTION:DISPLAY
+                DESCRIPTION:Reminder
+                TRIGGER:-PT15M
+                RDATE;TZID=Europe/Paris:ple.com
+                END:VALARM
+                END:VEVENT
+                END:VCALENDAR
+                """;
+
+            List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(
+                dto(Method.VALUE_REQUEST, ics, Optional.empty()), EVENT_PATH, Optional.empty());
+
+            assertThat(notifications).hasSize(2)
+                .allSatisfy(notification -> assertThat(notification.event()).doesNotContain(":ple.com"))
+                .anySatisfy(notification -> assertThat(notification.event()).contains("BEGIN:VALARM", "TRIGGER:-PT15M"));
+        }
+
+        @Test
         void removedExDateShouldInviteAttendeeToTheRestoredOccurrence() {
             String previous = withExDate(RECURRING_OLD_NO_EXDATE, "20260408T100000Z");
 

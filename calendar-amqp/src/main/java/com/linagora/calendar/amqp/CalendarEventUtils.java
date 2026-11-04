@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -38,11 +39,13 @@ import org.slf4j.LoggerFactory;
 import com.google.common.annotations.VisibleForTesting;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
+import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.ComponentList;
 import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.Recur;
+import net.fortuna.ical4j.model.component.VAlarm;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.Value;
 import net.fortuna.ical4j.model.property.DateListProperty;
@@ -180,16 +183,44 @@ public class CalendarEventUtils {
      * ical4j keeps leniently parsed date values as text and parses them again on rendering: such a VEVENT cannot be
      * serialized. Returns the VEVENT without its unreadable date properties, consistent with {@link #readableDates}.
      *
+     * <p>Sub-components are rendered too: VALARMs are kept without their unreadable date properties, and other
+     * sub-components, that RFC 5545 does not allow in a VEVENT, are dropped.
+     *
      * <p>The supplied VEVENT is left untouched: it may be shared with other calendars.
      */
     public static VEvent withoutUnreadableDates(VEvent vevent) {
-        List<Property> readableProperties = vevent.getProperties().stream()
-            .filter(CalendarEventUtils::isRenderable)
+        List<Property> readableProperties = readableProperties(vevent.getProperties());
+        List<VAlarm> readableAlarms = vevent.getAlarms().stream()
+            .map(CalendarEventUtils::withoutUnreadableDates)
             .toList();
-        if (readableProperties.size() == vevent.getProperties().size()) {
+        if (readableProperties.size() == vevent.getProperties().size() && hasSameComponents(vevent, readableAlarms)) {
             return vevent;
         }
-        return new VEvent(new PropertyList(readableProperties), new ComponentList<>(vevent.getAlarms()));
+        return new VEvent(new PropertyList(readableProperties), new ComponentList<>(readableAlarms));
+    }
+
+    /**
+     * Compares by identity: content equality would compare property values, hence parse unreadable dates again.
+     */
+    private static boolean hasSameComponents(VEvent vevent, List<VAlarm> readableAlarms) {
+        List<? extends Component> components = vevent.getComponents();
+        return components.size() == readableAlarms.size()
+            && IntStream.range(0, components.size())
+                .allMatch(index -> components.get(index) == readableAlarms.get(index));
+    }
+
+    private static VAlarm withoutUnreadableDates(VAlarm alarm) {
+        List<Property> readableProperties = readableProperties(alarm.getProperties());
+        if (readableProperties.size() == alarm.getProperties().size()) {
+            return alarm;
+        }
+        return new VAlarm(new PropertyList(readableProperties));
+    }
+
+    private static List<Property> readableProperties(List<Property> properties) {
+        return properties.stream()
+            .filter(CalendarEventUtils::isRenderable)
+            .toList();
     }
 
     private static boolean isRenderable(Property property) {
