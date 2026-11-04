@@ -39,6 +39,8 @@ import jakarta.mail.internet.AddressException;
 import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.storage.CalendarURL;
@@ -57,7 +59,7 @@ import net.fortuna.ical4j.model.property.RecurrenceId;
 class EventParseUtilsTest {
 
     @Test
-    void getZoneIdFromStartDateShouldReturnEmptyWhenDtStartIsMissing() {
+    void getZoneIdFromStartDateShouldRejectMissingDtStart() {
         String ics = """
             BEGIN:VCALENDAR
             VERSION:2.0
@@ -67,6 +69,26 @@ class EventParseUtilsTest {
             END:VEVENT
             END:VCALENDAR
             """;
+
+        VEvent event = EventParseUtils.getFirstEvent(CalendarUtil.parseIcs(ics));
+
+        assertThatThrownBy(() -> EventParseUtils.getZoneIdFromStartDate(event))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("DTSTART property is required for event with UID no-start");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"DTSTART:20250911T100000Z", "DTSTART:20250911T100000", "DTSTART;VALUE=DATE:20250911"})
+    void getZoneIdFromStartDateShouldReturnEmptyWhenDtStartHasNoTzid(String dtStart) {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:without-tzid
+            {dtStart}
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{dtStart}", dtStart);
 
         VEvent event = EventParseUtils.getFirstEvent(CalendarUtil.parseIcs(ics));
 
