@@ -36,6 +36,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.BooleanNode;
 import com.fasterxml.jackson.databind.node.LongNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
@@ -107,7 +108,7 @@ public interface UserConfigurationDAOContract {
     default void persistShouldHandleComplexConfigurations() {
         Set<ConfigurationEntry> originalEntries = Set.of(
             ConfigurationEntry.of("linagora.esn.unifiedinbox", "booleanNode", BooleanNode.TRUE),
-            ConfigurationEntry.of("linagora.esn.unifiedinbox", "nullNode", null),
+            ConfigurationEntry.of("linagora.esn.unifiedinbox", "nullNode", NullNode.getInstance()),
             ConfigurationEntry.of("linagora.esn", "emptyStringNode", toJsonNode("{}")),
             ConfigurationEntry.of("core", "textNode", new TextNode("vi")),
             ConfigurationEntry.of("core", "numberNode", new LongNode(123456789)),
