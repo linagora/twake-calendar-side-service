@@ -20,12 +20,14 @@ package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -38,6 +40,7 @@ import javax.net.ssl.SSLException;
 
 import jakarta.mail.internet.AddressException;
 
+import org.apache.james.core.MailAddress;
 import org.apache.james.json.DTOConverter;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
@@ -53,6 +56,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CalDavClient;
@@ -61,11 +66,11 @@ import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventFactory;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.MemoryAlarmEventDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
 import com.linagora.calendar.storage.eventsearch.EventUid;
+import com.linagora.calendar.storage.mongodb.MongoDBAlarmEventDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.webadmin.service.AlarmScheduleService;
@@ -95,7 +100,7 @@ public class AlarmScheduleTest {
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         MongoDBOpenPaaSDomainDAO domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
-        alarmEventDAO = spy(new MemoryAlarmEventDAO());
+        alarmEventDAO = spy(new MongoDBAlarmEventDAO(mongoDB));
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         clock = new UpdatableTickingClock(Instant.now());
         alarmScheduleService = new AlarmScheduleService(userDAO, calDavClient, alarmEventDAO, new AlarmInstantFactory.Default(clock),
@@ -154,8 +159,10 @@ public class AlarmScheduleTest {
             .body("completedDate", is(notNullValue()));
     }
 
-    @Test
-    void scheduleShouldCreateAlarmEvent() throws AddressException {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void scheduleShouldCreateAlarmEventOnlyOnce(boolean delegatedRecipient) throws AddressException {
+        MailAddress recipient = delegatedRecipient ? new MailAddress("delegated@example.com") : openPaaSUser.username().asMailAddress();
         String eventId = UUID.randomUUID().toString();
         String ics = """
             BEGIN:VCALENDAR
@@ -173,14 +180,15 @@ public class AlarmScheduleTest {
             BEGIN:VALARM
             TRIGGER:-PT15M
             ACTION:EMAIL
-            ATTENDEE:mailto:{organizerEmail}
+            ATTENDEE:mailto:{alarmRecipient}
             DESCRIPTION:Reminder
             END:VALARM
             END:VEVENT
             END:VCALENDAR
             """.replace("{eventUid}", eventId)
             .replace("{organizerEmail}", openPaaSUser.username().asString())
-            .replace("{attendeeEmail}", openPaaSUser2.username().asString());
+            .replace("{attendeeEmail}", openPaaSUser2.username().asString())
+            .replace("{alarmRecipient}", recipient.asString());
         CalendarURL calendarURL = CalendarURL.from(openPaaSUser.id());
 
         // To trigger calendar directory activation
@@ -205,16 +213,36 @@ public class AlarmScheduleTest {
             .body("additionalInformation.processedEventCount", is(1))
             .body("additionalInformation.failedEventCount", is(0));
 
-        AlarmEvent alarmEvent = alarmEventDAO.find(new EventUid(eventId), openPaaSUser.username().asMailAddress()).block();
+        AlarmEvent alarmEvent = alarmEventDAO.find(new EventUid(eventId), recipient).block();
 
         assertSoftly(softly -> {
             softly.assertThat(alarmEvent.eventUid().value()).isEqualTo(eventId);
             softly.assertThat(alarmEvent.alarmTime()).isEqualTo(parse("30250801T094500Z"));
             softly.assertThat(alarmEvent.eventStartTime()).isEqualTo(parse("30250801T100000Z"));
             softly.assertThat(alarmEvent.recurring()).isFalse();
-            softly.assertThat(alarmEvent.recipient().asString()).isEqualTo(openPaaSUser.username().asString());
+            softly.assertThat(alarmEvent.recipient()).isEqualTo(recipient);
             softly.assertThat(alarmEvent.eventPath()).isEqualTo("/calendars/" + openPaaSUser.id() + "/" + openPaaSUser.id() + "/" + eventId + ".ics");
         });
+
+        // Re-running the task must preserve the alarm already scheduled for this recipient.
+        String repeatedTaskId = given()
+            .queryParam("task", "scheduleAlarms")
+            .when()
+            .post()
+            .jsonPath()
+            .get("taskId");
+
+        given()
+            .basePath(TasksRoutes.BASE)
+            .when()
+            .get(repeatedTaskId + "/await")
+            .then()
+            .body("status", is("completed"))
+            .body("additionalInformation.processedEventCount", is(1))
+            .body("additionalInformation.failedEventCount", is(0));
+
+        verify(alarmEventDAO).create(any());
+        assertThat(alarmEventDAO.find(new EventUid(eventId), recipient).block()).isEqualTo(alarmEvent);
     }
 
     @Test

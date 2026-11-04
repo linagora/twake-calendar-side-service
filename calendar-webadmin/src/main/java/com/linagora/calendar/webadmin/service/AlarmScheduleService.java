@@ -32,7 +32,6 @@ import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.github.fge.lambdas.Throwing;
 import com.google.common.base.MoreObjects;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
@@ -153,7 +152,7 @@ public class AlarmScheduleService {
                     calendarEvent.calendar(),
                     alarmInstant,
                     calendarEvent.eventPath()))
-                .flatMap(alarmEvent -> insertAlarmEvent(calendarEvent.username(), alarmEvent))
+                .flatMap(this::insertAlarmEvent)
                 .then())
             .then(Mono.fromCallable(() -> {
                 context.incrementProcessedEvent();
@@ -169,10 +168,11 @@ public class AlarmScheduleService {
             });
     }
 
-    private Mono<Void> insertAlarmEvent(Username username, AlarmEvent alarmEvent) {
-        return alarmEventDAO.find(alarmEvent.eventUid(), Throwing.supplier(username::asMailAddress).get())
-            .flatMap(existing -> Mono.empty())
-            .switchIfEmpty(Mono.defer(() -> alarmEventDAO.create(alarmEvent))).then();
+    private Mono<Void> insertAlarmEvent(AlarmEvent alarmEvent) {
+        // Keep the existing value until after switchIfEmpty so an already scheduled alarm is left untouched.
+        return alarmEventDAO.find(alarmEvent.eventUid(), alarmEvent.recipient())
+            .switchIfEmpty(Mono.defer(() -> alarmEventDAO.create(alarmEvent).thenReturn(alarmEvent)))
+            .then();
     }
 
     private Flux<CalendarEvent> collectEvents(Context context, OpenPaaSUser user) {
