@@ -159,4 +159,25 @@ class ImportProcessorTest {
         assertThat(values.get("start").toString()).doesNotStartWith("DTSTART").doesNotContain("\r", "\n");
         assertThat(values.get("end").toString()).doesNotStartWith("Optional").doesNotContain("DTEND", "\r", "\n");
     }
+
+    @Test
+    void failedItemShouldNotDisplayLineBreaksFromTheTzidParameter() {
+        Map<String, Object> values = failedItemValues("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//EN
+            BEGIN:VEVENT
+            UID:uid-1
+            DTSTAMP:20250101T100000Z
+            DTSTART;TZID=Europe/Paris
+            DTSTART:20250102T120000
+            SUMMARY:Broken event
+            END:VEVENT
+            END:VCALENDAR
+            """);
+
+        assertThat(values.get("start").toString())
+            .startsWith("2025-01-02 12:00")
+            .doesNotContain("\r", "\n", "DTSTART");
+    }
 }
