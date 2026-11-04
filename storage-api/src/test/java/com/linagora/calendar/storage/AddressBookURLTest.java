@@ -59,6 +59,13 @@ class AddressBookURLTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"%2F", "%2f", "a%2Fb", "%5C", "%2e%2e", "%2E.", "%2e", "%3F", "%23", "%00", "%0A", "%7F", "%C3%28"})
+    void parseShouldRejectIdsDecodingToSeveralSegments(String id) {
+        assertThatThrownBy(() -> AddressBookURL.parse("/addressbooks/base1/" + id))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"/addressbooks/base1/a.b", "/addressbooks/base1/a%20b", "/addressbooks/base1/user@domain.tld", "/addressbooks/base1/a-b_c~d+e"})
     void parseShouldAcceptIdsThatAreSinglePathSegments(String rawValue) {
         assertThat(AddressBookURL.parse(rawValue).asUri().getRawPath())

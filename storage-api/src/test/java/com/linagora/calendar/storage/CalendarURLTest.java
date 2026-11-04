@@ -60,6 +60,15 @@ class CalendarURLTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"%2F", "%2f", "a%2Fb", "%5C", "%2e%2e", "%2E.", "%2e", "%3F", "%23", "%00", "%0A", "%7F", "%C3%28"})
+    void parseShouldRejectIdsDecodingToSeveralSegments(String id) {
+        assertThatThrownBy(() -> CalendarURL.parse("/calendars/base1/" + id))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new CalendarURL(new OpenPaaSId(id), new OpenPaaSId("c")))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"/calendars/base1/a.b", "/calendars/base1/a%20b", "/calendars/base1/user@domain.tld", "/calendars/base1/a-b_c~d+e"})
     void parseShouldAcceptIdsThatAreSinglePathSegments(String rawValue) {
         assertThat(CalendarURL.parse(rawValue).asUri().getRawPath())
