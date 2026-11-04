@@ -23,6 +23,7 @@ import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_
 import static com.linagora.calendar.storage.configuration.EntryIdentifier.LANGUAGE_IDENTIFIER;
 import static com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver.TimeZoneSettingReader.TIMEZONE_IDENTIFIER;
 import static io.restassured.RestAssured.given;
+import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.ArgumentMatchers.any;
@@ -73,6 +74,9 @@ import org.mockito.Mockito;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.fge.lambdas.Throwing;
+import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.Participation;
 import com.linagora.calendar.api.ParticipationTokenSigner;
@@ -93,12 +97,14 @@ import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
+import com.rabbitmq.client.Channel;
 
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Mono;
+import reactor.rabbitmq.OutboundMessage;
 
 public class EventPublicAgendaEmailConsumerTest {
     private static final String X_PUBLICLY_CREATED_HEADER = "X-PUBLICLY-CREATED:true";
@@ -752,6 +758,52 @@ public class EventPublicAgendaEmailConsumerTest {
             .contains("has canceled an event")
             .contains("Bob")
             .doesNotContain("MAILTO:");
+    }
+
+    @Test
+    void shouldAcknowledgeWithoutEmailWhenPubliclyCreatorIsNotAnAttendee() throws Exception {
+        String absentCreator = "absent-booker-" + UUID.randomUUID() + "@example.com";
+
+        assertDroppedPublicAgendaEventCreatedBy(absentCreator);
+    }
+
+    @Test
+    void shouldAcknowledgeWithoutEmailWhenPubliclyCreatorIsInvalid() throws Exception {
+        assertDroppedPublicAgendaEventCreatedBy("not-an-email");
+    }
+
+    private void assertDroppedPublicAgendaEventCreatedBy(String creator) throws Exception {
+        String eventUid = UUID.randomUUID().toString();
+        String calendarData = generatePublicAgendaCalendarWithCustomCreator(eventUid, organizer.username().asString(),
+            attendee.username().asString(), PartStat.ACCEPTED, INITIAL_SEQUENCE, creator, null);
+
+        publishNotificationEmailMessage(newEventRequestMessage(eventUid, calendarData, attendee.username().asString()));
+
+        calmlyAwaitDuringNoEmail
+            .untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty());
+        assertThat(deadLetteredMessageCount()).isZero();
+    }
+
+    private String newEventRequestMessage(String eventUid, String calendarData, String recipient) throws Exception {
+        return new ObjectMapper().writeValueAsString(ImmutableMap.of(
+            "senderEmail", organizer.username().asString(),
+            "recipientEmail", recipient,
+            "method", "REQUEST",
+            "event", calendarData,
+            "eventPath", "/calendars/" + organizer.id().value() + "/" + organizer.id().value() + "/" + eventUid + ".ics",
+            "isNewEvent", true));
+    }
+
+    private void publishNotificationEmailMessage(String payload) {
+        channelPool.getSender()
+            .send(Mono.just(new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, payload.getBytes(StandardCharsets.UTF_8))))
+            .block();
+    }
+
+    private long deadLetteredMessageCount() throws Exception {
+        try (Channel channel = connectionPool.getResilientConnection().block().createChannel()) {
+            return channel.messageCount(EventEmailConsumer.DEAD_LETTER_QUEUE);
+        }
     }
 
     private String getHtml(String rawMessage) {

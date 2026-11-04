@@ -49,6 +49,7 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.inject.name.Named;
 import com.linagora.calendar.amqp.model.CalendarEventBookingConfirmedNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventBookingDeclinedNotificationEmail;
+import com.linagora.calendar.amqp.model.CalendarEventBookingNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCancelNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventCounterNotificationEmail;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
@@ -174,6 +175,11 @@ public class EventEmailConsumer implements Closeable, Startable {
         return switch (calendarEventMessage.method().getValue()) {
             case Method.VALUE_REQUEST -> {
                 if (publicAgendaEvent(calendarEventMessage.event())) {
+                    if (!hasResolvableProposer(calendarEventMessage)) {
+                        LOGGER.warn("Ignoring public agenda calendar event message with method REQUEST and eventPath {}: unresolvable {}",
+                            calendarEventMessage.eventPath(), X_PUBLICLY_CREATOR_HEADER);
+                        yield Mono.empty();
+                    }
                     LOGGER.info("Received public agenda calendar event message with method REQUEST and eventPath {}",
                         calendarEventMessage.eventPath());
                     if (organizerDeclined(calendarEventMessage.event())) {
@@ -250,6 +256,14 @@ public class EventEmailConsumer implements Closeable, Startable {
             .flatMap(organizer -> EventParseUtils.findAttendeePartStat(event, organizer.email()))
             .filter(PartStat.DECLINED::equals)
             .isPresent();
+    }
+
+    /**
+     * A booking mail can not be rendered when its creator can not be resolved: such a message is
+     * acknowledged without sending any mail, instead of being dead-lettered.
+     */
+    private boolean hasResolvableProposer(CalendarEventNotificationEmailDTO dto) {
+        return CalendarEventBookingNotificationEmail.hasResolvableProposer(GET_FIRST_VEVENT_FUNCTION.apply(dto.event()), dto.recipientEmail());
     }
 
     private boolean publicAgendaEvent(Calendar calendar) {
