@@ -47,6 +47,8 @@ import org.apache.james.mime4j.message.DefaultMessageBuilder;
 import org.apache.james.mime4j.message.DefaultMessageWriter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
@@ -208,6 +210,52 @@ class MessageGeneratorTest {
         Mailbox to = (Mailbox) message.getTo().getFirst();
         assertThat(to.getName()).isEqualTo("Bob Smith");
         assertThat(to.getAddress()).isEqualTo("bob@domain.tld");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Ann\nLee", "Ann\rLee", "Ann\r\nLee"})
+    void generateShouldNotWriteALineBreakOfTheRecipientNameInTheHeader(String firstName) throws Exception {
+        Message message = generateWithUsers(firstName, "", "No", "Reply");
+
+        assertThat(headerLines(message))
+            .allSatisfy(line -> assertThat(line).doesNotContain("\r", "\n"));
+        Mailbox to = (Mailbox) reparse(message).getTo().getFirst();
+        assertThat(to.getAddress()).isEqualTo("bob@domain.tld");
+        assertThat(to.getName()).isEqualTo("Ann Lee");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Ann\nLee", "Ann\rLee", "Ann\r\nLee"})
+    void generateShouldNotWriteALineBreakOfTheSenderNameInTheHeader(String firstName) throws Exception {
+        Message message = generateWithUsers("Bob", "Smith", firstName, "");
+
+        assertThat(headerLines(message))
+            .allSatisfy(line -> assertThat(line).doesNotContain("\r", "\n"));
+        Mailbox from = reparse(message).getFrom().getFirst();
+        assertThat(from.getAddress()).isEqualTo("no-reply@domain.tld");
+        assertThat(from.getName()).isEqualTo("Ann Lee");
+    }
+
+    @Test
+    void generateShouldKeepTheAddressWhenTheRecipientNameIsOnlyALineBreak() throws Exception {
+        Message message = reparse(generateWithUsers("\n", "", "No", "Reply"));
+
+        Mailbox to = (Mailbox) message.getTo().getFirst();
+        assertThat(to.getAddress()).isEqualTo("bob@domain.tld");
+    }
+
+    @Test
+    void generateShouldKeepTheRecipientAddressWhenTheNameHoldsALineBreakAndDashes() throws Exception {
+        Message message = reparse(generateWithUsers("O'BrO'137Jean\n----\n----\nAnnul", "", "No", "Reply"));
+
+        Mailbox to = (Mailbox) message.getTo().getFirst();
+        assertThat(to.getAddress()).isEqualTo("bob@domain.tld");
+        assertThat(to.getName()).isEqualTo("O'BrO'137Jean ---- ---- Annul");
+    }
+
+    private String[] headerLines(Message message) throws IOException {
+        String written = new String(DefaultMessageWriter.asBytes(message), StandardCharsets.UTF_8);
+        return written.substring(0, written.indexOf("\r\n\r\n")).split("\r\n");
     }
 
     private Message generateWithUsers(String recipientFirstName, String recipientLastName,

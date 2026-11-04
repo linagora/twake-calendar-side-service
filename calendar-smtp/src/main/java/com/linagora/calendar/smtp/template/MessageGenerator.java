@@ -32,6 +32,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
+import java.util.regex.Pattern;
 
 import jakarta.mail.internet.InternetAddress;
 
@@ -173,6 +174,7 @@ public class MessageGenerator {
     private static final String MULTIPART_ALTERNATIVE = "alternative";
     private static final String CONTENT_LANGUAGE = "Content-Language";
     private static final String ENCODED_WORD_PREFIX = "=?";
+    private static final Pattern CONTROL_CHARACTERS = Pattern.compile("\\p{Cntrl}+");
 
     private final HtmlBodyRenderer htmlBodyRenderer;
     private final Optional<TextBodyRenderer> textBodyRenderer;
@@ -240,9 +242,19 @@ public class MessageGenerator {
 
     private Field addressField(String fieldName, InternetAddress address) throws MimeException {
         String nameAddress = Optional.ofNullable(address.getPersonal())
+            .map(this::sanitizeDisplayName)
+            .filter(StringUtils::isNotEmpty)
             .map(name -> encodeDisplayName(name) + " <" + address.getAddress() + ">")
             .orElse(address.getAddress());
         return DefaultFieldParser.parse(fieldName + ": " + nameAddress);
+    }
+
+    /**
+     * mime4j writes an atom phrase as is, and its atom test accepts CR and LF: control characters, line breaks
+     * included, are turned into a space so that they never reach the header line.
+     */
+    private String sanitizeDisplayName(String name) {
+        return StringUtils.normalizeSpace(CONTROL_CHARACTERS.matcher(name).replaceAll(" "));
     }
 
     /**
