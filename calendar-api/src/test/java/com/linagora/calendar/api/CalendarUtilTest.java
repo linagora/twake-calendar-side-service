@@ -40,6 +40,7 @@ import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.component.VTimeZone;
+import net.fortuna.ical4j.model.parameter.PartStat;
 import net.fortuna.ical4j.model.property.XProperty;
 import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 
@@ -857,6 +858,80 @@ class CalendarUtilTest {
 
         assertThat(CalendarUtil.copyOf(CalendarUtil.copyOf(calendar)).getProperty(Property.VERSION).get().getValue())
             .isEqualTo("1.0;2.0");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "ATTENDEE;CN=CORP\\Zoé Martin:mailto:zoe@example.com",
+        "ATTENDEE;CN=\"CORP\\Zoé Martin\":mailto:zoe@example.com",
+        "ATTENDEE;CN=\"CORP\\Zoé Martin\";PARTSTAT=ACCEPTED:mailto:zoe@example.com",
+        "ATTENDEE;PARTSTAT=ACCEPTED;CN=CORP\\Zoé Martin:mailto:zoe@example.com",
+        "ATTENDEE;PARTSTAT=ACCEPTED;CN=\"CORP\\Zoé \n Martin\":mailto:zoe@example.com"
+    })
+    void parseIcsShouldKeepBackslashesOfParameterValues(String attendee) {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty(attendee));
+
+        assertThat(firstEventProperty(calendar, Property.ATTENDEE).getParameter("CN").get().getValue())
+            .isEqualTo("CORP\\Zoé Martin");
+    }
+
+    @Test
+    void parseIcsShouldEndAnUnquotedParameterValueOnASemicolonPrecededByABackslash() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty("ATTENDEE;ROLE=X-CHAIR\\;PARTSTAT=ACCEPTED:mailto:bob@example.com"));
+        Property attendee = firstEventProperty(calendar, Property.ATTENDEE);
+
+        assertThat(attendee.getParameter("ROLE").get().getValue()).isEqualTo("X-CHAIR\\");
+        assertThat(attendee.getParameter("PARTSTAT").get().getValue()).isEqualTo("ACCEPTED");
+    }
+
+    @Test
+    void parseIcsShouldNotUnescapeTextValues() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty("SUMMARY;X-TYPE=\"a\\b\":a\\,b\\\\c"));
+        Property summary = firstEventProperty(calendar, Property.SUMMARY);
+
+        assertThat(summary.getParameter("X-TYPE").get().getValue()).isEqualTo("a\\b");
+        assertThat(summary.getValue()).isEqualTo("a,b\\c");
+    }
+
+    @Test
+    void copyOfShouldKeepBackslashesOfParameterValues() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty("X-FOO;TYPE=\"€uro\\\\N\";CN=\"a\\^nb\":bar"));
+
+        Calendar copied = CalendarUtil.copyOf(CalendarUtil.copyOf(calendar));
+        Property property = firstEventProperty(copied, "X-FOO");
+
+        assertThat(property.getParameter("TYPE").get().getValue()).isEqualTo("€uro\\\\N");
+        assertThat(property.getParameter("CN").get().getValue()).isEqualTo("a\\\nb");
+    }
+
+    @Test
+    void copyOfShouldNotModifyTheOriginalCalendar() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty("ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com"));
+
+        Calendar copied = CalendarUtil.copyOf(calendar);
+        firstEventProperty(copied, Property.ATTENDEE).replace(new PartStat("ACCEPTED"));
+
+        assertThat(firstEventProperty(calendar, Property.ATTENDEE).getParameter("PARTSTAT").get().getValue())
+            .isEqualTo("NEEDS-ACTION");
+    }
+
+    private static String icsWithEventProperty(String property) {
+        return """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
+            BEGIN:VEVENT
+            UID:backslash@example.com
+            DTSTART:20251020T100000Z
+            %s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(property).replace("\n", "\r\n");
+    }
+
+    private static Property firstEventProperty(Calendar calendar, String name) {
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).get();
+        return vEvent.getProperty(name).get();
     }
 
     @Test
