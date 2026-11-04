@@ -38,6 +38,7 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
@@ -193,7 +194,7 @@ public class MongoDBUserConfigurationDAO implements UserConfigurationDAO {
         }
         return Optional.ofNullable(document.get(PROPERTY_VALUE))
             .map(MongoDBUserConfigurationDAO::toJsonNode)
-            .orElse(null);
+            .orElse(NullNode.getInstance());
     }
 
     private static JsonNode toJsonNode(Object value) throws UserConfigurationDeserializeException {
