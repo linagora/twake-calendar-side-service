@@ -118,6 +118,7 @@ public class EventInviteEmailConsumerTest {
     // ical4j percent-encodes the backslash; EventParseUtils decodes it back when the raw value is not a MailAddress
     static final String UNWRITABLE_ICS_ORGANIZER = "a\\b@domain.tld?subject=x";
     static final String UNWRITABLE_ICS_ORGANIZER_WITH_ESCAPED_CR = "a%5C%0Db@domain.tld?subject=x";
+    static final String JAKARTA_MAIL_UNPARSABLE_ICS_ORGANIZER = "bob@example.com˕";
 
     private final ConditionFactory calmlyAwait = Awaitility.with()
         .pollInterval(Duration.ofMillis(500))
@@ -385,7 +386,7 @@ public class EventInviteEmailConsumerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {UNWRITABLE_ICS_ORGANIZER, UNWRITABLE_ICS_ORGANIZER_WITH_ESCAPED_CR})
+    @ValueSource(strings = {UNWRITABLE_ICS_ORGANIZER, UNWRITABLE_ICS_ORGANIZER_WITH_ESCAPED_CR, JAKARTA_MAIL_UNPARSABLE_ICS_ORGANIZER})
     void shouldAckInvalidRecipientInvitationWhoseOrganizerCannotBeWrittenInAToHeader(String icsOrganizer) throws Exception {
         publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_REQUEST, IS_NEW_EVENT, INVALID_RECIPIENT, icsOrganizer));
 
