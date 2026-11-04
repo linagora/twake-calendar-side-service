@@ -572,6 +572,28 @@ public class BookingLinkEventIcsBuilderTest {
         assertThat(event.getLocation().getValue()).isEqualTo("Room 3");
     }
 
+    @Test
+    void namesStartingWithEqualsShouldRoundTrip() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.empty(), FIXED_UID_GENERATOR);
+
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("=Bob", "creator@example.com"),
+            List.of(BookingAttendee.from("\r\r=L", "l@example.com"), BookingAttendee.from("Bob=Smith", "bob@example.com")),
+            "eventTitle",
+            false,
+            null);
+
+        VEvent event = parseEvent(testee.build(request, BookingAttendee.from(" ==Owner", "owner@example.com"),
+            List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, BookingEventOptions.none()).block());
+
+        assertThat(event.getAttendees().stream()
+            .map(attendee -> attendee.getParameter(Parameter.CN).map(Parameter::getValue).orElse(null) + "|" + attendee.getValue())
+            .toList())
+            .containsExactly("Owner|mailto:owner@example.com", "Bob|mailto:creator@example.com",
+                "L|mailto:l@example.com", "Bob=Smith|mailto:bob@example.com");
+    }
+
     private VEvent parseEvent(BuildResult result) {
         Calendar calendar = CalendarUtil.parseIcs(result.icsBytes());
         return (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
