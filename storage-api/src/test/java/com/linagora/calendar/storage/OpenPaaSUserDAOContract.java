@@ -216,6 +216,15 @@ public interface OpenPaaSUserDAOContract {
     }
 
     @Test
+    default void searchShouldFindNamesHoldingCompatibilityLettersTypedAsStored() {
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser user = testee().add(USERNAME, "Ａnna", "ʰanh").block();
+
+        assertThat(testee().search(domain, "Ａnna", 10).collectList().block()).contains(user);
+        assertThat(testee().search(domain, "ʰanh", 10).collectList().block()).contains(user);
+    }
+
+    @Test
     default void searchShouldFindDecomposedNames() {
         Domain domain = Domain.of("domain.tld");
         OpenPaaSUser user = testee().add(USERNAME, "Hélène", "Dupont").block();
