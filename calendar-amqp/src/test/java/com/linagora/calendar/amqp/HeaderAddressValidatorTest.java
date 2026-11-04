@@ -45,6 +45,12 @@ class HeaderAddressValidatorTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"bob@example.com˕", "bob@exa˚mple.com"})
+    void shouldRejectAddressJakartaMailCannotParse(String address) {
+        assertThat(HeaderAddressValidator.isWritableInHeader(address)).isFalse();
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"mailto:a\\b@domain.tld?subject=x", "mailto:a%5Cb@domain.tld?subject=x", "mailto:a%5C%0Db@domain.tld?subject=x"})
     void shouldRejectIcsOrganizerAcceptedByMailAddressButNotWritableInAHeader(String calAddress) {
         Calendar calendar = CalendarUtil.parseIcs("""
