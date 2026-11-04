@@ -33,6 +33,22 @@ class AccentInsensitivePrefixPatternTest {
         assertThat(AccentInsensitivePrefixPattern.of(name).matcher(name + " Suffix").lookingAt()).isTrue();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"Ａnna", "ʰanh", "ℨoe", "ａnna"})
+    void ofShouldFindANameHoldingACompatibilityLetterByItself(String name) {
+        assertThat(AccentInsensitivePrefixPattern.of(name).matcher(name + " Suffix").lookingAt()).isTrue();
+    }
+
+    @Test
+    void ofShouldFindAnAsciiNameFromAFullWidthQuery() {
+        assertThat(AccentInsensitivePrefixPattern.of("Ａnna").matcher("Anna").lookingAt()).isTrue();
+    }
+
+    @Test
+    void ofShouldFindAFullWidthNameFromALowerCaseFullWidthQuery() {
+        assertThat(AccentInsensitivePrefixPattern.of("ａnna").matcher("Ａnna").lookingAt()).isTrue();
+    }
+
     @Test
     void ofShouldFindAVietnameseNameWithoutAccents() {
         assertThat(AccentInsensitivePrefixPattern.of("nguyen").matcher("Nguyễn").lookingAt()).isTrue();

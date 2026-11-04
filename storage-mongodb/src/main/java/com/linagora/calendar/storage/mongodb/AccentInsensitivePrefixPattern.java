@@ -97,6 +97,11 @@ public class AccentInsensitivePrefixPattern {
             || type == Character.COMBINING_SPACING_MARK;
     }
 
+    private static boolean isInLatinRanges(int codePoint) {
+        return isInRange(codePoint, LATIN_RANGE_START, LATIN_RANGE_END)
+            || isInRange(codePoint, LATIN_EXTENDED_ADDITIONAL_START, LATIN_EXTENDED_ADDITIONAL_END);
+    }
+
     private static boolean isInRange(int codePoint, int start, int end) {
         return codePoint >= start && codePoint <= end;
     }
@@ -115,12 +120,25 @@ public class AccentInsensitivePrefixPattern {
      */
     private static String latinClusterRegex(String letter, List<String> marks) {
         return Stream.concat(
-                Stream.of(CHARACTER_CLASS_BY_FOLDED_LETTER.get(fold(letter))),
+                Stream.of(letterRegex(letter)),
                 marks.stream()
                     .filter(mark -> !isStrippedMark(mark))
                     .map(Pattern::quote))
             .map(regex -> regex + OPTIONAL_COMBINING_MARKS)
             .collect(Collectors.joining());
+    }
+
+    /**
+     * Compatibility letters outside the latin ranges (eg full-width 'Ａ' U+FF21, modifier 'ʰ' U+02B0, letterlike 'ℨ' U+2128)
+     * fold to an ascii letter but are not part of its class: they are kept as an alternative so that a name is found
+     * when typed exactly as stored.
+     */
+    private static String letterRegex(String letter) {
+        String characterClass = CHARACTER_CLASS_BY_FOLDED_LETTER.get(fold(letter));
+        if (isInLatinRanges(letter.codePointAt(0))) {
+            return characterClass;
+        }
+        return "(?:" + characterClass + "|" + Pattern.quote(letter) + ")";
     }
 
     /**
