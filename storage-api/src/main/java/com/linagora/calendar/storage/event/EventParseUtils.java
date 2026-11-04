@@ -547,17 +547,19 @@ public class EventParseUtils {
 
     public static Period calculateRecurrenceSet(VEvent master, Temporal recurrenceDate) {
         try {
+            // Floating values are read in the master's zone, as normalizeTemporal writes them in the instance
+            ZoneId floatingZone = getZoneIdFromStartDate(master).orElse(ZONE_ID_DEFAULT);
             Period period = switch (recurrenceDate) {
                 // Contains the recurrence date itself so that zero-length occurrences (DTEND = DTSTART) are found
                 case LocalDate localDate -> new Period(localDate, localDate.plusDays(1));
-                default -> datetimePeriod(master, toInstant(recurrenceDate));
+                default -> datetimePeriod(master, toInstant(recurrenceDate, floatingZone));
             };
 
             Set<Period<Temporal>> occurrences = withoutUnreadableDateLists(master).calculateRecurrenceSet(period);
-            // The lookup period spans the whole day: pick the occurrence starting at the recurrence date (e.g. hourly series).
-            // A recurrence date that is not an occurrence is rejected rather than substituted by another occurrence of the day.
+            // The lookup period spans several days: pick the occurrence starting at the recurrence date (e.g. hourly series).
+            // A recurrence date that is not an occurrence is rejected rather than substituted by another nearby occurrence.
             return occurrences.stream()
-                .filter(occurrence -> startsAt(occurrence, recurrenceDate))
+                .filter(occurrence -> startsAt(occurrence, recurrenceDate, floatingZone))
                 .findFirst()
                 .orElseThrow();
         } catch (Exception exception) {
@@ -593,18 +595,17 @@ public class EventParseUtils {
         return true;
     }
 
-    private static boolean startsAt(Period<Temporal> occurrence, Temporal recurrenceDate) {
+    private static boolean startsAt(Period<Temporal> occurrence, Temporal recurrenceDate, ZoneId floatingZone) {
         if (recurrenceDate instanceof LocalDate) {
             return recurrenceDate.equals(occurrence.getStart());
         }
-        return temporalToZonedDateTime(occurrence.getStart())
+        return temporalToZonedDateTime(occurrence.getStart(), floatingZone)
             .map(ZonedDateTime::toInstant)
-            .equals(temporalToZonedDateTime(recurrenceDate).map(ZonedDateTime::toInstant));
+            .equals(temporalToZonedDateTime(recurrenceDate, floatingZone).map(ZonedDateTime::toInstant));
     }
 
-    private static Instant toInstant(Temporal recurrenceDate) {
-        // Floating LocalDateTime recurrence dates are read as UTC, like floating occurrences in datetimePeriod
-        return temporalToZonedDateTime(recurrenceDate)
+    private static Instant toInstant(Temporal recurrenceDate, ZoneId floatingZone) {
+        return temporalToZonedDateTime(recurrenceDate, floatingZone)
             .map(ZonedDateTime::toInstant)
             .orElseThrow(() -> new IllegalArgumentException("Unsupported recurrence date type: " + recurrenceDate));
     }
@@ -619,10 +620,11 @@ public class EventParseUtils {
                 .atStartOfDay();
             return new Period(ldt, ldt.plusDays(1));
         }
+        // Widened by a day on each side: floating occurrences, read in the master's zone, may lie on another UTC day
         ZonedDateTime startOfDay = recurrenceDate.atZone(ZoneOffset.UTC)
             .toLocalDate()
             .atStartOfDay(ZoneOffset.UTC);
-        return new Period(startOfDay, startOfDay.plusDays(1));
+        return new Period(startOfDay.minusDays(1), startOfDay.plusDays(2));
     }
 
     public static void addProperties(VEvent vEvent, Property... properties) {

@@ -31,6 +31,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.Temporal;
 import java.util.List;
 import java.util.Optional;
 
@@ -668,6 +669,57 @@ class EventParseUtilsTest {
                 .isEqualTo(ZonedDateTime.parse("2025-04-11T10:00:00Z"));
         }
 
+        private static final String FLOATING_RDATE_ICS = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:floating-rdate@test
+            DTSTART;TZID=Europe/Paris:20261014T090000
+            DURATION:PT1H
+            RRULE:FREQ=WEEKLY;COUNT=3
+            RDATE:20261016T090000
+            SUMMARY:Standup
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        @Test
+        void shouldBuildAFloatingRDateOccurrenceReadInTheMasterZone() {
+            VEvent master = (VEvent) CalendarUtil.parseIcs(FLOATING_RDATE_ICS).getComponent(Component.VEVENT).get();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, Instant.parse("2026-10-16T07:00:00Z"));
+
+            ZonedDateTime recurrenceId = EventParseUtils.temporalToZonedDateTime(
+                instance.<RecurrenceId<Temporal>>getProperty(Property.RECURRENCE_ID).get().getDate()).get();
+            assertSoftly(softly -> {
+                softly.assertThat(EventParseUtils.getStartTime(instance))
+                    .isEqualTo(ZonedDateTime.parse("2026-10-16T09:00:00+02:00[Europe/Paris]"));
+                softly.assertThat(EventParseUtils.getStartTime(instance).toInstant())
+                    .isEqualTo(recurrenceId.toInstant());
+            });
+        }
+
+        @Test
+        void shouldRejectAFloatingRDateOccurrenceRequestedAsUtc() {
+            VEvent master = (VEvent) CalendarUtil.parseIcs(FLOATING_RDATE_ICS).getComponent(Component.VEVENT).get();
+
+            assertThatThrownBy(() -> EventParseUtils.createInstanceVEvent(master, Instant.parse("2026-10-16T09:00:00Z")))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        void shouldBuildAFloatingRDateOccurrenceLyingOnAnotherUtcDay() {
+            VEvent master = (VEvent) CalendarUtil.parseIcs(FLOATING_RDATE_ICS
+                    .replace("DTSTART;TZID=Europe/Paris:20261014T090000", "DTSTART;TZID=Pacific/Kiritimati:20261014T090000")
+                    .replace("RDATE:20261016T090000", "RDATE:20261016T080000"))
+                .getComponent(Component.VEVENT).get();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, Instant.parse("2026-10-15T18:00:00Z"));
+
+            assertThat(EventParseUtils.getStartTime(instance).toInstant())
+                .isEqualTo(Instant.parse("2026-10-15T18:00:00Z"));
+        }
+
         @Test
         void shouldKeepUnknownProperties() {
             Calendar calendar = CalendarUtil.parseIcs("""
@@ -1077,15 +1129,20 @@ class EventParseUtilsTest {
         }
 
         @Test
-        void createInstanceVEventShouldFindAnOccurrenceOfAZonedSeriesFromALocalDateTime() {
+        void createInstanceVEventShouldFindAnOccurrenceOfAZonedSeriesFromALocalDateTimeReadInTheSeriesZone() {
             VEvent master = (VEvent) CalendarUtil.parseIcs(DAILY_FLOATING_ICS
                     .replace("DTSTART:20261013T013000", "DTSTART;TZID=Europe/Paris:20261013T033000")
                     .replace("DTEND:20261013T023000", "DTEND;TZID=Europe/Paris:20261013T043000"))
                 .getComponent(Component.VEVENT).orElseThrow();
 
-            VEvent instance = EventParseUtils.createInstanceVEvent(master, LocalDateTime.parse("2027-08-04T01:30:00"));
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, LocalDateTime.parse("2027-08-04T03:30:00"));
 
-            assertThat(EventParseUtils.getStartTime(instance).toInstant()).isEqualTo(Instant.parse("2027-08-04T01:30:00Z"));
+            ZonedDateTime recurrenceId = EventParseUtils.temporalToZonedDateTime(
+                instance.<RecurrenceId<Temporal>>getProperty(Property.RECURRENCE_ID).get().getDate()).get();
+            assertSoftly(softly -> {
+                softly.assertThat(EventParseUtils.getStartTime(instance).toInstant()).isEqualTo(Instant.parse("2027-08-04T01:30:00Z"));
+                softly.assertThat(recurrenceId.toInstant()).isEqualTo(Instant.parse("2027-08-04T01:30:00Z"));
+            });
         }
 
         @Test
