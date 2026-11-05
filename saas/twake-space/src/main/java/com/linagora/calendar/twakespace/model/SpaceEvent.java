@@ -48,6 +48,7 @@ public record SpaceEvent(OrganizationId organizationId, String organizationDomai
 
     // Milliseconds, as MongoDB stores them: a stored space then equals the one merged in memory.
     public SpaceEvent {
+        Objects.requireNonNull(id, "id");
         members = List.copyOf(Objects.requireNonNullElse(members, List.of()));
         timestamp = Objects.requireNonNull(timestamp, "timestamp").truncatedTo(ChronoUnit.MILLIS);
     }
