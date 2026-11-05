@@ -347,7 +347,7 @@ public interface AlarmInstantFactory {
             }
         }
 
-        private static VEvent selectLatestOverride(VEvent first, VEvent second) {
+        public static VEvent selectLatestOverride(VEvent first, VEvent second) {
             return LATEST_OVERRIDE_EVENT_COMPARATOR.compare(first, second) >= 0 ? first : second;
         }
 

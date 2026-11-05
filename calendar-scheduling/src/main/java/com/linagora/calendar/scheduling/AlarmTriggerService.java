@@ -141,8 +141,7 @@ public class AlarmTriggerService {
 
     private Mono<Void> sendDisplayNotification(AlarmEvent alarmEvent, Calendar calendar) {
         Username recipientUser = Username.fromMailAddress(alarmEvent.recipient());
-        VEvent vEvent = alarmEvent.recurrenceId().flatMap(recurrenceId -> getVEvent(calendar, recurrenceId))
-            .orElse(GET_FIRST_VEVENT_FUNCTION.apply(calendar));
+        VEvent vEvent = alarmedVEvent(calendar, alarmEvent);
         String summary = EventParseUtils.getSummary(vEvent).orElse(StringUtils.EMPTY);
 
         EventBusAlarmEvent eventBusAlarmEvent = new EventBusAlarmEvent(
@@ -172,10 +171,9 @@ public class AlarmTriggerService {
             .filter(resolvedSettings -> resolvedSettings.get(ALARM_SETTING_IDENTIFIER, Boolean.class).orElse(ENABLE_ALARM))
             .flatMap(resolvedSettings -> {
                 Locale locale = resolvedSettings.locale();
-                Map<String, Object> model = toPugModel(calendar,
-                    alarmEvent.recurrenceId(),
-                    locale,
-                    Duration.between(now, alarmEvent.eventStartTime()));
+                Map<String, Object> model = toPugModel(alarmedVEvent(calendar, alarmEvent),
+                    Duration.between(now, alarmEvent.eventStartTime()),
+                    locale);
                 return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), TEMPLATE_TYPE))
                     .subscribeOn(Schedulers.boundedElastic())
                     .flatMap(messageGenerator -> messageGenerator.generate(recipientUser, senderAddress, model, List.of()))
@@ -183,22 +181,34 @@ public class AlarmTriggerService {
             });
     }
 
-    private Map<String, Object> toPugModel(Calendar calendar,
-                                           Optional<String> maybeRecurrenceId,
-                                           Locale locale,
-                                           Duration duration) {
-        VEvent vEvent = maybeRecurrenceId.flatMap(recurrenceId -> getVEvent(calendar, recurrenceId))
+    private VEvent alarmedVEvent(Calendar calendar, AlarmEvent alarmEvent) {
+        return alarmEvent.recurrenceId()
+            .flatMap(recurrenceId -> getVEvent(calendar, recurrenceId, alarmEvent.eventStartTime()))
             .orElse(GET_FIRST_VEVENT_FUNCTION.apply(calendar));
-
-        return toPugModel(vEvent, duration, locale);
     }
 
-    private Optional<VEvent> getVEvent(Calendar calendar, String recurrenceId) {
-        return calendar.getComponents(Component.VEVENT)
+    /**
+     * Picks the override {@link AlarmInstantFactory} scheduled the alarm from. The alarm only holds the raw RECURRENCE-ID
+     * value, which overrides of distinct zones can share while being distinct occurrences: its start tells them apart.
+     */
+    private Optional<VEvent> getVEvent(Calendar calendar, String recurrenceId, Instant eventStartTime) {
+        List<VEvent> overrides = calendar.getComponents(Component.VEVENT)
             .stream()
             .map(VEvent.class::cast)
             .filter(event -> event.getProperty(Property.RECURRENCE_ID).map(Property::getValue).map(recurrenceId::equals).orElse(false))
-            .findAny();
+            .toList();
+        List<VEvent> startingAtAlarmedTime = overrides.stream()
+            .filter(event -> startsAt(event, eventStartTime))
+            .toList();
+        return (startingAtAlarmedTime.isEmpty() ? overrides : startingAtAlarmedTime).stream()
+            .reduce(AlarmInstantFactory.Default::selectLatestOverride);
+    }
+
+    private boolean startsAt(VEvent event, Instant instant) {
+        return event.getProperty(Property.DTSTART)
+            .flatMap(EventParseUtils::parseTimeAsInstant)
+            .filter(instant::equals)
+            .isPresent();
     }
 
     private Map<String, Object> toPugModel(VEvent vEvent, Duration duration, Locale locale) {
