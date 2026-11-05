@@ -30,7 +30,6 @@ import java.util.Map;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
-import jakarta.mail.internet.InternetAddress;
 
 import org.apache.james.core.MailAddress;
 import org.apache.james.mime4j.dom.Message;
@@ -40,6 +39,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.api.BookedEventLinkFactory;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingCreated;
+import com.linagora.calendar.smtp.AsciiMailAddress;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.template.Language;
@@ -113,8 +113,8 @@ public class BookingLinkRequestAcknowledgementNotifier {
                                           URI reservationLink,
                                           MailAddress recipient,
                                           MessageGenerator messageGenerator) {
-        return Mono.fromCallable(() -> new InternetAddress(recipient.asString()))
-            .flatMap(recipientAddress -> Mono.fromCallable(() -> new InternetAddress(fromMailAddress.asString()))
+        return Mono.fromCallable(() -> AsciiMailAddress.toInternetAddress(recipient))
+            .flatMap(recipientAddress -> Mono.fromCallable(() -> AsciiMailAddress.toInternetAddress(fromMailAddress))
                 .flatMap(fromAddress -> messageGenerator.generate(recipientAddress, fromAddress,
                     PugModel.toPugModel(bookingCreated, reservationLink, settings.locale(), settings.zoneId()), List.of())));
     }

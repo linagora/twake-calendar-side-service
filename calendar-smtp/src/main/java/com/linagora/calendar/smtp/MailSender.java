@@ -265,7 +265,7 @@ public interface MailSender {
                 throw new SmtpSendingFailedException("'helo' failed: " + client.getReplyString());
             }
 
-            client.setSender(sender);
+            client.setSender(AsciiMailAddress.asciiDomain(sender));
             if (!SMTPReply.isPositiveCompletion(client.getReplyCode())) {
                 throw new SmtpSendingFailedException("'mail from' failed: " + client.getReplyString());
             }
@@ -305,7 +305,7 @@ public interface MailSender {
             int successfullRecipientCount = 0;
             boolean unknownUserRejections = !recipients.isEmpty();
             for (MailAddress recipient : recipients) {
-                client.addRecipient(recipient.asString());
+                client.addRecipient(AsciiMailAddress.asciiDomain(recipient.asString()));
                 if (!SMTPReply.isPositiveCompletion(client.getReplyCode())) {
                     LOGGER.warn("'rcpr to' command failed for {}: {}", recipient.asString(), client.getReplyString());
                     unknownUserRejections &= client.getReplyCode() == 550

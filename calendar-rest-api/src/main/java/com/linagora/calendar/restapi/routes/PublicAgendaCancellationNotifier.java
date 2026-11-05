@@ -29,7 +29,6 @@ import java.util.stream.Collectors;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
-import jakarta.mail.internet.InternetAddress;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -40,6 +39,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.linagora.calendar.smtp.AsciiMailAddress;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
 import com.linagora.calendar.smtp.template.Language;
@@ -117,8 +117,8 @@ public class PublicAgendaCancellationNotifier {
                                           BookedEventCancelled cancelled,
                                           MailAddress recipient,
                                           MessageGenerator messageGenerator) {
-        return Mono.fromCallable(() -> new InternetAddress(recipient.asString()))
-            .flatMap(recipientAddress -> Mono.fromCallable(() -> new InternetAddress(fromMailAddress.asString()))
+        return Mono.fromCallable(() -> AsciiMailAddress.toInternetAddress(recipient))
+            .flatMap(recipientAddress -> Mono.fromCallable(() -> AsciiMailAddress.toInternetAddress(fromMailAddress))
                 .flatMap(fromAddress -> messageGenerator.generate(recipientAddress,
                     fromAddress,
                     PugModel.toPugModel(cancelled, recipient, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory),

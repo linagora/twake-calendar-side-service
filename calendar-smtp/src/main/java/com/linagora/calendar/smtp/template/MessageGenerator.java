@@ -59,6 +59,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.smtp.AsciiMailAddress;
 import com.linagora.calendar.smtp.MailUsernames;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
 import com.linagora.calendar.smtp.i18n.I18NTranslator.PropertiesI18NTranslator;
@@ -212,15 +213,15 @@ public class MessageGenerator {
     public Mono<InternetAddress> resolveInternetAddress(MailAddress address) {
         return MailUsernames.asUsername(address)
             .map(this::resolveInternetAddress)
-            .orElseGet(() -> Mono.fromCallable(() -> new InternetAddress(address.asString())));
+            .orElseGet(() -> Mono.fromCallable(() -> AsciiMailAddress.toInternetAddress(address)));
     }
 
     public Mono<InternetAddress> resolveInternetAddress(Username username) {
         return userDAO.retrieve(username)
             .map(OpenPaaSUser::fullName)
-            .flatMap(fullName -> Mono.fromCallable(() -> new InternetAddress(username.asString(),
+            .flatMap(fullName -> Mono.fromCallable(() -> new InternetAddress(AsciiMailAddress.asciiDomain(username.asString()),
                 StringUtils.defaultIfEmpty(fullName, username.asString()))))
-            .switchIfEmpty(Mono.fromCallable(() -> new InternetAddress(username.asString())));
+            .switchIfEmpty(Mono.fromCallable(() -> AsciiMailAddress.toInternetAddress(username.asString())));
     }
 
     public Mono<Message> generate(InternetAddress recipient, InternetAddress fromAddress, Map<String, Object> scopedVariable, List<MimeAttachment> mimeAttachments) {

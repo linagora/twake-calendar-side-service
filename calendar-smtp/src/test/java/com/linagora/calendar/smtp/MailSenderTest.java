@@ -37,6 +37,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.james.core.MailAddress;
@@ -378,6 +379,64 @@ class MailSenderTest {
 
         serverSocket.close();
         serverThread.join(5000);
+    }
+
+    @Test
+    void shouldWriteInternationalizedDomainsInTheirAsciiFormInTheEnvelope() throws Exception {
+        List<String> envelope = new CopyOnWriteArrayList<>();
+        try (ServerSocket serverSocket = new ServerSocket()) {
+            serverSocket.bind(new InetSocketAddress("localhost", 0));
+            Thread serverThread = new Thread(() -> recordEnvelope(serverSocket, envelope));
+            serverThread.setDaemon(true);
+            serverThread.start();
+
+            MailSenderConfiguration config = new MailSenderConfiguration(
+                "localhost", Port.of(serverSocket.getLocalPort()), "localhost",
+                Optional.empty(), Optional.empty(),
+                false, false, false);
+            String rawMessage = "From: sender@localhost\nTo: guest@xn--p1b6ci4b4b3a.xn--h2brj9c\nSubject: Test\n\nHello World!";
+            Message message = new DefaultMessageBuilder().parseMessage(new ByteArrayInputStream(rawMessage.getBytes(StandardCharsets.UTF_8)));
+            Mail mail = new Mail(MaybeSender.of(new MailAddress("sender@b\u00fccher.example")),
+                List.of(new MailAddress("guest@xn--p1b6ci4b4b3a.xn--h2brj9c")), message);
+
+            new MailSender.Factory.Default(config, eventEmailFilter).send(mail).block(Duration.ofSeconds(10));
+            serverThread.join(5000);
+        }
+
+        assertThat(envelope).containsExactly(
+            "MAIL FROM:<sender@xn--bcher-kva.example>",
+            "RCPT TO:<guest@xn--p1b6ci4b4b3a.xn--h2brj9c>");
+    }
+
+    private void recordEnvelope(ServerSocket serverSocket, List<String> envelope) {
+        try (Socket socket = serverSocket.accept()) {
+            socket.setSoTimeout(5000);
+            OutputStream os = socket.getOutputStream();
+            os.write("220 mock.smtp.server ESMTP\r\n".getBytes(StandardCharsets.UTF_8));
+            BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+            boolean inData = false;
+            for (String line = reader.readLine(); line != null; line = reader.readLine()) {
+                if (inData) {
+                    if (line.equals(".")) {
+                        inData = false;
+                        os.write("250 Message accepted\r\n".getBytes(StandardCharsets.UTF_8));
+                    }
+                } else if (line.equals("DATA")) {
+                    inData = true;
+                    os.write("354 Send message content\r\n".getBytes(StandardCharsets.UTF_8));
+                } else if (line.startsWith("QUIT")) {
+                    os.write("221 Bye\r\n".getBytes(StandardCharsets.UTF_8));
+                    return;
+                } else {
+                    if (line.startsWith("MAIL FROM") || line.startsWith("RCPT TO")) {
+                        envelope.add(line.replaceFirst(": ?<", ":<"));
+                    }
+                    os.write("250 OK\r\n".getBytes(StandardCharsets.UTF_8));
+                }
+            }
+        } catch (Exception e) {
+            // the assertions report what was recorded
+        }
     }
 
     @Test
