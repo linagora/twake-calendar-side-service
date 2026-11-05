@@ -98,6 +98,22 @@ class CollectedContactTest {
             .contains("UID:a460e37bf4d8e893f8fd39536997d5da8d21eebe");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {".", ".."})
+    void collectedContactShouldMapADotSegmentUidToAResourceNameThatMakesAUri(String uid) throws Exception {
+        ObjectNode contact = (ObjectNode) OBJECT_MAPPER.readTree("""
+            {"@type": "Card", "version": "2.0", "uid": "%s",
+             "emails": {"e": {"@type": "EmailAddress", "address": "alice@example.com"}}}
+            """.formatted(uid));
+
+        CollectedContact result = CollectedContact.parse(contact);
+        AddressBookURL collected = new AddressBookURL(new OpenPaaSId("65f1c0de0123456789abcdef"), "collected");
+
+        assertThat(result.uid().value()).isEqualTo(uid);
+        assertThat(result.resourceName().value()).isEqualTo(CollectedContact.sha1(uid));
+        assertThat(collected.vcardUri(result.resourceName().value()).toString()).endsWith("/" + CollectedContact.sha1(uid) + ".vcf");
+    }
+
     @Test
     void shouldParseVCard() throws Exception {
         byte[] vCard = """
