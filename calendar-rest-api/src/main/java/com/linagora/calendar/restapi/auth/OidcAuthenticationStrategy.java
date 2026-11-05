@@ -18,7 +18,7 @@
 
 package com.linagora.calendar.restapi.auth;
 
-import static com.linagora.calendar.restapi.auth.JwtAuthenticationStrategy.isAuthTypeJwt;
+import static com.linagora.calendar.restapi.auth.JwtAuthenticationStrategy.isServiceJwt;
 
 import java.time.Clock;
 import java.util.List;
@@ -65,7 +65,7 @@ public class OidcAuthenticationStrategy implements AuthenticationStrategy {
     public Mono<MailboxSession> createMailboxSession(HttpServerRequest httpRequest) {
         return Mono.fromCallable(() -> authHeaders(httpRequest))
             .flatMap(header -> Mono.justOrEmpty(BearerTokenExtractor.extract(header)))
-            .filter(token -> !isAuthTypeJwt(token))
+            .filter(token -> !isServiceJwt(token))
             .map(Token::new)
             .flatMap(oidcTokenCache::associatedInformation)
             .<TokenInfo>handle((tokenInfo, sink) -> {

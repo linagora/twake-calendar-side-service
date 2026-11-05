@@ -55,6 +55,12 @@ import reactor.netty.http.server.HttpServerRequest;
 public class JwtAuthenticationStrategy implements AuthenticationStrategy {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** Returns true if the token is handled by this strategy. OidcAuthenticationStrategy handles the complement. */
+    public static boolean isServiceJwt(String token) {
+        return token.startsWith("eyJ") // Heuristic for detecting JWT
+            && isAuthTypeJwt(token);
+    }
+
     /** Returns true if JWT payload contains auth_type = "jwt". */
     public static boolean isAuthTypeJwt(String jwt) {
         try {
@@ -91,8 +97,7 @@ public class JwtAuthenticationStrategy implements AuthenticationStrategy {
     public Mono<MailboxSession> createMailboxSession(HttpServerRequest httpRequest) {
         return Mono.fromCallable(() -> authHeaders(httpRequest))
             .flatMap(header -> Mono.justOrEmpty(BearerTokenExtractor.extract(header)))
-            .filter(token -> token.startsWith("eyJ")) // Heuristic for detecting JWT
-            .filter(JwtAuthenticationStrategy::isAuthTypeJwt)
+            .filter(JwtAuthenticationStrategy::isServiceJwt)
             .flatMap(userJWTToken -> Mono.fromCallable(() -> {
                 Username username = jwtTokenVerifier.verifyAndExtractLogin(userJWTToken)
                     .map(Username::of)

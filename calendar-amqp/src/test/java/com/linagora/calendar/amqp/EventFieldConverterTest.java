@@ -28,6 +28,8 @@ import java.util.Set;
 import jakarta.mail.internet.AddressException;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.CalendarURL;
@@ -1796,5 +1798,44 @@ public class EventFieldConverterTest {
         CalendarEventMessage.CreatedOrUpdated message = CalendarEventMessage.CreatedOrUpdated.deserialize(json.getBytes(StandardCharsets.UTF_8));
 
         assertThat(message.hasVEvent()).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"2147483648", "\"x\"", "\"\""})
+    void fromShouldIgnoreAnInvalidSequence(String sequence) {
+        String json = """
+            {"eventPath":"/calendars/base1/calendar1/event1.ics",
+             "event":["vcalendar",[],[["vevent",[
+                ["uid",{},"text","event-1"],
+                ["dtstart",{},"date-time","2025-04-19T10:00:00Z"],
+                ["sequence",{},"integer",%s]],[]]]],
+             "import":false}""".formatted(sequence);
+
+        CalendarEventMessage message = CalendarEventMessage.CreatedOrUpdated.deserialize(json.getBytes(StandardCharsets.UTF_8));
+
+        EventFields fields = EventFieldConverter.from(message).events().iterator().next();
+        assertSoftly(softly -> {
+            softly.assertThat(fields.uid()).isEqualTo(new EventUid("event-1"));
+            softly.assertThat(fields.sequence()).isEmpty();
+        });
+    }
+
+    @Test
+    void fromShouldIgnoreARecurrenceIdWithoutValue() {
+        String json = """
+            {"eventPath":"/calendars/base1/calendar1/event1.ics",
+             "event":["vcalendar",[],[["vevent",[
+                ["uid",{},"text","event-1"],
+                ["dtstart",{},"date-time","2025-04-19T10:00:00Z"],
+                ["recurrence-id",{},"date-time"]],[]]]],
+             "import":false}""";
+
+        CalendarEventMessage message = CalendarEventMessage.CreatedOrUpdated.deserialize(json.getBytes(StandardCharsets.UTF_8));
+
+        EventFields fields = EventFieldConverter.from(message).events().iterator().next();
+        assertSoftly(softly -> {
+            softly.assertThat(fields.uid()).isEqualTo(new EventUid("event-1"));
+            softly.assertThat(fields.recurrenceId()).isEmpty();
+        });
     }
 }

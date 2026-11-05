@@ -39,6 +39,7 @@ import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.component.VTimeZone;
+import net.fortuna.ical4j.model.property.XProperty;
 import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 
 class CalendarUtilTest {
@@ -478,6 +479,103 @@ class CalendarUtilTest {
 
         assertThat(CalendarUtil.parseIcs(result.toString()).toString())
             .contains("D.END:Weekly meeting moved");
+    }
+
+    @Test
+    void copyShouldKeepNonAlarmSubComponents() {
+        VEvent vEvent = firstVEvent("""
+            BEGIN:VLOCATION
+            UID:room-1@example.com
+            NAME:Room 1
+            END:VLOCATION
+            """);
+
+        VEvent copy = CalendarUtil.copy(vEvent);
+
+        assertThat(copy.toString()).isEqualTo(vEvent.toString());
+    }
+
+    @Test
+    void copyShouldKeepNestedSubComponents() {
+        VEvent vEvent = firstVEvent("""
+            BEGIN:PARTICIPANT
+            UID:participant-1@example.com
+            PARTICIPANT-TYPE:ACTIVE
+            BEGIN:VLOCATION
+            UID:room-1@example.com
+            NAME:Room 1
+            END:VLOCATION
+            END:PARTICIPANT
+            """);
+
+        VEvent copy = CalendarUtil.copy(vEvent);
+
+        assertThat(copy.toString()).isEqualTo(vEvent.toString());
+    }
+
+    @Test
+    void copyShouldKeepUnknownSubComponents() {
+        VEvent vEvent = firstVEvent("""
+            BEGIN:X-FOO
+            X-BAR:baz
+            END:X-FOO
+            """);
+
+        VEvent copy = CalendarUtil.copy(vEvent);
+
+        assertThat(copy.toString()).isEqualTo(vEvent.toString());
+    }
+
+    @Test
+    void copyShouldKeepSubComponentsOrder() {
+        VEvent vEvent = firstVEvent("""
+            BEGIN:VLOCATION
+            UID:room-1@example.com
+            NAME:Room 1
+            END:VLOCATION
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT15M
+            DESCRIPTION:Reminder
+            END:VALARM
+            """);
+
+        VEvent copy = CalendarUtil.copy(vEvent);
+
+        assertThat(copy.toString()).isEqualTo(vEvent.toString());
+    }
+
+    @Test
+    void copyShouldNotShareSubComponents() {
+        VEvent vEvent = firstVEvent("""
+            BEGIN:VLOCATION
+            UID:room-1@example.com
+            NAME:Room 1
+            END:VLOCATION
+            """);
+
+        VEvent copy = CalendarUtil.copy(vEvent);
+        copy.getComponentList().getAll().getFirst().add(new XProperty("X-ADDED", "value"));
+
+        assertThat(vEvent.toString()).doesNotContain("X-ADDED");
+    }
+
+    private static VEvent firstVEvent(String subComponents) {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Calendar//EN
+            BEGIN:VEVENT
+            UID:vlocation@example.com
+            DTSTAMP:20251001T080000Z
+            DTSTART:20251020T100000Z
+            DURATION:PT1H
+            RRULE:FREQ=WEEKLY;COUNT=3
+            SUMMARY:Weekly
+            %sEND:VEVENT
+            END:VCALENDAR
+            """.formatted(subComponents));
+        return (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
     }
 
     @Test

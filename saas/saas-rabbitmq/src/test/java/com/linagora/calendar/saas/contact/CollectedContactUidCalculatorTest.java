@@ -116,6 +116,47 @@ class CollectedContactUidCalculatorTest {
     }
 
     @Test
+    void shouldGenerateUidFromAlphabeticallyFirstEmailRegardlessOfCase() {
+        CollectedContact mixedCaseContact = collectedContact("""
+            {
+              "@type": "Card",
+              "version": "2.0",
+              "emails": {
+                "e0": {
+                  "@type": "EmailAddress",
+                  "address": "Zoe@example.com"
+                },
+                "e1": {
+                  "@type": "EmailAddress",
+                  "address": "alice@example.com"
+                }
+              }
+            }
+            """);
+        CollectedContact lowerCaseContact = collectedContact("""
+            {
+              "@type": "Card",
+              "version": "2.0",
+              "emails": {
+                "e0": {
+                  "@type": "EmailAddress",
+                  "address": "zoe@example.com"
+                },
+                "e1": {
+                  "@type": "EmailAddress",
+                  "address": "alice@example.com"
+                }
+              }
+            }
+            """);
+
+        assertThat(mixedCaseContact.uid().value())
+            .as("Picks the preferred email regardless of the case of the addresses")
+            .isEqualTo(lowerCaseContact.uid().value())
+            .isEqualTo(sha1("alice@example.com"));
+    }
+
+    @Test
     void shouldGenerateUidFromMatrixIdWhenEmailIsMissing() {
         CollectedContact testee = collectedContact("""
             {
@@ -267,6 +308,32 @@ class CollectedContactUidCalculatorTest {
 
         assertThat(testee.uid().value())
             .as("Uses the alphabetically first Matrix ID when no preference is set")
+            .isEqualTo(sha1("alpha@example.com"));
+    }
+
+    @Test
+    void shouldGenerateUidFromAlphabeticallyFirstMatrixIdRegardlessOfCase() {
+        CollectedContact testee = collectedContact("""
+            {
+              "@type": "Card",
+              "version": "2.0",
+              "onlineServices": {
+                "first-key": {
+                  "@type": "OnlineService",
+                  "service": "matrix",
+                  "user": "@Zulu:example.com"
+                },
+                "last-key": {
+                  "@type": "OnlineService",
+                  "service": "matrix",
+                  "user": "@alpha:example.com"
+                }
+              }
+            }
+            """);
+
+        assertThat(testee.uid().value())
+            .as("Picks the preferred Matrix ID regardless of the case of the identifiers")
             .isEqualTo(sha1("alpha@example.com"));
     }
 

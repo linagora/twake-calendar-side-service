@@ -19,6 +19,10 @@
 package com.linagora.calendar.storage.mongodb;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+
+import java.time.Duration;
+import java.util.regex.Pattern;
 
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Test;
@@ -31,6 +35,31 @@ class AccentInsensitivePrefixPatternTest {
     @ValueSource(strings = {"Nguyễn", "김민준", "Ёлкин", "йогурт", "Ŀuis", "Théo", "Ẁalter", "ẻ"})
     void ofShouldFindANameByItself(String name) {
         assertThat(AccentInsensitivePrefixPattern.of(name).matcher(name + " Suffix").lookingAt()).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Ａnna", "ʰanh", "ℨoe", "ａnna"})
+    void ofShouldFindANameHoldingACompatibilityLetterByItself(String name) {
+        assertThat(AccentInsensitivePrefixPattern.of(name).matcher(name + " Suffix").lookingAt()).isTrue();
+    }
+
+    @Test
+    void ofShouldFindAnAsciiNameFromAFullWidthQuery() {
+        assertThat(AccentInsensitivePrefixPattern.of("Ａnna").matcher("Anna").lookingAt()).isTrue();
+    }
+
+    @Test
+    void ofShouldFindAFullWidthNameFromALowerCaseFullWidthQuery() {
+        assertThat(AccentInsensitivePrefixPattern.of("ａnna").matcher("Ａnna").lookingAt()).isTrue();
+    }
+
+    @Test
+    void ofShouldNotBacktrackExponentiallyOnCompatibilityLettersMatchedByTheirClass() {
+        String kelvinSigns = "\u212A".repeat(40);
+        Pattern pattern = AccentInsensitivePrefixPattern.of(kelvinSigns + "z");
+
+        assertTimeoutPreemptively(Duration.ofSeconds(5),
+            () -> assertThat(pattern.matcher("k".repeat(40) + "a").lookingAt()).isFalse());
     }
 
     @Test
