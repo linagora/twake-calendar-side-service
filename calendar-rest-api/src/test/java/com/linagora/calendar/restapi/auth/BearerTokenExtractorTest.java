@@ -33,6 +33,19 @@ class BearerTokenExtractorTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"\t", "\u2003", "\r", "\n"})
+    void extractShouldNotStripOtherWhitespace(String whitespace) {
+        assertThat(BearerTokenExtractor.extract("Bearer   " + whitespace + TOKEN))
+            .contains(whitespace + TOKEN);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"opaque token", "opaque-token "})
+    void extractShouldPreserveWhitespaceWithinAndAfterTheToken(String token) {
+        assertThat(BearerTokenExtractor.extract("Bearer  " + token)).contains(token);
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"Bearer ", "Bearer  "})
     void aServiceJwtShouldBeHandledByTheJwtStrategy(String prefix) {
         String token = BearerTokenExtractor.extract(prefix + TOKEN).orElseThrow();
