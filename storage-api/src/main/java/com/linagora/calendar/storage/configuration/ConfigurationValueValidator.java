@@ -21,12 +21,14 @@ package com.linagora.calendar.storage.configuration;
 import java.util.stream.StreamSupport;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.Streams;
 
 /**
- * Ensures a configuration value only holds numbers that can be stored and read back unchanged:
- * integers within the long range and finite floating point numbers.
+ * Ensures a configuration value can be stored and read back unchanged: its numbers are integers within the long range
+ * or finite floating point numbers, and its object keys hold no NUL character, as BSON writes them as C strings.
  */
 public final class ConfigurationValueValidator {
+    private static final char NUL = '\0';
 
     public static void validate(JsonNode node) {
         if (node == null) {
@@ -34,6 +36,9 @@ public final class ConfigurationValueValidator {
         }
         if (node.isNumber() && !isStorableNumber(node)) {
             throw new IllegalArgumentException("Unsupported number in configuration value: " + node);
+        }
+        if (Streams.stream(node.fieldNames()).anyMatch(key -> key.indexOf(NUL) >= 0)) {
+            throw new IllegalArgumentException("Unsupported NUL character in a key of a configuration value");
         }
         StreamSupport.stream(node.spliterator(), false)
             .forEach(ConfigurationValueValidator::validate);

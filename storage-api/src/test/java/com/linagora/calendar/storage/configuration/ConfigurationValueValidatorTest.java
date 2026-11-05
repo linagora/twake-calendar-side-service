@@ -55,6 +55,19 @@ class ConfigurationValueValidatorTest {
             .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"a\\u0000b\":1}", "{\"\\u0000\":1}", "[{\"k\":{\"\\u0000\":1}}]"})
+    void validateShouldRejectObjectKeysThatCannotBeStored(String value) {
+        assertThatThrownBy(() -> ConfigurationValueValidator.validate(MAPPER.readTree(value)))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void validateShouldAcceptANulCharacterInAStringValue() {
+        assertThatCode(() -> ConfigurationValueValidator.validate(MAPPER.readTree("{\"a\":\"b\\u0000c\"}")))
+            .doesNotThrowAnyException();
+    }
+
     @Test
     void validateShouldAcceptNullNode() {
         assertThatCode(() -> ConfigurationValueValidator.validate(null))
