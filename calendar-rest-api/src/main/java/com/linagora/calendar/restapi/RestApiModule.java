@@ -70,6 +70,7 @@ import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy.Reso
 import com.linagora.calendar.restapi.auth.OidcAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.OidcEndpointsInfoResolver;
 import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrategy;
+import com.linagora.calendar.restapi.routes.AttachmentUploadRoute;
 import com.linagora.calendar.restapi.routes.AvatarRoute;
 import com.linagora.calendar.restapi.routes.BookedEventCancelRoute;
 import com.linagora.calendar.restapi.routes.BookedEventGetRoute;
@@ -127,6 +128,7 @@ import com.linagora.calendar.restapi.routes.people.search.PeopleSearchProvider;
 import com.linagora.calendar.restapi.routes.people.search.ResourceSearchProvider;
 import com.linagora.calendar.restapi.routes.people.search.TeamCalendarSearchProvider;
 import com.linagora.calendar.restapi.routes.people.search.UserSearchProvider;
+import com.linagora.calendar.saas.drive.api.AttachmentStorageClient;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.TokenInfoResolver;
 import com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader;
@@ -161,6 +163,7 @@ public class RestApiModule extends AbstractModule {
 
         OptionalBinder.newOptionalBinder(binder(), MeetingConferenceLinkGenerator.class)
             .setDefault().to(MeetingConferenceLinkGenerator.Visio.class);
+        OptionalBinder.newOptionalBinder(binder(), AttachmentStorageClient.class);
 
         Multibinder<JMAPRoutes> routes = Multibinder.newSetBinder(binder(), JMAPRoutes.class);
         routes.addBinding().to(AvatarRoute.class);
@@ -191,6 +194,7 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(UserConfigurationPatchRoute.class);
         routes.addBinding().to(SecretLinkRoute.class);
         routes.addBinding().to(FileUploadRoute.class);
+        routes.addBinding().to(AttachmentUploadRoute.class);
         routes.addBinding().to(DownloadCalendarRoute.class);
         routes.addBinding().to(ImportRoute.class);
         routes.addBinding().to(CalendarSearchRoute.class);
