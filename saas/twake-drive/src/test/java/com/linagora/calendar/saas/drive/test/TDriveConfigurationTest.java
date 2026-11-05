@@ -99,6 +99,14 @@ class TDriveConfigurationTest {
         assertThatThrownBy(() -> TDriveConfiguration.from(properties)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining(key);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"!", "~", "eyJhbGciOiJIUzI1NiJ9.payload.signature", "abc+/=_-"})
+    void shouldPreservePrintableBearerCredentials(String token) {
+        BaseConfiguration properties = properties();
+        properties.setProperty("twp.drive.partner.token", token);
+        assertThat(TDriveConfiguration.from(properties).partnerToken()).isEqualTo(token);
+    }
+
     static Stream<Arguments> invalidProperties() {
         return Stream.of(
             Arguments.of("twp.drive.instance.domain", "/relative"),
@@ -113,6 +121,9 @@ class TDriveConfigurationTest {
             Arguments.of("twp.drive.public.url.template", "javascript:{sharecode}"),
             Arguments.of("twp.drive.partner.token", " "),
             Arguments.of("twp.drive.partner.token", "bad\r\ntoken"),
+            Arguments.of("twp.drive.partner.token", "bad\ttoken"),
+            Arguments.of("twp.drive.partner.token", "bad\u007ftoken"),
+            Arguments.of("twp.drive.partner.token", "caf\u00e9"),
             Arguments.of("twp.drive.folder.name", "../attachments"),
             Arguments.of("twp.drive.folder.name", ".."),
             Arguments.of("twp.drive.timeout", "0s"),

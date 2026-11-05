@@ -28,6 +28,7 @@ import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.util.DurationParser;
 
+import com.google.common.base.CharMatcher;
 import com.google.common.base.Preconditions;
 
 public record TDriveConfiguration(boolean enabled, String instanceDomain, String tokenUrlTemplate,
@@ -43,7 +44,7 @@ public record TDriveConfiguration(boolean enabled, String instanceDomain, String
             validateTemplate(tokenUrlTemplate, "twp.drive.token.url.template", List.of("{fqdn}"));
             validateTemplate(driveUrlTemplate, "twp.drive.drive.url.template", List.of("{fqdn}"));
             validateTemplate(publicUrlTemplate, "twp.drive.public.url.template", List.of("{sharecode}"));
-            Preconditions.checkArgument(StringUtils.isNotBlank(partnerToken) && partnerToken.chars().allMatch(character -> character > 32 && character < 127),
+            Preconditions.checkArgument(validBearerToken(partnerToken),
                 "twp.drive.partner.token must be a non-blank bearer credential");
             Preconditions.checkArgument(validName(folderName), "twp.drive.folder.name must be a single directory name");
             Preconditions.checkArgument(timeout != null && timeout.isPositive() && timeout.toMillis() > 0 && timeout.toMillis() <= Integer.MAX_VALUE,
@@ -101,6 +102,11 @@ public record TDriveConfiguration(boolean enabled, String instanceDomain, String
     public static boolean validHostname(String hostname) {
         return hostname != null && hostname.length() <= 253
             && hostname.matches("[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*");
+    }
+
+    public static boolean validBearerToken(String token) {
+        // Both partner and instance credentials must fit into a single ASCII Authorization header.
+        return StringUtils.isNotEmpty(token) && CharMatcher.inRange('!', '~').matchesAllOf(token);
     }
 
     public static boolean validName(String name) {

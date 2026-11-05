@@ -310,6 +310,10 @@ class TDriveAttachmentStorageClientTest implements AttachmentStorageClientContra
         """
         {"token": "bad token"}
         """,
+        "{\"token\": \"bad\\ttoken\"}",
+        "{\"token\": \"bad\\r\\ntoken\"}",
+        "{\"token\": \"bad\\u007ftoken\"}",
+        "{\"token\": \"caf\u00e9\"}",
         "null",
         "broken-json"})
     void shouldRejectMissingOrMalformedServiceToken(String body) {

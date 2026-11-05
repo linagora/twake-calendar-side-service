@@ -93,7 +93,7 @@ public final class TDriveAttachmentStorageClient implements AttachmentStorageCli
                 configuration.partnerToken(), "application/json"), new RequestBody("application/json", TOKEN_REQUEST, null),
                 Token.class, "TDrive service token")
             .map(result -> {
-                if (StringUtils.isBlank(result.token()) || result.token().chars().anyMatch(character -> character <= 32 || character >= 127)) {
+                if (!TDriveConfiguration.validBearerToken(result.token())) {
                     throw new AttachmentStorageException(Reason.INVALID_RESPONSE, "TDrive service token: missing token");
                 }
                 return result.token();
