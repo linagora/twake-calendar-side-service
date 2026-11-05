@@ -545,10 +545,19 @@ public class EventParseUtils {
         };
     }
 
+    /**
+     * The zone floating values of a series are read in, as normalizeTemporal writes them in an instance: the master's
+     * zone, UTC for a floating series or a master without DTSTART.
+     */
+    public static ZoneId floatingZone(VEvent master) {
+        return Optional.ofNullable(master.getDateTimeStart())
+            .flatMap(dtStart -> getZoneIdFromStartDate(master))
+            .orElse(ZONE_ID_DEFAULT);
+    }
+
     public static Period calculateRecurrenceSet(VEvent master, Temporal recurrenceDate) {
         try {
-            // Floating values are read in the master's zone, as normalizeTemporal writes them in the instance
-            ZoneId floatingZone = getZoneIdFromStartDate(master).orElse(ZONE_ID_DEFAULT);
+            ZoneId floatingZone = floatingZone(master);
             Period period = switch (recurrenceDate) {
                 // Contains the recurrence date itself so that zero-length occurrences (DTEND = DTSTART) are found
                 case LocalDate localDate -> new Period(localDate, localDate.plusDays(1));

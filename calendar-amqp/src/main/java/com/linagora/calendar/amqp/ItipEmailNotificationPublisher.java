@@ -24,6 +24,7 @@ import java.net.URI;
 import java.time.Clock;
 import java.time.DateTimeException;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.chrono.ChronoZonedDateTime;
 import java.time.temporal.Temporal;
@@ -207,10 +208,11 @@ class ItipEmailNotificationPublisher {
                 .orElseGet(Map::of);
             Set<Temporal> recurrencesNotifiedSeparately = Sets.union(cancelCalendarsByRecurrence.keySet(),
                 exDateChanges.map(ExDateChanges::removedExDates).orElseGet(Set::of));
+            ZoneId floatingZone = floatingZone(newCalendar);
 
             List<NotificationEmailDTO> requestNotifications = CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
                 .stream()
-                .filter(diff -> shouldSendRequest(diff, recurrencesNotifiedSeparately))
+                .filter(diff -> shouldSendRequest(diff, recurrencesNotifiedSeparately, floatingZone))
                 .map(diff -> buildChangedOccurrenceNotification(NotificationEmailDTO.builder(localDelivery).withEventPath(eventPath),
                     newCalendar, diff))
                 .toList();
@@ -241,9 +243,10 @@ class ItipEmailNotificationPublisher {
                                                                        URI eventPath,
                                                                        Calendar newCalendar,
                                                                        Calendar oldCalendar) {
+            ZoneId floatingZone = floatingZone(newCalendar);
             return CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
                 .stream()
-                .filter(this::isNotifiable)
+                .filter(diff -> isNotifiable(diff, floatingZone))
                 .map(diff -> buildChangedOccurrenceNotification(
                     NotificationEmailDTO.builder(localDelivery).withEventPath(eventPath), newCalendar, diff))
                 .toList();
@@ -330,10 +333,17 @@ class ItipEmailNotificationPublisher {
         }
 
         private Set<Temporal> overriddenRecurrences(Calendar calendar) {
+            ZoneId floatingZone = floatingZone(calendar);
             return calendar.getComponents(Component.VEVENT).stream()
                 .map(VEvent.class::cast)
-                .flatMap(vevent -> recurrenceKey(vevent).stream())
+                .flatMap(vevent -> recurrenceKey(vevent, floatingZone).stream())
                 .collect(Collectors.toSet());
+        }
+
+        private ZoneId floatingZone(Calendar calendar) {
+            return EventParseUtils.findMasterRecurrenceEvent(calendar)
+                .map(EventParseUtils::floatingZone)
+                .orElse(EventParseUtils.ZONE_ID_DEFAULT);
         }
 
         private Map<Temporal, Calendar> computeCancelledCalendars(ExDateChanges changes, Calendar newCalendar) {
@@ -392,7 +402,7 @@ class ItipEmailNotificationPublisher {
                 return normalizeDateExDate(localDate, masterEvent);
             }
             // Independent parses of VTIMEZONE can assign different ZoneIds to the same instant.
-            Optional<Temporal> instant = EventParseUtils.temporalToZonedDateTime(temporal)
+            Optional<Temporal> instant = EventParseUtils.temporalToZonedDateTime(temporal, EventParseUtils.floatingZone(masterEvent))
                 .map(ChronoZonedDateTime::toInstant);
             if (instant.isEmpty()) {
                 LOGGER.warn("Ignoring EXDATE {} that cannot be converted to an instant", temporal);
@@ -417,8 +427,8 @@ class ItipEmailNotificationPublisher {
             }
         }
 
-        private boolean shouldSendRequest(EventDiff diff, Set<Temporal> excludedRecurrenceIds) {
-            return isMaster(diff) || recurrenceKey(diff.vevent())
+        private boolean shouldSendRequest(EventDiff diff, Set<Temporal> excludedRecurrenceIds, ZoneId floatingZone) {
+            return isMaster(diff) || recurrenceKey(diff.vevent(), floatingZone)
                 .filter(recurrenceId -> !excludedRecurrenceIds.contains(recurrenceId))
                 .isPresent();
         }
@@ -426,18 +436,18 @@ class ItipEmailNotificationPublisher {
         /**
          * An override whose RECURRENCE-ID cannot be read cannot be rendered: only the other occurrences are notified.
          */
-        private boolean isNotifiable(EventDiff diff) {
-            return isMaster(diff) || recurrenceKey(diff.vevent()).isPresent();
+        private boolean isNotifiable(EventDiff diff, ZoneId floatingZone) {
+            return isMaster(diff) || recurrenceKey(diff.vevent(), floatingZone).isPresent();
         }
 
         private boolean isMaster(EventDiff diff) {
             return diff.vevent().getRecurrenceId() == null;
         }
 
-        private Optional<Temporal> recurrenceKey(VEvent vevent) {
+        private Optional<Temporal> recurrenceKey(VEvent vevent, ZoneId floatingZone) {
             return Optional.ofNullable(vevent.getRecurrenceId())
                 .flatMap(recurrenceId -> recurrenceDate(vevent, recurrenceId))
-                .flatMap(this::toRecurrenceKey);
+                .flatMap(recurrenceDate -> toRecurrenceKey(recurrenceDate, floatingZone));
         }
 
         /**
@@ -459,11 +469,11 @@ class ItipEmailNotificationPublisher {
             }
         }
 
-        private Optional<Temporal> toRecurrenceKey(Temporal temporal) {
+        private Optional<Temporal> toRecurrenceKey(Temporal temporal, ZoneId floatingZone) {
             if (temporal instanceof LocalDate localDate) {
                 return Optional.of(localDate);
             }
-            Optional<Temporal> recurrenceKey = EventParseUtils.temporalToZonedDateTime(temporal)
+            Optional<Temporal> recurrenceKey = EventParseUtils.temporalToZonedDateTime(temporal, floatingZone)
                 .map(ChronoZonedDateTime::toInstant);
             if (recurrenceKey.isEmpty()) {
                 LOGGER.warn("Ignoring override with unsupported RECURRENCE-ID {}", temporal);
