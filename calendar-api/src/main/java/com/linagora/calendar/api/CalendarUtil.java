@@ -92,24 +92,31 @@ public class CalendarUtil {
      * zone names...), are not registered: they resolve to the JVM zone. Only custom TZIDs are registered and resolved
      * from their own definition.
      *
-     * <p>Registering a VTIMEZONE makes ical4j expand every observance RRULE from its DTSTART up to now. Custom zones whose
-     * observances would yield too many transitions (sub-daily rules, decades of monthly ones...) are not registered either:
-     * their TZID is then handled like any unknown TZID. So are the custom zones beyond the first
+     * <p>Registering a VTIMEZONE makes ical4j expand every observance RRULE from its DTSTART up to now. An instance serves
+     * one parsed calendar, and {@link #MAX_EXPANSION_COST} bounds the expansion it accepts in total, whatever the number
+     * of zones. Custom zones that would exceed what is left of it (sub-daily rules, decades of monthly ones...) are not
+     * registered either: their TZID is then handled like any unknown TZID. So are the custom zones beyond the first
      * {@link #MAX_CUSTOM_TIMEZONES} of a calendar, as each takes an id from the JVM wide pool.
+     *
+     * <p>The cost counts the candidates ical4j visits rather than the transitions it keeps: a yearly BYDAY rule without
+     * BYMONTH goes through every month, even when it only keeps one date a year. A candidate takes around 40 microseconds,
+     * so the default limit keeps the expansion of a calendar in the order of 100 milliseconds, while accepting a zone
+     * since the Outlook epoch (1601) or a few dozen zones since 1970.
      */
     public static class CustomizedTimeZoneRegistry implements TimeZoneRegistry {
         private static final Logger LOGGER = LoggerFactory.getLogger(CustomizedTimeZoneRegistry.class);
         @VisibleForTesting
-        static final long MAX_OBSERVANCE_TRANSITIONS = Long.getLong("tcalendar.tz.max.observance.transitions", 20_000);
+        static final long MAX_EXPANSION_COST = Long.getLong("tcalendar.tz.max.expansion.cost", 4_000);
         @VisibleForTesting
         static final int MAX_CUSTOM_TIMEZONES = Integer.getInteger("tcalendar.tz.max.custom.tz", 1000);
         private static final int MIN_EXPANDED_YEARS = 5;
-        private static final int MAX_DAYS_PER_YEAR = 366;
+        private static final long OBSERVANCE_COST = 6;
         private static final int MAX_WEEKDAYS_PER_MONTH = 5;
         private static final int MONTHS_PER_YEAR = 12;
 
         private final TimeZoneRegistryImpl delegate = new TimeZoneRegistryImpl();
         private int registeredCount = 0;
+        private long remainingExpansionCost = MAX_EXPANSION_COST;
 
         @Override
         public void register(TimeZone timezone) {
@@ -145,40 +152,47 @@ public class CalendarUtil {
                 LOGGER.info("Ignoring VTIMEZONE {}: more than {} custom timezones in the calendar", timezone.getID(), MAX_CUSTOM_TIMEZONES);
                 return false;
             }
-            if (!hasBoundedObservances(timezone.getVTimeZone())) {
+            OptionalLong expansionCost = estimatedExpansionCost(timezone.getVTimeZone());
+            if (expansionCost.isEmpty() || expansionCost.getAsLong() > remainingExpansionCost) {
                 LOGGER.info("Ignoring VTIMEZONE {}: its observances recur too often to be expanded", timezone.getID());
                 return false;
             }
+            remainingExpansionCost -= expansionCost.getAsLong();
             registeredCount++;
             return true;
         }
 
-        /**
-         * Upper bound of the transitions ical4j would generate, without expanding them. Only yearly and monthly rules
-         * without sub-daily parts are accepted: every real world VTIMEZONE recurs yearly.
-         */
         @VisibleForTesting
         static boolean hasBoundedObservances(VTimeZone vTimeZone) {
-            int currentYear = Year.now(ZoneOffset.UTC).getValue();
-            long transitions = 0;
-            for (Observance observance : vTimeZone.getObservances()) {
-                for (RRule<?> rRule : observance.<RRule<?>>getProperties(Property.RRULE)) {
-                    OptionalLong perYear = maxOccurrencesPerYear(rRule.getRecur());
-                    if (perYear.isEmpty()) {
-                        return false;
-                    }
-                    transitions += perYear.getAsLong() * expandedYears(observance, currentYear);
-                    if (transitions > MAX_OBSERVANCE_TRANSITIONS) {
-                        return false;
-                    }
-                }
-            }
-            return true;
+            return estimatedExpansionCost(vTimeZone).isPresent();
         }
 
-        private static OptionalLong maxOccurrencesPerYear(Recur<?> recur) {
-            boolean yearly = recur.getFrequency() == Frequency.YEARLY;
-            if (!yearly && recur.getFrequency() != Frequency.MONTHLY) {
+        /**
+         * Estimates the candidates ical4j would visit, without expanding them. Only yearly and monthly rules without
+         * sub-daily parts are accepted: every real world VTIMEZONE recurs yearly. Empty when the zone cannot be accepted,
+         * even on its own.
+         */
+        private static OptionalLong estimatedExpansionCost(VTimeZone vTimeZone) {
+            int currentYear = Year.now(ZoneOffset.UTC).getValue();
+            long cost = 0;
+            for (Observance observance : vTimeZone.getObservances()) {
+                cost += OBSERVANCE_COST;
+                for (RRule<?> rRule : observance.<RRule<?>>getProperties(Property.RRULE)) {
+                    OptionalLong perYear = candidatesPerYear(rRule.getRecur());
+                    if (perYear.isEmpty()) {
+                        return OptionalLong.empty();
+                    }
+                    cost += perYear.getAsLong() * expandedYears(observance, currentYear);
+                }
+                if (cost > MAX_EXPANSION_COST) {
+                    return OptionalLong.empty();
+                }
+            }
+            return OptionalLong.of(cost);
+        }
+
+        private static OptionalLong candidatesPerYear(Recur<?> recur) {
+            if (recur.getFrequency() != Frequency.YEARLY && recur.getFrequency() != Frequency.MONTHLY) {
                 return OptionalLong.empty();
             }
             if (!recur.getHourList().isEmpty() || !recur.getMinuteList().isEmpty() || !recur.getSecondList().isEmpty()
@@ -189,17 +203,13 @@ public class CalendarUtil {
             if (!recur.getMonthDayList().isEmpty()) {
                 daysPerMonth = recur.getMonthDayList().size();
             } else if (!recur.getDayList().isEmpty()) {
-                daysPerMonth = recur.getDayList().stream()
+                // The cost of a weekday list grows faster than its size: real world rules only hold one weekday
+                daysPerMonth = recur.getDayList().size() * recur.getDayList().stream()
                     .mapToLong(weekDay -> weekDay.getOffset() == 0 ? MAX_WEEKDAYS_PER_MONTH : 1)
                     .sum();
             }
-            long months = MONTHS_PER_YEAR;
-            if (!recur.getMonthList().isEmpty()) {
-                months = recur.getMonthList().size();
-            } else if (yearly && recur.getMonthDayList().isEmpty() && recur.getDayList().isEmpty()) {
-                months = 1;
-            }
-            return OptionalLong.of(Math.min(MAX_DAYS_PER_YEAR, months * daysPerMonth));
+            long months = recur.getMonthList().isEmpty() ? MONTHS_PER_YEAR : recur.getMonthList().size();
+            return OptionalLong.of(months * daysPerMonth);
         }
 
         private static long expandedYears(Observance observance, int currentYear) {
