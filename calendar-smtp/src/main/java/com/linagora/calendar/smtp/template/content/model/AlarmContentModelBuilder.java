@@ -25,8 +25,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import org.apache.commons.lang3.StringUtils;
-
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.template.TimeFormatUtil;
 
@@ -49,8 +47,7 @@ public class AlarmContentModelBuilder {
 
                 eventBuilder.put("hasResources", !resources.isEmpty());
                 Map<String, Object> resourceMap = resources.stream()
-                    .collect(Collectors.toMap(resource -> StringUtils.defaultIfEmpty(resource.cn(), resource.email()),
-                        PersonModel::toPugModel));
+                    .collect(Collectors.toMap(PersonModel::email, PersonModel::toPugModel));
                 eventBuilder.put("resources", resourceMap);
 
                 description.ifPresent(desc -> eventBuilder.put("description", desc));
