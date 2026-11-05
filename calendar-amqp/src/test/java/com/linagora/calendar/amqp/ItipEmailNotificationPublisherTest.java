@@ -740,6 +740,41 @@ class ItipEmailNotificationPublisherTest {
         }
 
         @Test
+        void addedFloatingExDateShouldCancelRRuleOccurrenceOfAZonedSeries() {
+            String current = withExDate(RECURRING_WITH_FLOATING_RDATE, "20261021T090000");
+
+            List<NotificationEmailDTO> notifications = request(current, RECURRING_WITH_FLOATING_RDATE);
+
+            assertThat(notifications).singleElement().satisfies(notification -> {
+                assertThat(notification.method()).isEqualTo(Method.VALUE_CANCEL);
+                assertThat(notification.event()).contains("20261021T090000", "STATUS:CANCELLED");
+            });
+        }
+
+        @Test
+        void removedFloatingExDateReplacedByAFloatingOverrideShouldOnlyNotifyTheOverride() {
+            String previous = withExDate(RECURRING_WITH_FLOATING_RDATE, "20261016T090000");
+            String current = RECURRING_WITH_FLOATING_RDATE.replace("END:VCALENDAR", """
+                BEGIN:VEVENT
+                UID:recurring-uid@test
+                RECURRENCE-ID:20261016T090000
+                DTSTART;TZID=Europe/Paris:20261016T100000
+                DURATION:PT1H
+                SUMMARY:Weekly sync moved
+                ATTENDEE:mailto:alice@example.com
+                ORGANIZER:mailto:bob@example.com
+                END:VEVENT
+                END:VCALENDAR""");
+
+            List<NotificationEmailDTO> notifications = request(current, previous);
+
+            assertThat(notifications).singleElement().satisfies(notification -> {
+                assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                assertThat(notification.event()).contains("SUMMARY:Weekly sync moved");
+            });
+        }
+
+        @Test
         void addedExDateShouldOnlyCancelTheNewOccurrenceWithEmbeddedTimezone() {
             String current = """
                 BEGIN:VCALENDAR
