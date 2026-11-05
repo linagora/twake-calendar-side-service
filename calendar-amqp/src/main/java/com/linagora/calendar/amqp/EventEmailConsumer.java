@@ -148,7 +148,7 @@ public class EventEmailConsumer implements Closeable, Startable {
     }
 
     private boolean hasValidRecipient(JsonNode json) {
-        return HeaderAddressValidator.isWritableInHeader(json.path(RECIPIENT_EMAIL_FIELD).asText());
+        return HeaderAddressValidator.isValidRecipient(json.path(RECIPIENT_EMAIL_FIELD).asText());
     }
 
     private Mono<Void> consumeValidMessage(JsonNode json) {

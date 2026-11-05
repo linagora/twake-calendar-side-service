@@ -25,6 +25,8 @@ import org.apache.james.core.MailAddress;
 import org.apache.james.mime4j.field.address.DefaultAddressParser;
 import org.apache.james.mime4j.field.address.ParseException;
 
+import com.linagora.calendar.smtp.MailUsernames;
+
 /**
  * An address we send a mail to must also be writable in a To header: mime4j's RFC 5322 parser is stricter than
  * {@link MailAddress} (e.g. it rejects an unquoted backslash, as in {@code a\b@example.com}), and so is jakarta-mail's
@@ -39,6 +41,17 @@ public final class HeaderAddressValidator {
             new InternetAddress(address);
             return true;
         } catch (AddressException | ParseException e) {
+            return false;
+        }
+    }
+
+    /**
+     * A recipient of an event mail must be writable in a To header, and be a username as its settings are looked up.
+     */
+    public static boolean isValidRecipient(String address) {
+        try {
+            return isWritableInHeader(address) && MailUsernames.asUsername(new MailAddress(address)).isPresent();
+        } catch (AddressException e) {
             return false;
         }
     }

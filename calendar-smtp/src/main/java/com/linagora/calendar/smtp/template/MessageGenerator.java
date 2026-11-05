@@ -59,6 +59,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.smtp.MailUsernames;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
 import com.linagora.calendar.smtp.i18n.I18NTranslator.PropertiesI18NTranslator;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -196,13 +197,22 @@ public class MessageGenerator {
     }
 
     public Mono<Message> generate(Username recipient, MailAddress fromAddress, Map<String, Object> scopedVariable, List<MimeAttachment> mimeAttachments) {
-        return resolveInternetAddress(Username.fromMailAddress(fromAddress))
+        return resolveInternetAddress(fromAddress)
             .flatMap(fromAsInternetAddress -> generate(recipient, fromAsInternetAddress, scopedVariable, mimeAttachments));
     }
 
     public Mono<Message> generate(Username recipient, InternetAddress fromAddress, Map<String, Object> scopedVariable, List<MimeAttachment> mimeAttachments) {
         return resolveInternetAddress(recipient)
             .flatMap(recipientAsInternetAddress -> generate(recipientAsInternetAddress, fromAddress, scopedVariable, mimeAttachments));
+    }
+
+    /**
+     * An address that is not a username has no user, hence no display name to look up.
+     */
+    public Mono<InternetAddress> resolveInternetAddress(MailAddress address) {
+        return MailUsernames.asUsername(address)
+            .map(this::resolveInternetAddress)
+            .orElseGet(() -> Mono.fromCallable(() -> new InternetAddress(address.asString())));
     }
 
     public Mono<InternetAddress> resolveInternetAddress(Username username) {
