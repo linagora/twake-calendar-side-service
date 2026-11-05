@@ -24,6 +24,8 @@ import java.util.regex.Pattern;
 
 import org.apache.commons.lang3.StringUtils;
 
+import com.linagora.calendar.storage.DavPathSegment;
+
 /**
  * Imported items are stored on the DAV server under a resource name derived from their UID. Exotic UIDs
  * would yield an invalid - possibly escaping - path, thus a random name is used instead for those.
@@ -43,7 +45,7 @@ public final class DavResourceName {
      * Whether the value can be used as is as a DAV resource name: a single, non escaping, path segment.
      */
     public static boolean isSafe(String value) {
-        return value != null && SAFE_RESOURCE_NAME.matcher(value).matches();
+        return value != null && SAFE_RESOURCE_NAME.matcher(value).matches() && !DavPathSegment.isDotSegment(value);
     }
 
     private DavResourceName() {

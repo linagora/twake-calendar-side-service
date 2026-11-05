@@ -51,6 +51,10 @@ public final class DavPathSegment {
         return value;
     }
 
+    public static boolean isDotSegment(String value) {
+        return DOT_SEGMENTS.contains(value);
+    }
+
     private static void validateDecoded(String decoded, String value, String name) {
         Preconditions.checkArgument(!DOT_SEGMENTS.contains(decoded),
             "%s must not decode to a dot segment: %s", name, value);
