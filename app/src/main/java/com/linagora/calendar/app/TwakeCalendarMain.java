@@ -77,6 +77,7 @@ import com.linagora.calendar.restapi.MeetRestApiModule;
 import com.linagora.calendar.restapi.RestApiModule;
 import com.linagora.calendar.saas.TWPCalendarUserCreationModule;
 import com.linagora.calendar.saas.TWPCalendarUserDeletionModule;
+import com.linagora.calendar.saas.drive.configuration.TDriveModule;
 import com.linagora.calendar.smtp.SmtpModule;
 import com.linagora.calendar.storage.CaffeineOIDCTokenCache;
 import com.linagora.calendar.storage.FileUploadConfigurationModule;
@@ -154,6 +155,7 @@ public class TwakeCalendarMain {
                 chooseCommonContacts(configuration.commonContactsEnabled()),
                 chooseSaaSSubscription(configuration.saasSubscriptionEnabled()),
                 chooseMeet(configuration.meetEnabled()),
+                chooseTDrive(configuration.tdriveEnabled()),
                 chooseTwakeSpace(configuration.twakeSpaceEnabled(), configuration.dbChoice()),
                 new FileUploadConfigurationModule(),
                 new RestApiModule(),
@@ -267,6 +269,13 @@ public class TwakeCalendarMain {
     public static Module chooseMeet(boolean enabled) {
         if (enabled) {
             return Modules.combine(new MeetIntegrationModule(), new MeetRestApiModule());
+        }
+        return Modules.EMPTY_MODULE;
+    }
+
+    public static Module chooseTDrive(boolean enabled) {
+        if (enabled) {
+            return new TDriveModule();
         }
         return Modules.EMPTY_MODULE;
     }
