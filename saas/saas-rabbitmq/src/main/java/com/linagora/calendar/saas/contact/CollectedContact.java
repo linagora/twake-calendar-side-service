@@ -83,7 +83,7 @@ final class CollectedContact {
 
     static CollectedContact parse(ObjectNode contactData) {
         try {
-            return parse(Card.toJSCard(withPrefsInRange(contactData).toString()));
+            return parse(Card.toJSCard(normalize(contactData).toString()));
         } catch (CollectedContactException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
@@ -150,12 +150,14 @@ final class CollectedContact {
         return new CollectedContact(cardWithUid, uid, preferredEmailAddress.isPresent(), preferredMatrixId.isPresent());
     }
 
-    // vCard readers reject PREF outside 1..100 (RFC 6350), so clamp it to keep stored cards readable back.
-    private static ObjectNode withPrefsInRange(ObjectNode contactData) {
+    private static ObjectNode normalize(ObjectNode contactData) {
         ObjectNode copy = contactData.deepCopy();
         clampPrefs(copy);
+        VCardSafeIds.renameUnsafeIds(copy);
         return copy;
     }
+
+    // vCard readers reject PREF outside 1..100 (RFC 6350), so clamp it to keep stored cards readable back.
 
     private static void clampPrefs(JsonNode node) {
         if (node instanceof ObjectNode objectNode && objectNode.path(PREF).isIntegralNumber()) {
@@ -252,7 +254,7 @@ final class CollectedContact {
     }
 
     @SuppressWarnings("deprecation")
-    private static String sha1(String value) {
+    static String sha1(String value) {
         return Hashing.sha1()
             .hashString(value, StandardCharsets.UTF_8)
             .toString();
