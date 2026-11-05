@@ -32,13 +32,15 @@ import com.google.common.base.Preconditions;
  * Ensures an id designates exactly one DAV path segment: RFC 3986 'pchar' characters only
  * (well formed percent-encoded triplets allowed), and neither '.' nor '..'.
  * Checks apply to the percent-decoded value too, as the DAV server decodes the path once: an encoded
- * separator, dot segment, query, fragment or control character is rejected.
+ * separator, dot segment or control character is rejected.
+ * Encoded '?' and '#' remain accepted: the DAV server decodes the path after isolating it from the query
+ * and the fragment, so they stay literal characters of a single segment.
  */
 public final class DavPathSegment {
     private static final Pattern PCHARS = Pattern.compile("(?:[A-Za-z0-9\\-._~!$&'()*+,;=:@]|%[0-9A-Fa-f]{2})+");
     private static final Pattern DECODING_UNIT = Pattern.compile("%([0-9A-Fa-f]{2})|[^%]");
     private static final Set<String> DOT_SEGMENTS = Set.of(".", "..");
-    private static final String FORBIDDEN_DECODED_CHARS = "/\\?#";
+    private static final String FORBIDDEN_DECODED_CHARS = "/\\";
 
     public static String validate(String value, String name) {
         Preconditions.checkArgument(value != null && PCHARS.matcher(value).matches(),
@@ -53,7 +55,7 @@ public final class DavPathSegment {
         Preconditions.checkArgument(!DOT_SEGMENTS.contains(decoded),
             "%s must not decode to a dot segment: %s", name, value);
         Preconditions.checkArgument(decoded.chars().noneMatch(DavPathSegment::isForbiddenDecodedChar),
-            "%s must not decode to several path segments, a query, a fragment or control characters: %s", name, value);
+            "%s must not decode to several path segments or control characters: %s", name, value);
     }
 
     private static boolean isForbiddenDecodedChar(int c) {
