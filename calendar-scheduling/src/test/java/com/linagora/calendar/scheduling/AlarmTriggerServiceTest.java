@@ -170,7 +170,8 @@ public class AlarmTriggerServiceTest {
 
     @Test
     void shouldSendAlarmEmailWhenValidAlarmEvent() throws AddressException {
-        Instant now = clock.instant();
+        // The service reads the clock in milliseconds: a finer event start would be a fraction over 10 minutes, rounded up
+        Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
         AlarmEvent event = new AlarmEvent(
             new EventUid("event-uid-1"),
             now.minus(10, ChronoUnit.MINUTES),
