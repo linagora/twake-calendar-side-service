@@ -23,6 +23,7 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.DateTimeException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -35,6 +36,7 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
 import java.time.temporal.Temporal;
 import java.time.temporal.TemporalAccessor;
+import java.time.temporal.TemporalAmount;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -66,6 +68,7 @@ import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Period;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyList;
+import net.fortuna.ical4j.model.TemporalAmountAdapter;
 import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.component.CalendarComponent;
 import net.fortuna.ical4j.model.component.VEvent;
@@ -564,7 +567,7 @@ public class EventParseUtils {
                 default -> datetimePeriod(master, toInstant(recurrenceDate, floatingZone));
             };
 
-            Set<Period<Temporal>> occurrences = withoutUnreadableDateLists(master).calculateRecurrenceSet(period);
+            Set<Period<Temporal>> occurrences = withoutUnreadableDateLists(master).calculateRecurrenceSet(withSpanLookBack(master, period));
             // The lookup period spans several days: pick the occurrence starting at the recurrence date (e.g. hourly series).
             // A recurrence date that is not an occurrence is rejected rather than substituted by another nearby occurrence.
             return occurrences.stream()
@@ -576,6 +579,35 @@ public class EventParseUtils {
             throw new IllegalArgumentException("Cannot calculateRecurrenceSet for recurrenceDate: " + recurrenceDate
                 + " of event with UID " + describeUid(master), exception);
         }
+    }
+
+    /**
+     * ical4j starts its expansion at the start of the period minus the span of the event, to find the occurrences
+     * overlapping the period. The span of an event ending before it starts moves that start past the occurrence.
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static Period withSpanLookBack(VEvent master, Period period) {
+        TemporalAmount span = span(master);
+        boolean negative = switch (span) {
+            case Duration duration -> duration.isNegative();
+            case java.time.Period datePeriod -> datePeriod.isNegative();
+            default -> false;
+        };
+        if (!negative) {
+            return period;
+        }
+        return new Period(period.getStart().plus(span), period.getEnd());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static TemporalAmount span(VEvent master) {
+        Optional<net.fortuna.ical4j.model.property.Duration> duration = master.getProperty(Property.DURATION);
+        if (duration.isPresent()) {
+            return duration.get().getDuration();
+        }
+        Optional<DtEnd<Temporal>> end = master.getProperty(Property.DTEND);
+        return end.<TemporalAmount>map(dtEnd -> TemporalAmountAdapter.between(master.getDateTimeStart().getDate(), dtEnd.getDate()).getDuration())
+            .orElse(Duration.ZERO);
     }
 
     /**

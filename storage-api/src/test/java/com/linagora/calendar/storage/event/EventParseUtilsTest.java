@@ -955,6 +955,74 @@ class EventParseUtilsTest {
                 .isEqualTo(LocalDate.of(2026, 4, 3));
         }
 
+        private static VEvent dailyMaster(String startAndSpan) {
+            return (VEvent) CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:ends-before-it-starts@test
+                %s
+                RRULE:FREQ=DAILY;COUNT=10
+                SUMMARY:Off site
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(startAndSpan.replace("|", "\n"))).getComponent(Component.VEVENT).orElseThrow();
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {
+            "DTSTART;VALUE=DATE:20260504|DTEND;VALUE=DATE:20260503",
+            "DTSTART;VALUE=DATE:20260504|DTEND;VALUE=DATE:20260404",
+            "DTSTART;VALUE=DATE:20260504|DURATION:-P3D"})
+        void shouldCreateEveryOccurrenceOfAnAllDaySeriesEndingBeforeItStarts(String startAndSpan) {
+            VEvent master = dailyMaster(startAndSpan);
+
+            for (int day = 0; day < 10; day++) {
+                LocalDate occurrence = LocalDate.of(2026, 5, 4).plusDays(day);
+
+                assertThat(EventParseUtils.createInstanceVEvent(master, occurrence).getDateTimeStart().getDate())
+                    .isEqualTo(occurrence);
+            }
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {
+            "DTSTART:20260504T100000Z|DTEND:20260504T090000Z",
+            "DTSTART:20260504T100000Z|DTEND:20260501T100000Z",
+            "DTSTART:20260504T100000Z|DURATION:-P3D",
+            "DTSTART:20260504T100000Z|DURATION:-PT72H",
+            "DTSTART:20260504T100000|DTEND:20260501T100000",
+            "DTSTART;TZID=Europe/Paris:20260504T100000|DTEND;TZID=Europe/Paris:20260501T100000"})
+        void shouldCreateEveryOccurrenceOfATimedSeriesEndingBeforeItStarts(String startAndSpan) {
+            VEvent master = dailyMaster(startAndSpan);
+            Instant firstStart = EventParseUtils.getStartTime(master).toInstant();
+
+            for (int day = 0; day < 10; day++) {
+                Instant occurrence = firstStart.plus(Duration.ofDays(day));
+
+                assertThat(EventParseUtils.getStartTime(EventParseUtils.createInstanceVEvent(master, occurrence)).toInstant())
+                    .isEqualTo(occurrence);
+            }
+        }
+
+        @Test
+        void shouldKeepTheSpanOfASeriesEndingBeforeItStarts() {
+            VEvent master = dailyMaster("DTSTART;VALUE=DATE:20260504|DTEND;VALUE=DATE:20260503");
+
+            assertThat(EventParseUtils.createInstanceVEvent(master, LocalDate.of(2026, 5, 10)).toString())
+                .contains("RECURRENCE-ID;VALUE=DATE:20260510",
+                    "DTSTART;VALUE=DATE:20260510",
+                    "DTEND;VALUE=DATE:20260509");
+        }
+
+        @Test
+        void shouldRejectADateThatIsNotAnOccurrenceOfASeriesEndingBeforeItStarts() {
+            VEvent master = dailyMaster("DTSTART:20260504T100000Z|DTEND:20260501T100000Z");
+
+            assertThatThrownBy(() -> EventParseUtils.createInstanceVEvent(master, Instant.parse("2026-05-10T11:00:00Z")))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
         @Test
         void shouldCreateTheInstanceOfTheRequestedDayForZeroDurationAllDaySeries() {
             String ics = """
