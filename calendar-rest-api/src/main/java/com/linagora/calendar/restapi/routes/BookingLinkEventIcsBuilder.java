@@ -200,6 +200,7 @@ public class BookingLinkEventIcsBuilder {
 
         options.location()
             .flatMap(BookingLinkEventIcsBuilder::sanitizeText)
+            .filter(StringUtils::isNotBlank)
             .map(Location::new)
             .ifPresent(properties::add);
 
@@ -333,7 +334,7 @@ public class BookingLinkEventIcsBuilder {
      * ical4j escapes LF in TEXT values but not a lone CR, which parsers then read as a line break: free text from
      * the booker would otherwise inject properties or components into the event.
      */
-    private static Optional<String> sanitizeText(String value) {
+    static Optional<String> sanitizeText(String value) {
         return Optional.ofNullable(value)
             .map(text -> text.replace("\r\n", "\n").replace('\r', '\n'))
             .map(TEXT_FORBIDDEN_CHARACTERS::removeFrom);
