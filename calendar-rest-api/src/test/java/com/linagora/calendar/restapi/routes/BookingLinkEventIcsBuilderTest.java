@@ -32,6 +32,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.api.CalendarUtil;
@@ -592,6 +594,18 @@ public class BookingLinkEventIcsBuilderTest {
             .toList())
             .containsExactly("Owner|mailto:owner@example.com", "Bob|mailto:creator@example.com",
                 "L|mailto:l@example.com", "Bob=Smith|mailto:bob@example.com");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\u0000", "\u0001\u007f", "\u0001 \u0002", " "})
+    void buildShouldOmitLocationWithoutVisibleContent(String location) {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.empty(), FIXED_UID_GENERATOR);
+        BookingEventOptions options = new BookingEventOptions(Optional.of(location),
+            Optional.empty(), Optional.empty(), List.of(), List.of());
+
+        VEvent event = parseEvent(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options).block());
+
+        assertThat(event.getProperty(Property.LOCATION)).isEmpty();
     }
 
     private VEvent parseEvent(BuildResult result) {
