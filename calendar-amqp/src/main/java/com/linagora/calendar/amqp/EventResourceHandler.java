@@ -50,6 +50,7 @@ import com.linagora.calendar.dav.ResourceService.ResourceWithAdministration;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
+import com.linagora.calendar.smtp.MailUsernames;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
@@ -153,10 +154,11 @@ public class EventResourceHandler {
     }
 
     private boolean isOrganizerAdmin(List<OpenPaaSUser> administrators, MailAddress organizerEmail) {
-        Username organizerUsername = Username.fromMailAddress(organizerEmail);
-        return administrators.stream()
-            .map(OpenPaaSUser::username)
-            .anyMatch(organizerUsername::equals);
+        return MailUsernames.asUsername(organizerEmail)
+            .map(organizerUsername -> administrators.stream()
+                .map(OpenPaaSUser::username)
+                .anyMatch(organizerUsername::equals))
+            .orElse(false);
     }
 
     private Mono<Void> acceptInvite(CalendarResourceMessageDTO message, Resource resource) {
@@ -192,11 +194,11 @@ public class EventResourceHandler {
     }
 
     /**
-     * No mail can be sent to an organizer that cannot be written in a To header and retrying cannot help:
+     * No mail can be sent to an organizer that cannot be written in a To header or is not a username, and retrying cannot help:
      * we log and skip the reply rather than dead-lettering the message.
      */
     private boolean isWritableReplyRecipient(CalendarResourceMessageDTO message, MailAddress organizerEmail) {
-        boolean writable = HeaderAddressValidator.isWritableInHeader(organizerEmail);
+        boolean writable = HeaderAddressValidator.isWritableInHeader(organizerEmail) && MailUsernames.asUsername(organizerEmail).isPresent();
         if (!writable) {
             LOGGER.warn("Ignoring resource reply for resourceId {} and eventPath {}: invalid organizer address '{}'",
                 message.resourceId(), message.eventPath(), organizerEmail.asString());
