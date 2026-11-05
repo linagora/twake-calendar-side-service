@@ -74,4 +74,22 @@ class TimeFormatUtilTest {
         String result = TimeFormatUtil.formatDuration(Duration.ofHours(1), Locale.ENGLISH);
         assertThat(result).isEqualTo("1 hour");
     }
+
+    @Test
+    void shouldRoundUpFractionsOfASecond() {
+        assertThat(TimeFormatUtil.formatDuration(Duration.ofMillis(500), Locale.ENGLISH)).isEqualTo("1 minute");
+        assertThat(TimeFormatUtil.formatDuration(Duration.ofMillis(59_999), Locale.ENGLISH)).isEqualTo("1 minute");
+        assertThat(TimeFormatUtil.formatDuration(Duration.ofMillis(60_500), Locale.ENGLISH)).isEqualTo("2 minutes");
+        assertThat(TimeFormatUtil.formatDuration(Duration.ofMillis(3_599_500), Locale.ENGLISH)).isEqualTo("1 hour");
+    }
+
+    @Test
+    void shouldReadNoDelayAsZeroMinutes() {
+        assertThat(TimeFormatUtil.formatDuration(Duration.ZERO, Locale.ENGLISH)).isEqualTo("0 minutes");
+    }
+
+    @Test
+    void shouldFormatDelaysTooLongToBeCountedInNanoseconds() {
+        assertThat(TimeFormatUtil.formatDuration(Duration.ofDays(200_000).plusMillis(500), Locale.ENGLISH)).isEqualTo("200,000 days");
+    }
 }
