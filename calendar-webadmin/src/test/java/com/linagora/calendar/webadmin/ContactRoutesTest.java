@@ -867,6 +867,8 @@ public class ContactRoutesTest {
         .when()
             .get(taskId + "/await")
         .then()
+            .statusCode(200)
+            .body("status", is("completed"))
             .extract()
             .body()
             .asString();
