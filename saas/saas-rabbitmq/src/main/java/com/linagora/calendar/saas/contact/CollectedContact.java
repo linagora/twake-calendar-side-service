@@ -55,6 +55,7 @@ final class CollectedContact {
     private static final char EMAIL_SEPARATOR = '@';
     private static final int NO_PREFERENCE = Integer.MAX_VALUE;
     private static final String PREF = "pref";
+    private static final String UID = "uid";
     private static final int MIN_PREF = 1;
     private static final int MAX_PREF = 100;
 
@@ -152,9 +153,27 @@ final class CollectedContact {
 
     private static ObjectNode normalize(ObjectNode contactData) {
         ObjectNode copy = contactData.deepCopy();
+        dropUidAVCardCannotCarry(copy);
         clampPrefs(copy);
         VCardSafeIds.renameUnsafeIds(copy);
         return copy;
+    }
+
+    /**
+     * A vCard turns a carriage return into a line feed, and UTF-8 has no form for an unpaired surrogate: the stored UID,
+     * hence the resource name, would differ from the one of the message. A UID holding a control character is no real
+     * identifier either: the card gets the UID generated from its email, Matrix id or phone instead. A card stored under
+     * the former UID stays readable, but is not found by the next message: a second card is created.
+     */
+    private static void dropUidAVCardCannotCarry(ObjectNode contactData) {
+        JsonNode uid = contactData.path(UID);
+        if (uid.isTextual() && !isWritableInAVCard(uid.asText())) {
+            contactData.remove(UID);
+        }
+    }
+
+    private static boolean isWritableInAVCard(String uid) {
+        return uid.chars().noneMatch(Character::isISOControl) && StandardCharsets.UTF_8.newEncoder().canEncode(uid);
     }
 
     // vCard readers reject PREF outside 1..100 (RFC 6350), so clamp it to keep stored cards readable back.

@@ -134,6 +134,60 @@ class CollectedContactTest {
         assertThat(result.toJson()).contains("Bob", "bob@example.com", "@bob:example.com");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"a\\rb", "\\ra", "a\\r\\nb", "a\\u0000b", "a\\u0001b", "a\\u007fb", "a\\u0085b", "a\\nb", "a\\tb", "\\ud83d", "a\\ud83db", "\\ude00a"})
+    void uidThatAVCardCannotCarryShouldGiveWayToAGeneratedUid(String jsonEscapedUid) throws Exception {
+        ObjectNode contact = (ObjectNode) OBJECT_MAPPER.readTree("""
+            {"@type": "Card", "version": "2.0", "uid": "%s",
+             "emails": {"e": {"@type": "EmailAddress", "address": "alice@example.com"}}}
+            """.formatted(jsonEscapedUid));
+
+        CollectedContact incoming = CollectedContact.parse(contact);
+        CollectedContact stored = CollectedContact.parse(incoming.toVCardAsBytes());
+
+        assertThat(incoming.uid().value()).isEqualTo(CollectedContact.sha1("alice@example.com"));
+        assertThat(stored.uid()).isEqualTo(incoming.uid());
+        assertThat(stored.resourceName()).isEqualTo(incoming.resourceName());
+    }
+
+    @Test
+    void uidThatAVCardCannotCarryShouldNotMakeACardWithoutIdentityReadable() throws Exception {
+        ObjectNode contact = (ObjectNode) OBJECT_MAPPER.readTree("""
+            {"@type": "Card", "version": "2.0", "uid": "a\\rb"}
+            """);
+
+        assertThatThrownBy(() -> CollectedContact.parse(contact))
+            .isInstanceOf(CollectedContactException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\\u00e9", "\\u65e5\\u672c", "\\ud83d\\ude00", "a b", " a", "a;b", "a,b", "a\\\\b", "a\\u00a0b", "a\\u2028b"})
+    void otherUidsShouldBeStableThroughTheVCard(String jsonEscapedUid) throws Exception {
+        ObjectNode contact = (ObjectNode) OBJECT_MAPPER.readTree("""
+            {"@type": "Card", "version": "2.0", "uid": "%s",
+             "emails": {"e": {"@type": "EmailAddress", "address": "alice@example.com"}}}
+            """.formatted(jsonEscapedUid));
+
+        CollectedContact incoming = CollectedContact.parse(contact);
+
+        assertThat(incoming.uid().value()).isNotEqualTo(CollectedContact.sha1("alice@example.com"));
+        assertThat(CollectedContact.parse(incoming.toVCardAsBytes()).uid()).isEqualTo(incoming.uid());
+    }
+
+    @Test
+    void storedCardHoldingAControlCharacterInItsUidShouldKeepIt() {
+        byte[] vCard = """
+            BEGIN:VCARD\r
+            VERSION:4.0\r
+            UID:a\\nb\r
+            FN:Alice\r
+            EMAIL:alice@example.com\r
+            END:VCARD\r
+            """.getBytes(StandardCharsets.UTF_8);
+
+        assertThat(CollectedContact.parse(vCard).uid().value()).isEqualTo("a\nb");
+    }
+
     @Test
     void shouldSerializeStructuredNameAndAddress() throws Exception {
         ObjectNode contact = contact("""
