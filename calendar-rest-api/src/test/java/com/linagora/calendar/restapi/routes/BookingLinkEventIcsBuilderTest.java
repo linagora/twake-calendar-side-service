@@ -32,6 +32,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.api.CalendarUtil;
@@ -570,6 +572,40 @@ public class BookingLinkEventIcsBuilderTest {
                 "Alice|mailto:alice@example.com", "Projector, big |mailto:projector-id@example.com");
         assertThat(event.getDescription().getValue()).contains("Agenda");
         assertThat(event.getLocation().getValue()).isEqualTo("Room 3");
+    }
+
+    @Test
+    void namesStartingWithEqualsShouldRoundTrip() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.empty(), FIXED_UID_GENERATOR);
+
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("=Bob", "creator@example.com"),
+            List.of(BookingAttendee.from("\r\r=L", "l@example.com"), BookingAttendee.from("Bob=Smith", "bob@example.com")),
+            "eventTitle",
+            false,
+            null);
+
+        VEvent event = parseEvent(testee.build(request, BookingAttendee.from(" ==Owner", "owner@example.com"),
+            List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, BookingEventOptions.none()).block());
+
+        assertThat(event.getAttendees().stream()
+            .map(attendee -> attendee.getParameter(Parameter.CN).map(Parameter::getValue).orElse(null) + "|" + attendee.getValue())
+            .toList())
+            .containsExactly("Owner|mailto:owner@example.com", "Bob|mailto:creator@example.com",
+                "L|mailto:l@example.com", "Bob=Smith|mailto:bob@example.com");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\u0000", "\u0001\u007f", "\u0001 \u0002", " "})
+    void buildShouldOmitLocationWithoutVisibleContent(String location) {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.empty(), FIXED_UID_GENERATOR);
+        BookingEventOptions options = new BookingEventOptions(Optional.of(location),
+            Optional.empty(), Optional.empty(), List.of(), List.of());
+
+        VEvent event = parseEvent(testee.build(bookingRequest(), OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options).block());
+
+        assertThat(event.getProperty(Property.LOCATION)).isEmpty();
     }
 
     private VEvent parseEvent(BuildResult result) {

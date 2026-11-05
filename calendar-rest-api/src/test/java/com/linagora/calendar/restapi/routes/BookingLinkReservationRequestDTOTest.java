@@ -179,6 +179,41 @@ public class BookingLinkReservationRequestDTOTest {
             .hasMessageContaining("'eventTitle' must not be blank");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"\\u0001", "\\u0000\\u007f", "\\u0001 \\u0002", "\\r\\u0001\\n"})
+    void toBookingRequestShouldFailWhenTitleHoldsOnlyControlCharacters(String jsonEscapedTitle) {
+        ReservationRequestDTO request = parse("""
+            {
+              "startUtc": "2036-01-26T09:30:00Z",
+              "creator": {
+                "name": "BOB",
+                "email": "creator@example.com"
+              },
+              "eventTitle": "%s"
+            }
+            """.formatted(jsonEscapedTitle));
+
+        assertThatThrownBy(request::toBookingRequest)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("'eventTitle' must not be blank");
+    }
+
+    @Test
+    void toBookingRequestShouldAcceptTitleHoldingVisibleTextAndControlCharacters() {
+        ReservationRequestDTO request = parse("""
+            {
+              "startUtc": "2036-01-26T09:30:00Z",
+              "creator": {
+                "name": "BOB",
+                "email": "creator@example.com"
+              },
+              "eventTitle": "\\u0001Title"
+            }
+            """);
+
+        assertThat(request.toBookingRequest().title()).isEqualTo("\u0001Title");
+    }
+
     @Test
     void toBookingRequestShouldFailWhenAdditionalAttendeesExceedLimit() {
         String additionalAttendeesJson = IntStream.range(0, MAX_ADDITIONAL_ATTENDEES + 1)

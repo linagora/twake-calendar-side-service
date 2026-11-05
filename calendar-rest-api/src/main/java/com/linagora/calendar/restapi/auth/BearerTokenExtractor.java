@@ -24,13 +24,18 @@ import java.util.Optional;
 
 import org.apache.commons.lang3.Strings;
 
-/** Extracts the token of a Bearer Authorization header. The auth-scheme is case-insensitive (RFC 9110 section 11.1). */
+import com.google.common.base.CharMatcher;
+
+/** Extracts the token of a Bearer Authorization header. The auth-scheme is case-insensitive (RFC 9110 section 11.1)
+ * and may be followed by several spaces (RFC 9110 section 11.4). */
 public final class BearerTokenExtractor {
+    // Bearer credentials use 1*SP: other whitespace must not be normalized into a valid token.
+    private static final CharMatcher SPACE = CharMatcher.is(' ');
 
     public static Optional<String> extract(String authorizationHeader) {
         return Optional.ofNullable(authorizationHeader)
             .filter(header -> Strings.CI.startsWith(header, AUTHORIZATION_HEADER_PREFIX))
-            .map(header -> header.substring(AUTHORIZATION_HEADER_PREFIX.length()));
+            .map(header -> SPACE.trimLeadingFrom(header.substring(AUTHORIZATION_HEADER_PREFIX.length())));
     }
 
     private BearerTokenExtractor() {

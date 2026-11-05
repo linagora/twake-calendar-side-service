@@ -18,13 +18,16 @@
 
 package com.linagora.calendar.storage.configuration.resolver;
 
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collector;
 
 import jakarta.inject.Inject;
 
 import org.apache.james.mailbox.MailboxSession;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableTable;
 import com.google.common.collect.Sets;
@@ -49,7 +52,7 @@ public class ConfigurationResolver {
     public Mono<ConfigurationDocument> resolve(Set<EntryIdentifier> request, MailboxSession session) {
         return Flux.fromIterable(resolvers)
             .concatMap(resolver -> resolver.resolve(request, session))
-            .collect(ImmutableTable.toImmutableTable(ConfigurationEntry::moduleName, ConfigurationEntry::configurationKey, ConfigurationEntry::node))
+            .collect(toConfigurationTable())
             .flatMap(resolved -> {
                 Set<EntryIdentifier> resolvedIds = resolved.cellSet().stream()
                     .map(cell -> new EntryIdentifier(cell.getRowKey(), cell.getColumnKey()))
@@ -59,7 +62,7 @@ public class ConfigurationResolver {
                 return Flux.fromIterable(toBeResolved)
                     .flatMap(id -> fallbackConfigurationEntryResolver.resolve(id.moduleName(), id.configurationKey(), session)
                         .map(json -> new ConfigurationEntry(id.moduleName(), id.configurationKey(), json)), 4)
-                    .collect(ImmutableTable.toImmutableTable(ConfigurationEntry::moduleName, ConfigurationEntry::configurationKey, ConfigurationEntry::node))
+                    .collect(toConfigurationTable())
                     .map(fallback -> ImmutableTable.<ModuleName, ConfigurationKey, JsonNode>builder().putAll(resolved).putAll(fallback).build());
             })
             .map(ConfigurationDocument::new);
@@ -69,7 +72,16 @@ public class ConfigurationResolver {
         // Returns only explicitly implemented configuration resolvers
         return Flux.fromIterable(resolvers)
             .flatMap(resolver -> resolver.resolveAll(session))
-            .collect(ImmutableTable.toImmutableTable(ConfigurationEntry::moduleName, ConfigurationEntry::configurationKey, ConfigurationEntry::node))
+            .collect(toConfigurationTable())
             .map(ConfigurationDocument::new);
+    }
+
+    private static Collector<ConfigurationEntry, ?, ImmutableTable<ModuleName, ConfigurationKey, JsonNode>> toConfigurationTable() {
+        return ImmutableTable.toImmutableTable(ConfigurationEntry::moduleName, ConfigurationEntry::configurationKey, ConfigurationResolver::nodeOrJsonNull);
+    }
+
+    private static JsonNode nodeOrJsonNull(ConfigurationEntry entry) {
+        return Optional.ofNullable(entry.node())
+            .orElse(NullNode.getInstance());
     }
 }

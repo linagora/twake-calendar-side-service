@@ -217,6 +217,35 @@ class CommonContactOutboundEventConverterTest {
     }
 
     @Test
+    void shouldKeepFormattedNameEqualToUid() {
+        CommonContactOutboundEvent.ContactChangedEvent event = testee.convert(Action.ADD, new CommonContactOutboundEvent.Audience.Unknown(), CONTACT_PATH, """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:contact-uid
+            FN:contact-uid
+            END:VCARD
+            """);
+
+        assertThat(event.payload().path("name").path("full").asText(null))
+            .isEqualTo("contact-uid");
+    }
+
+    @Test
+    void shouldKeepFormattedNameEqualToUidAlongsideStructuredName() {
+        CommonContactOutboundEvent.ContactChangedEvent event = testee.convert(Action.ADD, new CommonContactOutboundEvent.Audience.Unknown(), CONTACT_PATH, """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:contact-uid
+            FN:contact-uid
+            N:Martin;Alice;;;
+            END:VCARD
+            """);
+
+        assertThat(event.payload().path("name").path("full").asText(null))
+            .isEqualTo("contact-uid");
+    }
+
+    @Test
     void shouldThrowWhenContactDataHasNoUid() {
         OpenPaaSUser owner = userDAO.add(Username.of("owner@linagora.com")).block();
 

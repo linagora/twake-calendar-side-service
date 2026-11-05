@@ -49,10 +49,13 @@ import com.google.common.annotations.VisibleForTesting;
 import net.fortuna.ical4j.data.CalendarBuilder;
 import net.fortuna.ical4j.data.CalendarParserFactory;
 import net.fortuna.ical4j.data.ContentHandlerContext;
+import net.fortuna.ical4j.data.DefaultComponentFactorySupplier;
 import net.fortuna.ical4j.data.DefaultPropertyFactorySupplier;
 import net.fortuna.ical4j.data.ParserException;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.ComponentContainer;
+import net.fortuna.ical4j.model.ComponentFactory;
 import net.fortuna.ical4j.model.ComponentList;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyFactory;
@@ -63,9 +66,9 @@ import net.fortuna.ical4j.model.TimeZoneRegistry;
 import net.fortuna.ical4j.model.TimeZoneRegistryImpl;
 import net.fortuna.ical4j.model.component.CalendarComponent;
 import net.fortuna.ical4j.model.component.Observance;
-import net.fortuna.ical4j.model.component.VAlarm;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.component.VTimeZone;
+import net.fortuna.ical4j.model.component.XComponent;
 import net.fortuna.ical4j.model.property.DtStart;
 import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.model.property.RRule;
@@ -76,6 +79,8 @@ import net.fortuna.ical4j.util.CompatibilityHints;
 import net.fortuna.ical4j.util.MapTimeZoneCache;
 
 public class CalendarUtil {
+
+    private static final List<ComponentFactory<? extends Component>> COMPONENT_FACTORIES = new DefaultComponentFactorySupplier().get();
 
     /**
      * ical4j allocates a global zone id to each registered VTIMEZONE, out of a JVM wide pool of 1500 ids
@@ -346,7 +351,7 @@ public class CalendarUtil {
     }
 
     /**
-     * Deep copies the given VEVENT, alarms included.
+     * Deep copies the given VEVENT, sub-components (alarms, RFC 9073 VLOCATION, PARTICIPANT...) included, in order.
      *
      * <p>Unlike {@link VEvent#copy()}, this does not fail on properties unknown to ical4j (eg {@code FOOBAR:baz}):
      * relaxed parsing turns them into {@link XProperty} whose factory based copy throws an
@@ -354,14 +359,40 @@ public class CalendarUtil {
      * factory cannot read back: those are shared with the original VEVENT, so that they keep their type.
      */
     public static VEvent copy(VEvent vEvent) {
-        return new VEvent(copyProperties(vEvent.getPropertyList()),
-            new ComponentList<>(vEvent.getAlarms().stream()
-                .map(CalendarUtil::copy)
-                .toList()));
+        VEvent copy = new VEvent(copyProperties(vEvent.getPropertyList()));
+        copySubComponents(vEvent, copy);
+        return copy;
     }
 
-    private static VAlarm copy(VAlarm vAlarm) {
-        return new VAlarm(copyProperties(vAlarm.getPropertyList()));
+    private static ComponentList<Component> copyComponents(ComponentList<? extends Component> components) {
+        return new ComponentList<>(components.getAll().stream()
+            .map(CalendarUtil::copy)
+            .toList());
+    }
+
+    /**
+     * Rebuilds the given component (eg a VALARM, a RFC 9073 VLOCATION or PARTICIPANT) through its factory, sub-components
+     * included. Components unknown to ical4j are rebuilt as {@link XComponent}.
+     */
+    private static Component copy(Component component) {
+        Component copy = createComponent(component.getName(), copyProperties(component.getPropertyList()));
+        if (component instanceof ComponentContainer<?> container && copy instanceof ComponentContainer<?> copyContainer) {
+            copySubComponents(container, copyContainer);
+        }
+        return copy;
+    }
+
+    private static Component createComponent(String name, PropertyList properties) {
+        return COMPONENT_FACTORIES.stream()
+            .filter(factory -> factory.supports(name))
+            .findFirst()
+            .<Component>map(factory -> factory.createComponent(properties))
+            .orElseGet(() -> new XComponent(name, properties));
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void copySubComponents(ComponentContainer source, ComponentContainer target) {
+        target.setComponentList(copyComponents(source.getComponentList()));
     }
 
     private static PropertyList copyProperties(PropertyList properties) {

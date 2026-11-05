@@ -25,10 +25,10 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.temporal.Temporal;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -118,7 +118,10 @@ public class CalendarEventUtils {
     }
 
     /**
-     * Walks the occurrences once, from DTSTART on: ical4j regenerates them from the seed on each call, as COUNT
+     * DTSTART is the first occurrence (RFC 5545 §3.8.5.3), even when it does not match the rule: ical4j leaves such an
+     * unsynchronized DTSTART out of the expansion, hence the explicit check.
+     *
+     * <p>Then walks the occurrences once, from DTSTART on: ical4j regenerates them from the seed on each call, as COUNT
      * applies from DTSTART. A rule with more than {@link #MAX_EXAMINED_OCCURRENCES} occurrences before {@code now} is
      * deemed not expired, like infinite rules: expiry is then uncertain and the event is kept.
      */
@@ -126,22 +129,39 @@ public class CalendarEventUtils {
                                                           Recur<Temporal> recur,
                                                           Set<Instant> excludedDates,
                                                           Instant now) {
+        if (isUpcoming(startDateTime.toInstant(), excludedDates, now)) {
+            return true;
+        }
         if (endsBefore(recur, now)) {
             return false;
         }
-        Iterator<Temporal> occurrences = recur.getDatesAsStream(startDateTime, startDateTime, LAST_EXPANDED_DATE, -1)
-            .iterator();
-        for (int examined = 0; examined < MAX_EXAMINED_OCCURRENCES; examined++) {
-            if (!occurrences.hasNext()) {
-                return false;
-            }
-            Optional<Instant> instant = toInstant(occurrences.next());
-            if (instant.isPresent() && !excludedDates.contains(instant.get()) && !instant.get().isBefore(now)) {
-                return true;
-            }
+        return hasUpcomingExpandedOccurrence(startDateTime, recur, excludedDates, now);
+    }
+
+    /**
+     * The occurrences are consumed with stream operations, not through {@link Stream#iterator()}: when it
+     * rejects an unsynchronized seed, ical4j's spliterator advances without emitting a date, which the iterator
+     * adapter mistakes for the end of the occurrences.
+     */
+    private static boolean hasUpcomingExpandedOccurrence(ZonedDateTime startDateTime,
+                                                         Recur<Temporal> recur,
+                                                         Set<Instant> excludedDates,
+                                                         Instant now) {
+        AtomicInteger examined = new AtomicInteger();
+        boolean hasUpcoming = recur.getDatesAsStream(startDateTime, startDateTime, LAST_EXPANDED_DATE, -1)
+            .limit(MAX_EXAMINED_OCCURRENCES)
+            .peek(occurrence -> examined.incrementAndGet())
+            .flatMap(occurrence -> toInstant(occurrence).stream())
+            .anyMatch(instant -> isUpcoming(instant, excludedDates, now));
+        if (hasUpcoming || examined.get() < MAX_EXAMINED_OCCURRENCES) {
+            return hasUpcoming;
         }
         LOGGER.info("More than {} occurrences of {} before {}: considering the event as not expired", MAX_EXAMINED_OCCURRENCES, recur, now);
         return true;
+    }
+
+    private static boolean isUpcoming(Instant instant, Set<Instant> excludedDates, Instant now) {
+        return !excludedDates.contains(instant) && !instant.isBefore(now);
     }
 
     private static boolean endsBefore(Recur<Temporal> recur, Instant now) {

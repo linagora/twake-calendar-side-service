@@ -203,12 +203,12 @@ public record EventFields(EventUid uid,
         }
 
         public Builder sequence(Integer sequence) {
-            this.sequence = Optional.of(sequence);
+            this.sequence = Optional.ofNullable(sequence);
             return this;
         }
 
         public Builder recurrenceId(String recurrenceId) {
-            this.recurrenceId = Optional.of(recurrenceId);
+            this.recurrenceId = Optional.ofNullable(recurrenceId);
             return this;
         }
 

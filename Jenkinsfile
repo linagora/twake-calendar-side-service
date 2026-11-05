@@ -187,9 +187,8 @@ pipeline {
                         if (failedTestSummary) {
                             body += "\n\n${failedTestSummary}"
                         }
-                        body += '\n\n---\n*Generated automatically*'
                         withEnv(["PR_COMMENT_JSON=${groovy.json.JsonOutput.toJson([body: body])}"]) {
-                            withCredentials([usernamePassword(credentialsId: 'github', usernameVariable: 'GITHUB_USERNAME', passwordVariable: 'GITHUB_TOKEN')]) {
+                            withCredentials([string(credentialsId: 'github-calendar-bot', variable: 'GITHUB_TOKEN')]) {
                                 def status = sh(label: 'Comment Jenkins result on PR', returnStatus: true, script: '''
                                     set +x
                                     printf '%s' "$PR_COMMENT_JSON" | curl --fail --silent --show-error \\

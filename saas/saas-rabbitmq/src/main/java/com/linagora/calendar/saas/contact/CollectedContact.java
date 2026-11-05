@@ -83,7 +83,7 @@ final class CollectedContact {
 
     static CollectedContact parse(ObjectNode contactData) {
         try {
-            return parse(Card.toJSCard(withPrefsInRange(contactData).toString()));
+            return parse(Card.toJSCard(normalize(contactData).toString()));
         } catch (CollectedContactException e) {
             throw e;
         } catch (IOException | RuntimeException e) {
@@ -150,12 +150,14 @@ final class CollectedContact {
         return new CollectedContact(cardWithUid, uid, preferredEmailAddress.isPresent(), preferredMatrixId.isPresent());
     }
 
-    // vCard readers reject PREF outside 1..100 (RFC 6350), so clamp it to keep stored cards readable back.
-    private static ObjectNode withPrefsInRange(ObjectNode contactData) {
+    private static ObjectNode normalize(ObjectNode contactData) {
         ObjectNode copy = contactData.deepCopy();
         clampPrefs(copy);
+        VCardSafeIds.renameUnsafeIds(copy);
         return copy;
     }
+
+    // vCard readers reject PREF outside 1..100 (RFC 6350), so clamp it to keep stored cards readable back.
 
     private static void clampPrefs(JsonNode node) {
         if (node instanceof ObjectNode objectNode && objectNode.path(PREF).isIntegralNumber()) {
@@ -192,7 +194,7 @@ final class CollectedContact {
             .filter(email -> StringUtils.isNotBlank(email.getAddress()))
             .min(Comparator
                 .comparingInt((EmailAddress email) -> preferenceOrLast(email.getPref()))
-                .thenComparing(EmailAddress::getAddress))
+                .thenComparing(email -> toLowerCase(email.getAddress())))
             .map(EmailAddress::getAddress);
     }
 
@@ -204,7 +206,7 @@ final class CollectedContact {
             .filter(onlineService -> StringUtils.isNotBlank(toNormalizedMatrixId(onlineService)))
             .min(Comparator
                 .comparingInt((OnlineService onlineService) -> preferenceOrLast(onlineService.getPref()))
-                .thenComparing(CollectedContact::toNormalizedMatrixId, Comparator.nullsLast(Comparator.naturalOrder())))
+                .thenComparing(onlineService -> toLowerCase(toNormalizedMatrixId(onlineService)), Comparator.nullsLast(Comparator.naturalOrder())))
             .map(CollectedContact::toNormalizedMatrixId);
     }
 
@@ -215,7 +217,7 @@ final class CollectedContact {
             .filter(phone -> StringUtils.isNotBlank(phone.getNumber()))
             .min(Comparator
                 .comparingInt((Phone phone) -> preferenceOrLast(phone.getPref()))
-                .thenComparing(Phone::getNumber))
+                .thenComparing(phone -> toLowerCase(phone.getNumber())))
             .map(Phone::getNumber);
     }
 
@@ -241,11 +243,18 @@ final class CollectedContact {
         return preferredEmailAddress
             .or(() -> preferredMatrixId)
             .or(() -> preferredPhoneNumber)
-            .map(value -> new ContactUid(sha1(value.toLowerCase(Locale.US))));
+            .map(value -> new ContactUid(sha1(toLowerCase(value))));
+    }
+
+    // The UID hashes the lower-cased value, so the choice of that value must not depend on case either.
+    private static String toLowerCase(String value) {
+        return Optional.ofNullable(value)
+            .map(nonNullValue -> nonNullValue.toLowerCase(Locale.US))
+            .orElse(null);
     }
 
     @SuppressWarnings("deprecation")
-    private static String sha1(String value) {
+    static String sha1(String value) {
         return Hashing.sha1()
             .hashString(value, StandardCharsets.UTF_8)
             .toString();

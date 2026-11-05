@@ -128,6 +128,73 @@ class CalendarEventUtilsTest {
     }
 
     @Test
+    void shouldNotBeExpiredWhenDtStartIsInFutureAndNotMatchingByMonth() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:unsynchronized-future@test
+            DTSTART:20261219T171700Z
+            RRULE:FREQ=YEARLY;COUNT=3;BYMONTH=1
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isFalse();
+    }
+
+    @Test
+    void shouldNotBeExpiredWhenUnsynchronizedDtStartIsPastButRuleHasUpcomingOccurrence() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:unsynchronized-past@test
+            DTSTART:20251219T171700Z
+            RRULE:FREQ=YEARLY;COUNT=3;BYMONTH=1
+            END:VEVENT
+            """);
+
+        // 2026-01-19T17:17Z and 2027-01-19T17:17Z are after TEST_CLOCK
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isFalse();
+    }
+
+    @Test
+    void shouldNotBeExpiredWhenUnsynchronizedDtStartIsInFutureWithBySetPos() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:unsynchronized-bysetpos@test
+            DTSTART:20261219T171700Z
+            RRULE:FREQ=YEARLY;COUNT=85;BYMONTH=1,7;BYMINUTE=0,15,30,45;BYSETPOS=1,3
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isFalse();
+    }
+
+    @Test
+    void shouldBeExpiredWhenUnsynchronizedDtStartAndAllOccurrencesInPast() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:unsynchronized-all-past@test
+            DTSTART:20221219T171700Z
+            RRULE:FREQ=YEARLY;COUNT=2;BYMONTH=1
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isTrue();
+    }
+
+    @Test
+    void shouldBeExpiredWhenFutureUnsynchronizedDtStartIsExcludedAndNoOtherOccurrence() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:unsynchronized-excluded@test
+            DTSTART:20261219T171700Z
+            RRULE:FREQ=YEARLY;UNTIL=20261231T000000Z;BYMONTH=1
+            EXDATE:20261219T171700Z
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isTrue();
+    }
+
+    @Test
     void shouldNotBeExpiredWhenOnlyRDateHasFutureOccurrence() {
         VEvent vEvent = parseSingleVEvent("""
             BEGIN:VEVENT

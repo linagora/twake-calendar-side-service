@@ -43,6 +43,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.BooleanNode;
 import com.fasterxml.jackson.databind.node.LongNode;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.storage.OpenPaaSDomain;
@@ -341,7 +342,7 @@ public class MongoDBUserConfigurationDAOTest implements UserConfigurationDAOCont
         void toConfigurationEntryShouldReturnCorrectConfigurationEntry() {
             Set<ConfigurationEntry> originalEntries = Set.of(
                 ConfigurationEntry.of("linagora.esn.unifiedinbox", "booleanNode", BooleanNode.TRUE),
-                ConfigurationEntry.of("linagora.esn.unifiedinbox", "nullNode", null),
+                ConfigurationEntry.of("linagora.esn.unifiedinbox", "nullNode", NullNode.getInstance()),
                 ConfigurationEntry.of("linagora.esn", "emptyStringNode", toJsonNode("{}")),
                 ConfigurationEntry.of("core", "textNode", new TextNode("vi")),
                 ConfigurationEntry.of("core", "numberNode", new LongNode(123456789)),
@@ -360,6 +361,15 @@ public class MongoDBUserConfigurationDAOTest implements UserConfigurationDAOCont
             assertThat(configurationEntry)
                 .usingElementComparator(Comparator.comparing(Object::toString))
                 .containsExactlyInAnyOrderElementsOf(originalEntries);
+        }
+
+        @Test
+        void toConfigurationEntryShouldReadStoredNullValueAsJsonNull() {
+            Document document = MongoDBUserConfigurationDAO.convertToDocument(
+                Set.of(ConfigurationEntry.of("core", "businessHours", null)));
+
+            assertThat(MongoDBUserConfigurationDAO.toConfigurationEntry(document))
+                .containsExactly(ConfigurationEntry.of("core", "businessHours", NullNode.getInstance()));
         }
 
         @ParameterizedTest

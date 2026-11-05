@@ -39,7 +39,11 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
+import ezvcard.Ezvcard;
+import ezvcard.VCard;
+import ezvcard.property.FormattedName;
 import it.cnr.iit.jscontact.tools.dto.Card;
+import it.cnr.iit.jscontact.tools.dto.Name;
 import it.cnr.iit.jscontact.tools.exceptions.CardException;
 import it.cnr.iit.jscontact.tools.vcard.converters.config.VCard2JSContactConfig;
 import it.cnr.iit.jscontact.tools.vcard.converters.vcard2jscontact.VCard2JSContact;
@@ -90,6 +94,7 @@ public class CommonContactEventConverter {
                 .build()
                 .convert(cardData)
                 .getFirst();
+            restoreFormattedName(card, cardData);
             ContactUid uid = new ContactUid(Optional.ofNullable(card.getUid())
                 .filter(StringUtils::isNotBlank)
                 .orElseThrow(() -> new CommonContactEventConversionException("Missing required vCard UID in contact notification payload")));
@@ -98,6 +103,30 @@ public class CommonContactEventConverter {
         } catch (CardException | IOException e) {
             throw new CommonContactEventConversionException("Unable to convert vCard to JSContact", e);
         }
+    }
+
+    // jscontact-tools drops a FN equal to the UID, taking it for the placeholder it writes for nameless cards
+    private void restoreFormattedName(Card card, String cardData) {
+        if (hasFullName(card)) {
+            return;
+        }
+        formattedName(cardData).ifPresent(fullName -> Optional.ofNullable(card.getName())
+            .ifPresentOrElse(name -> name.setFull(fullName),
+                () -> card.setName(Name.builder().full(fullName).build())));
+    }
+
+    private boolean hasFullName(Card card) {
+        return Optional.ofNullable(card.getName())
+            .map(Name::getFull)
+            .filter(StringUtils::isNotBlank)
+            .isPresent();
+    }
+
+    private Optional<String> formattedName(String cardData) {
+        return Optional.ofNullable(Ezvcard.parse(cardData).first())
+            .map(VCard::getFormattedName)
+            .map(FormattedName::getValue)
+            .filter(StringUtils::isNotBlank);
     }
 
     private record ConvertedContact(ContactUid uid, ObjectNode payload) {
