@@ -46,8 +46,14 @@ class HeaderAddressValidatorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"bob@example.com˕", "bob@exa˚mple.com"})
-    void shouldRejectAddressJakartaMailCannotParse(String address) {
+    @ValueSource(strings = {"guest@\u0909\u0926\u093e\u0939\u0930\u0923.\u092d\u093e\u0930\u0924", "guest@xn--p1b6ci4b4b3a.xn--h2brj9c", "bob@example.com\u02d5"})
+    void shouldAcceptInternationalizedDomainThroughItsAsciiForm(String address) {
+        assertThat(HeaderAddressValidator.isWritableInHeader(address)).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"bob@exa\u02damp\u00a0le.com", "bob@exa˚mple.com"})
+    void shouldRejectAddressMailAddressCannotParse(String address) {
         assertThat(HeaderAddressValidator.isWritableInHeader(address)).isFalse();
     }
 

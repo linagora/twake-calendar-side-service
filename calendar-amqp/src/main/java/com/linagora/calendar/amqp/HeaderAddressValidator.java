@@ -19,18 +19,18 @@
 package com.linagora.calendar.amqp;
 
 import jakarta.mail.internet.AddressException;
-import jakarta.mail.internet.InternetAddress;
 
 import org.apache.james.core.MailAddress;
 import org.apache.james.mime4j.field.address.DefaultAddressParser;
 import org.apache.james.mime4j.field.address.ParseException;
 
+import com.linagora.calendar.smtp.AsciiMailAddress;
 import com.linagora.calendar.smtp.MailUsernames;
 
 /**
  * An address we send a mail to must also be writable in a To header: mime4j's RFC 5322 parser is stricter than
- * {@link MailAddress} (e.g. it rejects an unquoted backslash, as in {@code a\b@example.com}), and so is jakarta-mail's
- * {@link InternetAddress}, used to build the mail (e.g. it rejects a non-letter symbol in the domain).
+ * {@link MailAddress} (e.g. it rejects an unquoted backslash, as in {@code a\b@example.com}), and so is jakarta-mail,
+ * given the address as the mail is built from it: see {@link AsciiMailAddress}.
  */
 public final class HeaderAddressValidator {
 
@@ -38,7 +38,7 @@ public final class HeaderAddressValidator {
         try {
             new MailAddress(address);
             DefaultAddressParser.DEFAULT.parseMailbox(address);
-            new InternetAddress(address);
+            AsciiMailAddress.toInternetAddress(address);
             return true;
         } catch (AddressException | ParseException e) {
             return false;

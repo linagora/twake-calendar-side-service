@@ -428,6 +428,37 @@ class BookingLinkReservationRouteTest {
     }
 
     @Test
+    void shouldSendAcknowledgementEmailToBookerOnIdnDomainWithCombiningMarks(TwakeCalendarGuiceServer server) {
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .availabilityRules(AVAILABILITY_RULE)
+            .name("Intro call")
+            .build();
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class)
+            .insert(openPaaSUser.username(), insertRequest);
+        String slotStartUtc = getAvailableSlots(inserted.publicId()).getFirst();
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+                {
+                  "startUtc": "%s",
+                  "creator": { "email": "guest@xn--p1b6ci4b4b3a.xn--h2brj9c" },
+                  "eventTitle": "30-min intro call"
+                }
+                """.formatted(slotStartUtc))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+
+        JsonPath smtpMailsResponse = awaitBookingEmails();
+        assertThat(smtpMailsResponse.getList("message", String.class))
+            .anyMatch(message -> message.contains("To: guest@xn--p1b6ci4b4b3a.xn--h2brj9c"));
+    }
+
+    @Test
     void shouldSendAcknowledgementEmailToBookerWhenBookingCreated(TwakeCalendarGuiceServer server) {
         // Given: an active booking link with a description and an available slot.
         BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
