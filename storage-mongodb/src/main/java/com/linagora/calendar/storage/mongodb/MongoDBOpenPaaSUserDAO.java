@@ -20,9 +20,10 @@ package com.linagora.calendar.storage.mongodb;
 
 import static com.linagora.calendar.storage.mongodb.MongoConstants.MONGO_DUPLICATE_KEY_CODE;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
-import java.util.regex.Pattern;
+import java.util.concurrent.TimeUnit;
 
 import jakarta.inject.Inject;
 
@@ -54,6 +55,9 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
     public static final String COLLECTION = "users";
     private static final Logger LOGGER = LoggerFactory.getLogger(MongoDBOpenPaaSUserDAO.class);
     private static final String PASSWORD_FIELD = "password";
+    private static final List<String> SEARCH_SCALAR_FIELDS = List.of("firstname", "lastname");
+    private static final List<String> SEARCH_ARRAY_FIELDS = List.of("accounts.emails", "firstnames");
+    private static final Duration SEARCH_MAX_TIME = Duration.ofSeconds(10);
 
     private final MongoDatabase database;
     private final MongoDBOpenPaaSDomainDAO domainDAO;
@@ -173,17 +177,17 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
 
     @Override
     public Flux<OpenPaaSUser> search(Domain domain, String query, int limit) {
-        Pattern searchPattern = AccentInsensitivePrefixPattern.of(query);
+        if (!CollatedPrefixSearch.isSearchable(query)) {
+            return Flux.empty();
+        }
 
         return domainDAO.retrieve(domain)
             .flatMapMany(openPaaSDomain ->
                 Flux.from(database.getCollection(COLLECTION)
                         .find(Filters.and(Filters.eq("domains.domain_id", new ObjectId(openPaaSDomain.id().value())),
-                            Filters.or(
-                                Filters.regex("accounts.emails", searchPattern),
-                                Filters.regex("firstname", searchPattern),
-                                Filters.regex("lastname", searchPattern),
-                                Filters.regex("firstnames", searchPattern))))
+                            CollatedPrefixSearch.filter(query, SEARCH_SCALAR_FIELDS, SEARCH_ARRAY_FIELDS)))
+                        .collation(CollatedPrefixSearch.COLLATION)
+                        .maxTime(SEARCH_MAX_TIME.toMillis(), TimeUnit.MILLISECONDS)
                         .limit(limit))
                     .map(this::toOpenPaaSUser));
     }

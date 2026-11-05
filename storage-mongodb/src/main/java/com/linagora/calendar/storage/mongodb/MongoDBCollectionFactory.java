@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.storage.mongodb;
 
+import java.util.List;
+
 import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +42,8 @@ public class MongoDBCollectionFactory {
     public static final String BOOKING_LINKS = MongoDBBookingLinkDAO.COLLECTION;
     public static final String DOMAIN_SETTINGS = MongoDBDomainSettingsDAO.COLLECTION;
     public static final String TEAM_CALENDAR = MongoDBTeamCalendarRepository.COLLECTION;
+    static final String SEARCH_INDEX_PREFIX = "search_";
+    static final List<String> SEARCH_INDEXED_USER_FIELDS = List.of("accounts.emails", "firstname", "lastname", "firstnames");
 
     public static void initialize(MongoDatabase database) {
         createUsersCollection(database);
@@ -89,6 +93,12 @@ public class MongoDBCollectionFactory {
         Mono.from(database.getCollection(USERS)
                 .createIndex(new Document("domains.domain_id", 1)))
             .block();
+
+        SEARCH_INDEXED_USER_FIELDS.forEach(field -> Mono.from(database.getCollection(USERS)
+                .createIndex(new Document(field, 1), new IndexOptions()
+                    .name(SEARCH_INDEX_PREFIX + field)
+                    .collation(CollatedPrefixSearch.COLLATION)))
+            .block());
     }
 
     private static void createDomainsCollection(MongoDatabase database) {
