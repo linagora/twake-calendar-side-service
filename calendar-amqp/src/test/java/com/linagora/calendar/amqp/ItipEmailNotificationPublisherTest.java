@@ -1120,6 +1120,197 @@ class ItipEmailNotificationPublisherTest {
                     .doesNotContain("DTEND"));
         }
 
+        private String seriesWithCalendarLevelContent(String content) {
+            return """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//Calendar//EN
+                METHOD:REQUEST
+                %s
+                BEGIN:VEVENT
+                UID:event-uid@test
+                DTSTART:20360401T100000Z
+                DTEND:20360401T110000Z
+                RRULE:FREQ=WEEKLY;COUNT=3
+                SUMMARY:Weekly sync
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE:mailto:alice@example.com
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:event-uid@test
+                RECURRENCE-ID:20360408T100000Z
+                DTSTART:20360408T120000Z
+                DTEND:20360408T130000Z
+                SUMMARY:Weekly sync moved
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(content);
+        }
+
+        private List<NotificationEmailDTO> firstInvitation(String ics) {
+            return testee.buildNotificationMessages(dto(Method.VALUE_REQUEST, ics, Optional.empty()), EVENT_PATH, Optional.empty());
+        }
+
+        @Test
+        void firstInvitationWithAnUnreadableDateInAVTimezoneShouldBeNotified() {
+            String ics = seriesWithCalendarLevelContent("""
+                BEGIN:VTIMEZONE
+                TZID:Europe/Paris
+                EXDATE;TZID=Europe/Paris:20260400T100000
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0200
+                TZOFFSETTO:+0100
+                TZNAME:CET
+                DTSTART:19701025T030000
+                END:STANDARD
+                END:VTIMEZONE""");
+
+            assertThat(firstInvitation(ics)).hasSize(2)
+                .allSatisfy(notification -> assertThat(notification.event())
+                    .contains("TZID:Europe/Paris", "TZNAME:CET", "DTSTART:19701025T030000")
+                    .doesNotContain("20260400T100000"));
+        }
+
+        @Test
+        void firstInvitationWithAnUnreadableDateInAnObservanceShouldBeNotified() {
+            String ics = seriesWithCalendarLevelContent("""
+                BEGIN:VTIMEZONE
+                TZID:Europe/Paris
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0200
+                TZOFFSETTO:+0100
+                TZNAME:CET
+                DTSTART:20260400T100000
+                END:STANDARD
+                BEGIN:DAYLIGHT
+                TZOFFSETFROM:+0100
+                TZOFFSETTO:+0200
+                TZNAME:CEST
+                DTSTART:20260400T100000
+                END:DAYLIGHT
+                END:VTIMEZONE""");
+
+            assertThat(firstInvitation(ics)).hasSize(2)
+                .allSatisfy(notification -> assertThat(notification.event())
+                    .contains("TZID:Europe/Paris", "TZNAME:CET", "TZNAME:CEST")
+                    .doesNotContain("20260400T100000"));
+        }
+
+        @Test
+        void firstInvitationWithAnUnreadableDateInAVTimezoneShouldKeepItsObservances() {
+            String ics = seriesWithCalendarLevelContent("""
+                BEGIN:VTIMEZONE
+                TZID:Europe/Paris
+                EXDATE;TZID=Europe/Paris:20260400T100000
+                BEGIN:DAYLIGHT
+                TZOFFSETFROM:+0100
+                TZOFFSETTO:+0200
+                TZNAME:CEST
+                DTSTART:19700329T020000
+                END:DAYLIGHT
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0200
+                TZOFFSETTO:+0100
+                TZNAME:CET
+                DTSTART:19701025T030000
+                END:STANDARD
+                END:VTIMEZONE""");
+
+            assertThat(firstInvitation(ics)).hasSize(2)
+                .allSatisfy(notification -> assertThat(notification.event().replace("\r\n", "\n"))
+                    .contains("""
+                        BEGIN:DAYLIGHT
+                        TZOFFSETFROM:+0100
+                        TZOFFSETTO:+0200
+                        TZNAME:CEST
+                        DTSTART:19700329T020000
+                        END:DAYLIGHT
+                        """, """
+                        BEGIN:STANDARD
+                        TZOFFSETFROM:+0200
+                        TZOFFSETTO:+0100
+                        TZNAME:CET
+                        DTSTART:19701025T030000
+                        END:STANDARD
+                        """));
+        }
+
+        @Test
+        void firstInvitationWithAnUnreadableDateInAComponentNestedInAVTimezoneShouldBeNotified() {
+            String ics = seriesWithCalendarLevelContent("""
+                BEGIN:VTIMEZONE
+                TZID:Europe/Paris
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0200
+                TZOFFSETTO:+0100
+                TZNAME:CET
+                DTSTART:19701025T030000
+                END:STANDARD
+                BEGIN:VEVENT
+                EXDATE;TZID=Europe/Paris:20260400T100000
+                END:VEVENT
+                END:VTIMEZONE""");
+
+            assertThat(firstInvitation(ics)).hasSize(2)
+                .allSatisfy(notification -> assertThat(notification.event())
+                    .contains("TZID:Europe/Paris", "TZNAME:CET")
+                    .doesNotContain("20260400T100000"));
+        }
+
+        @Test
+        void firstInvitationWithAnUnreadableDateOnTheCalendarShouldBeNotified() {
+            String ics = seriesWithCalendarLevelContent("EXDATE;TZID=Europe/Paris:20260400T100000");
+
+            assertThat(firstInvitation(ics)).hasSize(2)
+                .allSatisfy(notification -> assertThat(notification.event())
+                    .contains("PRODID:-//Test//Calendar//EN")
+                    .doesNotContain("20260400T100000"));
+        }
+
+        @Test
+        void firstInvitationWithAnUnreadableDateInAnotherComponentShouldBeNotified() {
+            String ics = seriesWithCalendarLevelContent("""
+                BEGIN:VTODO
+                UID:todo@test
+                EXDATE;TZID=Europe/Paris:20260400T100000
+                END:VTODO""");
+
+            assertThat(firstInvitation(ics)).hasSize(2)
+                .allSatisfy(notification -> assertThat(notification.event()).doesNotContain("20260400T100000"));
+        }
+
+        @Test
+        void firstInvitationWithAReadableVTimezoneShouldRenderItUnchanged() {
+            String ics = seriesWithCalendarLevelContent("""
+                BEGIN:VTIMEZONE
+                TZID:Europe/Paris
+                BEGIN:STANDARD
+                TZOFFSETFROM:+0200
+                TZOFFSETTO:+0100
+                TZNAME:CET
+                DTSTART:19701025T030000
+                RDATE:19711031T030000
+                END:STANDARD
+                END:VTIMEZONE""");
+
+            assertThat(firstInvitation(ics)).hasSize(2)
+                .allSatisfy(notification -> assertThat(notification.event().replace("\r\n", "\n"))
+                    .contains("""
+                        BEGIN:VTIMEZONE
+                        TZID:Europe/Paris
+                        BEGIN:STANDARD
+                        TZOFFSETFROM:+0200
+                        TZOFFSETTO:+0100
+                        TZNAME:CET
+                        DTSTART:19701025T030000
+                        RDATE:19711031T030000
+                        END:STANDARD
+                        END:VTIMEZONE
+                        """));
+        }
+
         @Test
         void firstInvitationToASeriesWithAnUnreadableExDateShouldBeNotified() {
             String ics = parisSeries("""

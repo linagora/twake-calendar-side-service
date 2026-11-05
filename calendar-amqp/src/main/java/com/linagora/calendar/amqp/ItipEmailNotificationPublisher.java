@@ -290,11 +290,7 @@ class ItipEmailNotificationPublisher {
          * A calendar that parsed fine cannot always be rendered: unreadable date values are left out of the payload.
          */
         private static String renderPayload(Calendar calendar) {
-            List<VEvent> renderableVEvents = calendar.getComponents(Component.VEVENT).stream()
-                .map(VEvent.class::cast)
-                .map(CalendarEventUtils::withoutUnreadableDates)
-                .toList();
-            return CalendarUtil.withVEvents(calendar, renderableVEvents).toString();
+            return CalendarEventUtils.withoutUnreadableDates(calendar).toString();
         }
 
         private record ExDateChanges(VEvent previousMaster, VEvent currentMaster,

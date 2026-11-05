@@ -36,14 +36,22 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
+import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.ComponentList;
 import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.Recur;
+import net.fortuna.ical4j.model.component.CalendarComponent;
+import net.fortuna.ical4j.model.component.Daylight;
+import net.fortuna.ical4j.model.component.Observance;
+import net.fortuna.ical4j.model.component.Standard;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.component.VTimeZone;
 import net.fortuna.ical4j.model.parameter.Value;
 import net.fortuna.ical4j.model.property.DateListProperty;
 import net.fortuna.ical4j.model.property.DateProperty;
@@ -222,6 +230,62 @@ public class CalendarEventUtils {
         } catch (DateTimeException e) {
             // getValue() is the failing parse: the exception message carries the faulty text
             LOGGER.info("Dropping unreadable {} property from the notification payload", property.getName(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Same as {@link #withoutUnreadableDates(VEvent)} for a whole calendar, whose properties and non VEVENT components
+     * are rendered too. A VTIMEZONE is kept without its unreadable date properties, as VEVENTs reference it. Any other
+     * component that cannot be rendered is dropped.
+     *
+     * <p>The supplied calendar is left untouched, and what can be rendered is kept as is.
+     */
+    public static Calendar withoutUnreadableDates(Calendar calendar) {
+        List<CalendarComponent> nonVEvents = calendar.getComponents().stream()
+            .filter(component -> !(component instanceof VEvent))
+            .flatMap(CalendarEventUtils::renderableComponent)
+            .toList();
+        List<VEvent> vEvents = calendar.getComponents(Component.VEVENT).stream()
+            .map(VEvent.class::cast)
+            .map(CalendarEventUtils::withoutUnreadableDates)
+            .toList();
+        return CalendarUtil.withVEvents(new Calendar(renderableProperties(calendar.getProperties()), new ComponentList<>(nonVEvents)), vEvents);
+    }
+
+    private static Stream<CalendarComponent> renderableComponent(CalendarComponent component) {
+        if (isRenderable(component)) {
+            return Stream.of(component);
+        }
+        if (component instanceof VTimeZone vTimeZone) {
+            return Stream.of(new VTimeZone(renderableProperties(vTimeZone.getProperties()),
+                new ComponentList<>(vTimeZone.getObservances().stream()
+                    .map(CalendarEventUtils::withoutUnreadableDates)
+                    .toList())));
+        }
+        LOGGER.info("Dropping unreadable {} component from the notification payload", component.getName());
+        return Stream.empty();
+    }
+
+    private static Observance withoutUnreadableDates(Observance observance) {
+        PropertyList properties = renderableProperties(observance.getProperties());
+        return switch (observance) {
+            case Daylight ignored -> new Daylight(properties);
+            default -> new Standard(properties);
+        };
+    }
+
+    private static PropertyList renderableProperties(List<Property> properties) {
+        return new PropertyList(properties.stream()
+            .filter(CalendarEventUtils::isRenderable)
+            .toList());
+    }
+
+    private static boolean isRenderable(Component component) {
+        try {
+            component.toString();
+            return true;
+        } catch (DateTimeException e) {
             return false;
         }
     }
