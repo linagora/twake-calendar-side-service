@@ -61,9 +61,9 @@ public class TimeFormatUtil {
     }
 
     private static Duration roundUpToMinutes(Duration duration) {
-        long seconds = duration.getSeconds();
-        long minutes = (long) Math.ceil(seconds / 60.0);
-        return Duration.ofMinutes(minutes);
+        // Duration#getSeconds leaves the fraction of a second out, and rounds it down
+        long seconds = duration.getNano() > 0 ? duration.getSeconds() + 1 : duration.getSeconds();
+        return Duration.ofMinutes(Math.ceilDiv(seconds, 60L));
     }
 
 }
