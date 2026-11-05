@@ -27,6 +27,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.linagora.calendar.api.CalendarUtil;
 
@@ -531,6 +533,65 @@ class CalendarEventUtilsTest {
         boolean expired = assertTimeoutPreemptively(Duration.ofSeconds(1),
             () -> CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK));
         assertThat(expired).isFalse();
+    }
+
+    private VEvent eventOf(String startAndRule) {
+        String[] parts = startAndRule.split("\\|");
+        return parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:walk@test
+            %s
+            RRULE:%s
+            END:VEVENT
+            """.formatted(parts[0], parts[1]));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "DTSTART:19370530T090000Z|FREQ=SECONDLY;COUNT=98;BYWEEKNO=1",
+        "DTSTART:20250115T000000Z|FREQ=SECONDLY;COUNT=2;BYWEEKNO=1",
+        "DTSTART:20250115T000000Z|FREQ=SECONDLY;COUNT=2;BYMONTH=1;BYDAY=1MO",
+        "DTSTART:20250115T000000Z|FREQ=MINUTELY;COUNT=2;BYMONTH=1;BYDAY=1MO",
+        "DTSTART:19370530T090000Z|FREQ=SECONDLY;COUNT=98;BYWEEKNO=1;BYSECOND=0,30",
+        "DTSTART:19270707T000000Z|FREQ=HOURLY;UNTIL=26930211T000000Z;BYDAY=MO,WE,FR,-1SU;BYHOUR=0",
+        "DTSTART:20000101T000000Z|FREQ=SECONDLY;COUNT=100000;BYMINUTE=0,16,32,48;BYSECOND=0",
+        "DTSTART:20200107T100000Z|FREQ=YEARLY;COUNT=2;INTERVAL=2147483647"
+    })
+    void expiryCheckShouldStayFastAndKeepTheEventWhenItCannotConclude(String startAndRule) {
+        VEvent vEvent = eventOf(startAndRule);
+
+        boolean expired = assertTimeoutPreemptively(Duration.ofSeconds(1),
+            () -> CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK));
+        assertThat(expired).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "DTSTART:20200107T100000Z|FREQ=DAILY;COUNT=3;BYDAY=MO",
+        "DTSTART:20200107T100000Z|FREQ=HOURLY;COUNT=3;BYHOUR=9",
+        "DTSTART:20200107T103000Z|FREQ=MINUTELY;COUNT=3;BYHOUR=9;BYMINUTE=0",
+        "DTSTART:20200107T100030Z|FREQ=SECONDLY;COUNT=3;BYSECOND=0",
+        "DTSTART:20200107T100000Z|FREQ=SECONDLY;COUNT=3",
+        "DTSTART:20200107T100000Z|FREQ=DAILY;COUNT=2;BYMONTH=2;BYMONTHDAY=30",
+        "DTSTART:20200107T100000Z|FREQ=WEEKLY;COUNT=1;INTERVAL=2147483647",
+        "DTSTART:20200107T100030Z|FREQ=MINUTELY;COUNT=2;BYDAY=MO;BYHOUR=9;BYMINUTE=0",
+        "DTSTART:20200107T100000Z|FREQ=YEARLY;COUNT=3;BYWEEKNO=1"
+    })
+    void boundingTheWalkShouldNotKeepARuleThatEndedInThePast(String startAndRule) {
+        assertThat(CalendarEventUtils.vEventExpired(eventOf(startAndRule), TEST_CLOCK)).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "DTSTART:20251201T000000Z|FREQ=DAILY;COUNT=60",
+        "DTSTART:20251231T235900Z|FREQ=SECONDLY;COUNT=100",
+        "DTSTART:20100101T090000Z|FREQ=HOURLY;COUNT=200000",
+        "DTSTART:20200101T090000Z|FREQ=DAILY;UNTIL=20300101T000000Z;BYDAY=MO",
+        "DTSTART:20200101T090000Z|FREQ=MONTHLY;COUNT=1000",
+        "DTSTART:20200101T090000Z|FREQ=YEARLY;COUNT=10"
+    })
+    void boundingTheWalkShouldStillFindUpcomingOccurrences(String startAndRule) {
+        assertThat(CalendarEventUtils.vEventExpired(eventOf(startAndRule), TEST_CLOCK)).isFalse();
     }
 
     @Test

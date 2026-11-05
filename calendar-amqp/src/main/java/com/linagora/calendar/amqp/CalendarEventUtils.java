@@ -20,6 +20,7 @@ package com.linagora.calendar.amqp;
 
 import java.time.Clock;
 import java.time.DateTimeException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -29,6 +30,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -66,6 +68,12 @@ public class CalendarEventUtils {
     @VisibleForTesting
     static final int MAX_EXAMINED_OCCURRENCES = Integer.getInteger("tcalendar.itip.max.examined.occurences", 20_000);
     private static final ZonedDateTime LAST_EXPANDED_DATE = ZonedDateTime.of(9999, 12, 31, 23, 59, 59, 0, ZoneOffset.UTC);
+    @VisibleForTesting
+    static final long MAX_WALKED_PERIODS = Long.getLong("tcalendar.itip.max.walked.periods", 50_000L);
+    private static final Duration RELEVANT_LOOK_AHEAD = Duration.ofDays(200L * 366);
+    private static final long SECONDS_PER_YEAR = Duration.ofDays(365).getSeconds();
+    // Recur#getMaxIncrementCount is not public, and defaults to 1000
+    private static final long ICAL4J_PERIODS_WITHOUT_CANDIDATE_BEFORE_GIVING_UP = 1001L;
 
     public static boolean vEventExpired(VEvent vevent, Clock clock) {
         Optional<ZonedDateTime> startDateTime = vevent.getProperty(Property.DTSTART)
@@ -152,22 +160,108 @@ public class CalendarEventUtils {
      * The occurrences are consumed with stream operations, not through {@link Stream#iterator()}: when it
      * rejects an unsynchronized seed, ical4j's spliterator advances without emitting a date, which the iterator
      * adapter mistakes for the end of the occurrences.
+     *
+     * <p>Advances that emit nothing cost time, and are bounded in two ways, as expiry is uncertain and the event is kept
+     * when stopping without a conclusion:
+     * <ul>
+     *     <li>the walk stops after {@link #MAX_WALKED_PERIODS} periods of the rule,</li>
+     *     <li>a rule that would reject too many candidates at once is not walked. ical4j only checks the end of the walk
+     *     against its candidates, and BYWEEKNO or an ordinal BYDAY map them back, to the first week of the year or the
+     *     first Monday of the month, hence before the seed: {@code FREQ=SECONDLY;BYWEEKNO=1} rejects a year of seconds
+     *     whatever the end. RFC 5545 does not allow either on such frequencies.</li>
+     * </ul>
      */
     private static boolean hasUpcomingExpandedOccurrence(ZonedDateTime startDateTime,
                                                          Recur<Temporal> recur,
                                                          Set<Instant> excludedDates,
                                                          Instant now) {
+        if (rejectsTooManyCandidates(recur)) {
+            LOGGER.info("Not walking {}: considering the event as not expired", recur);
+            return true;
+        }
+        try {
+            return walkOccurrences(startDateTime, recur, excludedDates, now);
+        } catch (DateTimeException | ArithmeticException e) {
+            LOGGER.info("Cannot walk {}: considering the event as not expired", recur, e);
+            return true;
+        }
+    }
+
+    private static boolean walkOccurrences(ZonedDateTime startDateTime,
+                                           Recur<Temporal> recur,
+                                           Set<Instant> excludedDates,
+                                           Instant now) {
+        ZonedDateTime walkEnd = walkEnd(startDateTime, recur);
         AtomicInteger examined = new AtomicInteger();
-        boolean hasUpcoming = recur.getDatesAsStream(startDateTime, startDateTime, LAST_EXPANDED_DATE, -1)
+        AtomicReference<Instant> lastOccurrence = new AtomicReference<>(startDateTime.toInstant());
+        boolean hasUpcoming = recur.getDatesAsStream(startDateTime, startDateTime, walkEnd, -1)
             .limit(MAX_EXAMINED_OCCURRENCES)
             .peek(occurrence -> examined.incrementAndGet())
             .flatMap(occurrence -> toInstant(occurrence).stream())
+            .peek(lastOccurrence::set)
             .anyMatch(instant -> isUpcoming(instant, excludedDates, now));
-        if (hasUpcoming || examined.get() < MAX_EXAMINED_OCCURRENCES) {
-            return hasUpcoming;
+        if (hasUpcoming) {
+            return true;
         }
-        LOGGER.info("More than {} occurrences of {} before {}: considering the event as not expired", MAX_EXAMINED_OCCURRENCES, recur, now);
+        if (examined.get() >= MAX_EXAMINED_OCCURRENCES) {
+            LOGGER.info("More than {} occurrences of {} before {}: considering the event as not expired", MAX_EXAMINED_OCCURRENCES, recur, now);
+            return true;
+        }
+        if (coversTheWholeRule(recur, walkEnd, examined.get(), lastOccurrence.get(), now)) {
+            return false;
+        }
+        LOGGER.info("No conclusion on {} up to {}: considering the event as not expired", recur, walkEnd);
         return true;
+    }
+
+    private static boolean rejectsTooManyCandidates(Recur<Temporal> recur) {
+        boolean mapsCandidatesBack = !recur.getWeekNoList().isEmpty()
+            || recur.getDayList().stream().anyMatch(day -> day.getOffset() != 0);
+        return mapsCandidatesBack && SECONDS_PER_YEAR / periodSeconds(recur) > MAX_WALKED_PERIODS;
+    }
+
+    private static ZonedDateTime walkEnd(ZonedDateTime startDateTime, Recur<Temporal> recur) {
+        long secondsToLastDate = Duration.between(startDateTime, LAST_EXPANDED_DATE).getSeconds();
+        if (secondsToLastDate / periodSeconds(recur) <= MAX_WALKED_PERIODS) {
+            return LAST_EXPANDED_DATE;
+        }
+        return startDateTime.plusSeconds(MAX_WALKED_PERIODS * periodSeconds(recur));
+    }
+
+    private static long periodSeconds(Recur<Temporal> recur) {
+        // an int interval times at most a year of seconds fits a long
+        return unitSeconds(recur) * Math.max(recur.getInterval(), 1);
+    }
+
+    /**
+     * Months and years are given their shortest length: this only decides when to stop, and stops later for it.
+     */
+    private static long unitSeconds(Recur<Temporal> recur) {
+        return switch (recur.getFrequency()) {
+            case SECONDLY -> 1L;
+            case MINUTELY -> Duration.ofMinutes(1).getSeconds();
+            case HOURLY -> Duration.ofHours(1).getSeconds();
+            case DAILY -> Duration.ofDays(1).getSeconds();
+            case WEEKLY -> Duration.ofDays(7).getSeconds();
+            case MONTHLY -> Duration.ofDays(28).getSeconds();
+            case YEARLY -> SECONDS_PER_YEAR;
+        };
+    }
+
+    /**
+     * Whether no occurrence that matters can be left after the walk: it went to the end of the rule, ical4j gave up long
+     * before the end of the walk, or the walk went so far ahead that what follows is no reason to notify.
+     */
+    private static boolean coversTheWholeRule(Recur<Temporal> recur, ZonedDateTime walkEnd, int examined, Instant lastOccurrence, Instant now) {
+        Instant end = walkEnd.toInstant();
+        return walkEnd.equals(LAST_EXPANDED_DATE)
+            || (recur.getCount() > 0 && examined >= recur.getCount())
+            || !end.isBefore(now.plus(RELEVANT_LOOK_AHEAD))
+            || lastOccurrence.plusSeconds(periodSeconds(recur) * ICAL4J_PERIODS_WITHOUT_CANDIDATE_BEFORE_GIVING_UP).isBefore(end)
+            || Optional.ofNullable(recur.getUntil())
+                .flatMap(CalendarEventUtils::toInstant)
+                .map(until -> !until.isAfter(end))
+                .orElse(false);
     }
 
     private static boolean isUpcoming(Instant instant, Set<Instant> excludedDates, Instant now) {
