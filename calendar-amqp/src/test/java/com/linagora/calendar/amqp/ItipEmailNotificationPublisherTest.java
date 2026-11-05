@@ -404,6 +404,24 @@ class ItipEmailNotificationPublisherTest {
             END:VCALENDAR
             """;
 
+        private static final String RECURRING_WITH_FLOATING_RDATE = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Calendar//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:recurring-uid@test
+            DTSTART;TZID=Europe/Paris:20261014T090000
+            DURATION:PT1H
+            RRULE:FREQ=WEEKLY;COUNT=3
+            RDATE:20261016T090000
+            SUMMARY:Weekly sync
+            ATTENDEE:mailto:alice@example.com
+            ORGANIZER:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
         @Test
         void requestWithUnparsableRecurrenceIdShouldStillNotifyChangedMaster() {
             String current = RECURRING_MASTER_AND_OVERRIDE
@@ -693,6 +711,32 @@ class ItipEmailNotificationPublisherTest {
                     assertThat(notification.oldEvent()).contains(RECURRING_OLD_NO_EXDATE);
                     assertThat(notification.event()).isEqualTo(RECURRING_MASTER_AND_OVERRIDE);
                 });
+        }
+
+        @Test
+        void addedFloatingExDateShouldCancelFloatingRDateOccurrence() {
+            String current = withExDate(RECURRING_WITH_FLOATING_RDATE, "20261016T090000");
+
+            List<NotificationEmailDTO> notifications = request(current, RECURRING_WITH_FLOATING_RDATE);
+
+            assertThat(notifications).singleElement().satisfies(notification -> {
+                assertThat(notification.method()).isEqualTo(Method.VALUE_CANCEL);
+                assertThat(notification.event()).contains("RECURRENCE-ID", "STATUS:CANCELLED")
+                    .doesNotContain("RRULE", "RDATE", "EXDATE");
+            });
+        }
+
+        @Test
+        void removedFloatingExDateShouldRestoreFloatingRDateOccurrence() {
+            String previous = withExDate(RECURRING_WITH_FLOATING_RDATE, "20261016T090000");
+
+            List<NotificationEmailDTO> notifications = request(RECURRING_WITH_FLOATING_RDATE, previous);
+
+            assertThat(notifications).singleElement().satisfies(notification -> {
+                assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
+                assertThat(notification.event()).contains("RECURRENCE-ID")
+                    .doesNotContain("RRULE", "RDATE", "EXDATE", "STATUS:CANCELLED");
+            });
         }
 
         @Test
