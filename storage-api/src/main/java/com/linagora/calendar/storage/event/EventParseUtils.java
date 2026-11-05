@@ -636,8 +636,20 @@ public class EventParseUtils {
             return duration.get().getDuration();
         }
         Optional<DtEnd<Temporal>> end = master.getProperty(Property.DTEND);
-        return end.<TemporalAmount>map(dtEnd -> TemporalAmountAdapter.between(master.getDateTimeStart().getDate(), dtEnd.getDate()).getDuration())
+        return end.flatMap(dtEnd -> spanUntil(master, dtEnd))
             .orElse(Duration.ZERO);
+    }
+
+    /**
+     * Empty for an end that cannot be read or compared to the start: it tells nothing of a negative span.
+     */
+    private static Optional<TemporalAmount> spanUntil(VEvent master, DtEnd<Temporal> dtEnd) {
+        try {
+            return Optional.ofNullable(dtEnd.getDate())
+                .map(end -> TemporalAmountAdapter.between(master.getDateTimeStart().getDate(), end).getDuration());
+        } catch (DateTimeException exception) {
+            return Optional.empty();
+        }
     }
 
     /**

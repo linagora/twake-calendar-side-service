@@ -1236,6 +1236,27 @@ class EventParseUtilsTest {
             });
         }
 
+        @ParameterizedTest
+        @ValueSource(strings = {"DTEND;VALUE=DATE:", "DTEND:", "DTEND;VALUE=DATE:20261399"})
+        void createInstanceVEventShouldFindAnOccurrenceOfASeriesWhoseEndIsUnreadable(String dtEnd) {
+            VEvent master = (VEvent) CalendarUtil.parseIcs("""
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                BEGIN:VEVENT
+                UID:empty-dtend@test
+                DTSTART;VALUE=DATE:20260401
+                %s
+                RRULE:FREQ=DAILY;COUNT=5
+                SUMMARY:Off site
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(dtEnd)).getComponent(Component.VEVENT).orElseThrow();
+
+            VEvent instance = EventParseUtils.createInstanceVEvent(master, LocalDate.parse("2026-04-02"));
+
+            assertThat(instance.getDateTimeStart().getDate()).isEqualTo(LocalDate.parse("2026-04-02"));
+        }
+
         @Test
         void createInstanceVEventShouldFindAnOccurrenceOfAFloatingSeriesFromALocalDateTime() {
             VEvent master = (VEvent) CalendarUtil.parseIcs(DAILY_FLOATING_ICS).getComponent(Component.VEVENT).orElseThrow();
