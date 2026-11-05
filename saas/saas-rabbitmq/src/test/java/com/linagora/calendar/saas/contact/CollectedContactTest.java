@@ -21,12 +21,14 @@ package com.linagora.calendar.saas.contact;
 import static com.linagora.calendar.saas.contact.CollectedContact.CollectedContactException;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Test;
@@ -344,6 +346,108 @@ class CollectedContactTest {
         assertThat(Ezvcard.parse(new String(result.toVCardAsBytes(), StandardCharsets.UTF_8)).first().getEmails())
             .extracting(email -> email.getValue())
             .containsExactlyInAnyOrder("first@example.com", "second@example.com");
+    }
+
+    private CollectedContact contactWithVCardProps(String vCardProps) throws Exception {
+        return CollectedContact.parse((ObjectNode) OBJECT_MAPPER.readTree("""
+            {"@type": "Card", "version": "2.0", "uid": "contact-uid",
+             "emails": {"e": {"@type": "EmailAddress", "address": "alice@example.com"}},
+             "vCardProps": %s}
+            """.formatted(vCardProps)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        // names
+        "[\"x-a_b\", {}, \"text\", \"c\"]", "[\"x-ak`\", {}, \"text\", \"c\"]", "[\"x a\", {}, \"text\", \"c\"]", "[\"x,a\", {}, \"text\", \"c\"]",
+        "[\"x=a\", {}, \"text\", \"c\"]", "[\"x-\\u00e9\", {}, \"text\", \"c\"]", "[\"x-a\\u0000\", {}, \"text\", \"c\"]", "[\"\", {}, \"text\", \"c\"]",
+        "[null, {}, \"text\", \"c\"]", "[1, {}, \"text\", \"c\"]",
+        // parameters
+        "[\"x-a\", {\"a_b\": \"c\"}, \"text\", \"c\"]", "[\"x-a\", {\"a b\": \"c\"}, \"text\", \"c\"]", "[\"x-a\", {\"pref\": \"200\"}, \"text\", \"c\"]", "[\"x-a\", {\"group\": \"g_1\"}, \"text\", \"c\"]", "[\"x-a\", {\"a\": null}, \"text\", \"c\"]",
+        "[\"x-a\", {\"a\": [\"x\", \"y\"]}, \"text\", \"c\"]", "[\"x-a\", null, \"text\", \"c\"]", "[\"x-a\", [], \"text\", \"c\"]",
+        // value types and values
+        "[\"x-a\", {}, \"te xt\", \"c\"]", "[\"x-a\", {}, \"\", \"c\"]", "[\"x-a\", {}, null, \"c\"]", "[\"x-a\", {}, 1, \"c\"]",
+        "[\"x-a\", {}, \"text\", null]", "[\"x-a\", {}, \"text\", [\"a\", \"b\"]]", "[\"x-a\", {}, \"text\", {\"a\": 1}]",
+        // shapes
+        "[]", "[1]", "[\"x-a\"]", "[\"x-a\", {}]", "[\"x-a\", {}, \"text\"]", "\"str\"", "1", "null", "{}",
+        // the structure of the card
+        "[\"begin\", {}, \"text\", \"vcard\"]", "[\"END\", {}, \"text\", \"vcard\"]", "[\"uid\", {}, \"text\", \"other\"]", "[\"version\", {}, \"text\", \"3.0\"]"
+    })
+    void vCardPropsAVCardCannotCarryShouldBeDroppedWithoutCostingTheContact(String property) throws Exception {
+        CollectedContact incoming = contactWithVCardProps("[" + property + ", [\"x-kept\", {}, \"text\", \"kept\"]]");
+        String vCard = new String(incoming.toVCardAsBytes(), StandardCharsets.UTF_8);
+        CollectedContact stored = CollectedContact.parse(incoming.toVCardAsBytes());
+
+        assertThat(vCard).contains("X-KEPT", "VERSION:4.0").doesNotContain("X-A", "OTHER", "other", "VCARD;", "VALUE=text:vcard");
+        assertThat(stored.uid()).isEqualTo(incoming.uid());
+        assertThat(stored.hasEmailAddress()).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "[\"x-test\", {}, \"text\", \"c\"]", "[\"X-TEST-2\", {\"x-a\": \"b\", \"x-c-d\": \"e f\"}, \"text\", \"c\"]", "[\"x-test\", {\"a\": 1}, \"integer\", 1]",
+        "[\"x-test\", {\"x-a\": \"x\\ny\"}, \"text\", \"c\"]", "[\"x-test\", {\"x-a\": \"x\\\"y\"}, \"text\", \"c\"]",
+        "[\"x-test\", {\"group\": \"g-1\"}, \"text\", \"c\"]", "[\"x-test\", {}, \"unknown\", \"c\"]", "[\"x-test\", {}, \"text\", \"a\\nb\"]", "[\"x-test\", {}, \"text\", \"\"]"
+    })
+    void validVCardPropsShouldBeKept(String property) throws Exception {
+        CollectedContact incoming = contactWithVCardProps("[" + property + "]");
+
+        assertThat(new String(incoming.toVCardAsBytes(), StandardCharsets.UTF_8).toLowerCase(Locale.ROOT)).contains("x-test");
+        assertThat(CollectedContact.parse(incoming.toVCardAsBytes()).uid()).isEqualTo(incoming.uid());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"a\": \"b\"}", "{\"type\": \"home\"}", "{\"a\": \"x\\ny\"}", "{\"a\": \"x\\\"y\"}", "{\"x-label\": \"Line 1\\nLine 2\"}"})
+    void vCardPropsWithATextParameterShouldKeepTheirValueAndBeReadableBack(String parameters) throws Exception {
+        CollectedContact incoming = contactWithVCardProps("[[\"x-test\", %s, \"text\", \"kept\"]]".formatted(parameters));
+
+        CollectedContact stored = CollectedContact.parse(incoming.toVCardAsBytes());
+
+        assertThat(stored.uid()).isEqualTo(incoming.uid());
+        assertThat(stored.hasEmailAddress()).isTrue();
+        assertThat(stored.toJson()).contains("x-test", "kept");
+    }
+
+    @Test
+    void storedCardHoldingATextParameterOnAnExtensionShouldBeReadable() throws Exception {
+        byte[] vCard = """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:contact-uid
+            FN:Bob
+            EMAIL:bob@example.com
+            SOCIALPROFILE;SERVICE-TYPE=matrix;VALUE=text:@bob:example.com
+            X-TEST;X-LABEL=hello;VALUE=text:kept
+            END:VCARD
+            """.getBytes(StandardCharsets.UTF_8);
+
+        CollectedContact result = CollectedContact.parse(vCard);
+
+        assertThat(result.hasEmailAddress()).isTrue();
+        assertThat(result.hasMatrixId()).isTrue();
+        assertThat(result.toJson()).contains("kept", "@bob:example.com");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"[]", "[[\"x-a_b\", {}, \"text\", \"c\"]]", "[[]]"})
+    void contactLeftWithoutVCardPropsShouldSerializeToValidJson(String vCardProps) throws Exception {
+        assertThatCode(() -> OBJECT_MAPPER.readTree(contactWithVCardProps(vCardProps).toJson()))
+            .doesNotThrowAnyException();
+    }
+
+    @Test
+    void version4VCardPropsShouldBeKept() throws Exception {
+        CollectedContact incoming = contactWithVCardProps("[[\"version\", {}, \"text\", \"4.0\"]]");
+
+        assertThat(new String(incoming.toVCardAsBytes(), StandardCharsets.UTF_8)).contains("VERSION:4.0");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\"x\"", "1", "null", "{}", "[]"})
+    void vCardPropsThatAreNotAListShouldNotCostTheContact(String vCardProps) throws Exception {
+        CollectedContact incoming = contactWithVCardProps(vCardProps);
+
+        assertThat(CollectedContact.parse(incoming.toVCardAsBytes()).hasEmailAddress()).isTrue();
     }
 
     @Test
