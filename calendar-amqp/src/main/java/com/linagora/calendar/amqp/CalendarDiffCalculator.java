@@ -24,6 +24,7 @@ import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.Temporal;
@@ -336,40 +337,42 @@ public class CalendarDiffCalculator {
     }
 
     private static Map<String, VEvent> indexByRecurrenceId(Calendar calendar) {
+        ZoneId floatingZone = EventParseUtils.floatingZone(calendar);
         return calendar.getComponents(Component.VEVENT).stream()
             .map(VEvent.class::cast)
             .filter(Predicate.not(EventParseUtils::hasUnparsableRecurrenceId))
             .collect(Collectors.toMap(
-                CalendarDiffCalculator::recurrenceKey,
+                vevent -> recurrenceKey(vevent, floatingZone),
                 Function.identity(), (first, second) -> first, LinkedHashMap::new));
     }
 
     /**
      * Keyed by instant (date for all-day occurrences): the same RECURRENCE-ID can be written in UTC on one side and
-     * with a TZID on the other. Falls back to the raw value when it cannot be converted.
+     * with a TZID on the other, or be floating, which reads in the zone of the series as its occurrences do.
+     * Falls back to the raw value when it cannot be converted.
      */
-    private static String recurrenceKey(VEvent vevent) {
+    private static String recurrenceKey(VEvent vevent, ZoneId floatingZone) {
         RecurrenceId<Temporal> recurrenceId = vevent.getRecurrenceId();
         if (recurrenceId == null) {
             return MASTER_RECURRENCE_ID;
         }
-        return normalizedRecurrenceId(recurrenceId)
+        return normalizedRecurrenceId(recurrenceId, floatingZone)
             .orElseGet(recurrenceId::getValue);
     }
 
-    private static Optional<String> normalizedRecurrenceId(RecurrenceId<Temporal> recurrenceId) {
+    private static Optional<String> normalizedRecurrenceId(RecurrenceId<Temporal> recurrenceId, ZoneId floatingZone) {
         try {
-            return normalizedRecurrenceId(recurrenceId.getDate());
+            return normalizedRecurrenceId(recurrenceId.getDate(), floatingZone);
         } catch (DateTimeException exception) {
             return Optional.empty();
         }
     }
 
-    private static Optional<String> normalizedRecurrenceId(Temporal temporal) {
+    private static Optional<String> normalizedRecurrenceId(Temporal temporal, ZoneId floatingZone) {
         if (temporal instanceof LocalDate localDate) {
             return Optional.of(localDate.toString());
         }
-        return EventParseUtils.temporalToZonedDateTime(temporal)
+        return EventParseUtils.temporalToZonedDateTime(temporal, floatingZone)
             .map(ZonedDateTime::toInstant)
             .map(Instant::toString);
     }

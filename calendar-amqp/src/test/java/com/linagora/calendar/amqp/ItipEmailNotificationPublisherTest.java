@@ -38,6 +38,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.MockedStatic;
 
 import com.linagora.calendar.amqp.ItipEmailNotificationPublisher.NotificationEmailDTO;
@@ -873,6 +875,45 @@ class ItipEmailNotificationPublisherTest {
                 assertThat(notification.method()).isEqualTo(Method.VALUE_REQUEST);
                 assertThat(notification.event()).contains("SUMMARY:Weekly sync moved");
             });
+        }
+
+        private String seriesOverriddenAt(String recurrenceIdForm, String start, String end) {
+            return """
+                BEGIN:VCALENDAR
+                VERSION:2.0
+                PRODID:-//Test//EN
+                BEGIN:VEVENT
+                UID:event-uid@test
+                DTSTART;TZID=Europe/Paris:20261013T140000
+                DTEND;TZID=Europe/Paris:20261013T150000
+                RRULE:FREQ=WEEKLY;BYDAY=TU
+                SUMMARY:Weekly meeting
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE:mailto:alice@example.com
+                END:VEVENT
+                BEGIN:VEVENT
+                UID:event-uid@test
+                RECURRENCE-ID%s:20261020T140000
+                DTSTART;TZID=Europe/Paris:%s
+                DTEND;TZID=Europe/Paris:%s
+                SUMMARY:Weekly meeting
+                ORGANIZER:mailto:bob@example.com
+                ATTENDEE:mailto:alice@example.com
+                END:VEVENT
+                END:VCALENDAR
+                """.formatted(recurrenceIdForm, start, end);
+        }
+
+        @ParameterizedTest
+        @CsvSource({"';TZID=Europe/Paris',''", "'',';TZID=Europe/Paris'", "';TZID=Europe/Paris',';TZID=Unknown/Zone'"})
+        void overrideWrittenInAnotherFormShouldBeNotifiedOnce(String newForm, String oldForm) {
+            String current = seriesOverriddenAt(newForm, "20261020T170000", "20261020T180000");
+            String previous = seriesOverriddenAt(oldForm, "20261020T160000", "20261020T170000");
+
+            List<NotificationEmailDTO> notifications = request(current, previous);
+
+            assertThat(notifications).singleElement().satisfies(notification ->
+                assertThat(notification.event()).contains("DTSTART;TZID=Europe/Paris:20261020T170000"));
         }
 
         @Test

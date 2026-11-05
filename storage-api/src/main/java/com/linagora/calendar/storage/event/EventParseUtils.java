@@ -561,6 +561,15 @@ public class EventParseUtils {
             .orElse(ZONE_ID_DEFAULT);
     }
 
+    /**
+     * The zone floating values of a calendar are read in: the one of its series, UTC when it holds no master.
+     */
+    public static ZoneId floatingZone(Calendar calendar) {
+        return findMasterRecurrenceEvent(calendar)
+            .map(EventParseUtils::floatingZone)
+            .orElse(ZONE_ID_DEFAULT);
+    }
+
     public static Period calculateRecurrenceSet(VEvent master, Temporal recurrenceDate) {
         try {
             ZoneId floatingZone = floatingZone(master);

@@ -208,7 +208,7 @@ class ItipEmailNotificationPublisher {
                 .orElseGet(Map::of);
             Set<Temporal> recurrencesNotifiedSeparately = Sets.union(cancelCalendarsByRecurrence.keySet(),
                 exDateChanges.map(ExDateChanges::removedExDates).orElseGet(Set::of));
-            ZoneId floatingZone = floatingZone(newCalendar);
+            ZoneId floatingZone = EventParseUtils.floatingZone(newCalendar);
 
             List<NotificationEmailDTO> requestNotifications = CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
                 .stream()
@@ -243,7 +243,7 @@ class ItipEmailNotificationPublisher {
                                                                        URI eventPath,
                                                                        Calendar newCalendar,
                                                                        Calendar oldCalendar) {
-            ZoneId floatingZone = floatingZone(newCalendar);
+            ZoneId floatingZone = EventParseUtils.floatingZone(newCalendar);
             return CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
                 .stream()
                 .filter(diff -> isNotifiable(diff, floatingZone))
@@ -333,17 +333,11 @@ class ItipEmailNotificationPublisher {
         }
 
         private Set<Temporal> overriddenRecurrences(Calendar calendar) {
-            ZoneId floatingZone = floatingZone(calendar);
+            ZoneId floatingZone = EventParseUtils.floatingZone(calendar);
             return calendar.getComponents(Component.VEVENT).stream()
                 .map(VEvent.class::cast)
                 .flatMap(vevent -> recurrenceKey(vevent, floatingZone).stream())
                 .collect(Collectors.toSet());
-        }
-
-        private ZoneId floatingZone(Calendar calendar) {
-            return EventParseUtils.findMasterRecurrenceEvent(calendar)
-                .map(EventParseUtils::floatingZone)
-                .orElse(EventParseUtils.ZONE_ID_DEFAULT);
         }
 
         private Map<Temporal, Calendar> computeCancelledCalendars(ExDateChanges changes, Calendar newCalendar) {
