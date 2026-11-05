@@ -608,6 +608,26 @@ public class BookingLinkEventIcsBuilderTest {
         assertThat(event.getProperty(Property.LOCATION)).isEmpty();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"Al^nBob", "Al^'Bob", "Al^^Bob", "^nAl", "^"})
+    void attendeeNameShouldNotGainLineBreaksOrQuotesWhenReadBack(String name) {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.empty(), FIXED_UID_GENERATOR);
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from(name, "creator@example.com"),
+            List.of(),
+            "eventTitle",
+            false,
+            "");
+
+        VEvent event = parseEvent(testee.build(request, OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, BookingEventOptions.none()).block());
+
+        assertThat(event.getAttendees().stream()
+            .map(attendee -> attendee.getParameter(Parameter.CN).map(Parameter::getValue).orElse(""))
+            .toList())
+            .allSatisfy(cn -> assertThat(cn).doesNotContain("\n", "\"", "^"));
+    }
+
     private VEvent parseEvent(BuildResult result) {
         Calendar calendar = CalendarUtil.parseIcs(result.icsBytes());
         return (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
