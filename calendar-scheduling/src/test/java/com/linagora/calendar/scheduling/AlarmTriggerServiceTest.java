@@ -44,6 +44,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -52,6 +53,8 @@ import jakarta.mail.internet.AddressException;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
+import org.apache.james.events.Event;
+import org.apache.james.events.EventListener;
 import org.apache.james.events.InVMEventBus;
 import org.apache.james.events.MemoryEventDeadLetters;
 import org.apache.james.events.RetryBackoffConfiguration;
@@ -68,6 +71,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mockito;
+import org.reactivestreams.Publisher;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.smtp.EventEmailFilter;
@@ -77,8 +81,10 @@ import com.linagora.calendar.smtp.MockSmtpServerExtension;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
 import com.linagora.calendar.storage.AlarmEvent;
+import com.linagora.calendar.storage.EventBusAlarmEvent;
 import com.linagora.calendar.storage.MemoryAlarmEventDAO;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
+import com.linagora.calendar.storage.UsernameRegistrationKey;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
@@ -115,6 +121,7 @@ public class AlarmTriggerServiceTest {
     private UpdatableTickingClock clock;
     private SettingsBasedResolver settingsResolver;
     private AlarmTriggerService testee;
+    private InVMEventBus eventBus;
 
     @BeforeEach
     void setUp() {
@@ -144,6 +151,8 @@ public class AlarmTriggerServiceTest {
 
         clock = new UpdatableTickingClock(Instant.now());
 
+        eventBus = new InVMEventBus(new InVmEventDelivery(new RecordingMetricFactory()), RETRY_BACKOFF_CONFIGURATION, new MemoryEventDeadLetters());
+
         testee = new AlarmTriggerService(
             alarmEventDAO,
             clock,
@@ -152,7 +161,7 @@ public class AlarmTriggerServiceTest {
             messageGeneratorFactory,
             new AlarmInstantFactory.Default(clock),
             mailTemplateConfig,
-            new InVMEventBus(new InVmEventDelivery(new RecordingMetricFactory()), RETRY_BACKOFF_CONFIGURATION, new MemoryEventDeadLetters())
+            eventBus
         );
 
         requestSpecification = new RequestSpecBuilder()
@@ -166,6 +175,151 @@ public class AlarmTriggerServiceTest {
     private void clearSmtpMock() {
         given(requestSpecification).delete("/smtpMails").then();
         given(requestSpecification).delete("/smtpBehaviors").then();
+    }
+
+    private static final String ICS_WITH_DUPLICATE_OVERRIDES = """
+        BEGIN:VCALENDAR
+        VERSION:2.0
+        BEGIN:VEVENT
+        UID:dup-1
+        DTSTAMP:20250701T100000Z
+        DTSTART:20250801T100000Z
+        DTEND:20250801T110000Z
+        RRULE:FREQ=DAILY;COUNT=20
+        SUMMARY:Daily master
+        ATTENDEE;PARTSTAT=ACCEPTED:mailto:attendee@abc.com
+        BEGIN:VALARM
+        TRIGGER:-PT5M
+        ACTION:EMAIL
+        END:VALARM
+        END:VEVENT
+        BEGIN:VEVENT
+        UID:dup-1
+        DTSTAMP:20250702T100000Z
+        SEQUENCE:1
+        RECURRENCE-ID:20250803T100000Z
+        DTSTART:20250803T110000Z
+        DTEND:20250803T120000Z
+        SUMMARY:Older override
+        ATTENDEE;PARTSTAT=ACCEPTED:mailto:attendee@abc.com
+        END:VEVENT
+        BEGIN:VEVENT
+        UID:dup-1
+        DTSTAMP:20250705T100000Z
+        SEQUENCE:2
+        RECURRENCE-ID:20250803T100000Z
+        DTSTART:20250803T150000Z
+        DTEND:20250803T160000Z
+        SUMMARY:Latest override
+        ATTENDEE;PARTSTAT=ACCEPTED:mailto:attendee@abc.com
+        END:VEVENT
+        END:VCALENDAR
+        """;
+
+    private static final String ICS_WITH_OVERRIDES_OF_DISTINCT_ZONES = """
+        BEGIN:VCALENDAR
+        VERSION:2.0
+        BEGIN:VEVENT
+        UID:dup-2
+        DTSTAMP:20250701T100000Z
+        DTSTART;TZID=Europe/Paris:20250801T100000
+        DTEND;TZID=Europe/Paris:20250801T110000
+        RRULE:FREQ=DAILY;COUNT=20
+        SUMMARY:Daily master
+        ATTENDEE;PARTSTAT=ACCEPTED:mailto:attendee@abc.com
+        END:VEVENT
+        BEGIN:VEVENT
+        UID:dup-2
+        DTSTAMP:20250702T100000Z
+        RECURRENCE-ID;TZID=Europe/Paris:20250803T100000
+        DTSTART;TZID=Europe/Paris:20250803T110000
+        DTEND;TZID=Europe/Paris:20250803T120000
+        SUMMARY:Override in Paris
+        ATTENDEE;PARTSTAT=ACCEPTED:mailto:attendee@abc.com
+        END:VEVENT
+        BEGIN:VEVENT
+        UID:dup-2
+        DTSTAMP:20250705T100000Z
+        RECURRENCE-ID;TZID=America/New_York:20250803T100000
+        DTSTART;TZID=America/New_York:20250803T110000
+        DTEND;TZID=America/New_York:20250803T120000
+        SUMMARY:Override in New York
+        ATTENDEE;PARTSTAT=ACCEPTED:mailto:attendee@abc.com
+        END:VEVENT
+        END:VCALENDAR
+        """;
+
+    private AlarmEvent overrideAlarm(String uid, Instant eventStart, String recurrenceId, String ics, AlarmAction action) throws AddressException {
+        return new AlarmEvent(
+            new EventUid(uid),
+            eventStart.minus(5, ChronoUnit.MINUTES),
+            eventStart,
+            RECURRING,
+            Optional.of(recurrenceId),
+            new MailAddress("attendee@abc.com"),
+            ics,
+            "/calendars/xxx/yyy/zzz.ics",
+            action);
+    }
+
+    private void assertAlarmMailSubject(AlarmEvent event, String subject) {
+        alarmEventDAO.create(event).block();
+
+        testee.sendAlarmAndCleanup(event).block();
+
+        awaitAtMost.atMost(Duration.ofSeconds(20))
+            .untilAsserted(() -> assertThat(smtpMailsResponse().getList("")).hasSize(1));
+        assertThat(smtpMailsResponse().getString("[0].message"))
+            .contains("Subject: Notification: " + subject);
+    }
+
+    private String displayedSummary(AlarmEvent event) {
+        alarmEventDAO.create(event).block();
+        AtomicReference<String> summary = new AtomicReference<>();
+        Mono.from(eventBus.register(new EventListener.ReactiveEventListener() {
+            @Override
+            public Publisher<Void> reactiveEvent(Event received) {
+                return Mono.fromRunnable(() -> summary.set(((EventBusAlarmEvent) received).eventSummary()));
+            }
+
+            @Override
+            public boolean isHandling(Event received) {
+                return received instanceof EventBusAlarmEvent;
+            }
+        }, new UsernameRegistrationKey(Username.of("attendee@abc.com")))).block();
+
+        testee.sendAlarmAndCleanup(event).block();
+
+        awaitAtMost.atMost(Duration.ofSeconds(20)).until(() -> summary.get() != null);
+        return summary.get();
+    }
+
+    @Test
+    void shouldDescribeLatestOverrideWhenTwoOverridesShareARecurrenceId() throws AddressException {
+        assertAlarmMailSubject(overrideAlarm("dup-1", clock.instant().plus(5, ChronoUnit.MINUTES), "20250803T100000Z",
+            ICS_WITH_DUPLICATE_OVERRIDES, AlarmAction.EMAIL), "Latest override");
+    }
+
+    @Test
+    void displayNotificationShouldDescribeLatestOverrideWhenTwoOverridesShareARecurrenceId() throws AddressException {
+        assertThat(displayedSummary(overrideAlarm("dup-1", clock.instant().plus(5, ChronoUnit.MINUTES), "20250803T100000Z",
+            ICS_WITH_DUPLICATE_OVERRIDES, AlarmAction.DISPLAY))).isEqualTo("Latest override");
+    }
+
+    @Test
+    void shouldDescribeTheOverrideStartingWhenTheAlarmSaysWhenRecurrenceIdsOnlyDifferByZone() throws AddressException {
+        clock.setInstant(Instant.parse("2025-08-03T08:55:00Z"));
+
+        assertAlarmMailSubject(overrideAlarm("dup-2", Instant.parse("2025-08-03T09:00:00Z"), "20250803T100000",
+            ICS_WITH_OVERRIDES_OF_DISTINCT_ZONES, AlarmAction.EMAIL), "Override in Paris");
+    }
+
+    @Test
+    void displayNotificationShouldDescribeTheOverrideStartingWhenTheAlarmSaysWhenRecurrenceIdsOnlyDifferByZone() throws AddressException {
+        clock.setInstant(Instant.parse("2025-08-03T08:55:00Z"));
+
+        assertThat(displayedSummary(overrideAlarm("dup-2", Instant.parse("2025-08-03T09:00:00Z"), "20250803T100000",
+            ICS_WITH_OVERRIDES_OF_DISTINCT_ZONES, AlarmAction.DISPLAY))).isEqualTo("Override in Paris");
     }
 
     @Test
