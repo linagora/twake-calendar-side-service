@@ -628,6 +628,49 @@ public class BookingLinkEventIcsBuilderTest {
             .allSatisfy(cn -> assertThat(cn).doesNotContain("\n", "\"", "^"));
     }
 
+    @Test
+    void buildShouldDropUnpairedSurrogatesFromEveryFreeText() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.empty(), FIXED_UID_GENERATOR);
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("Bob\uD83D", "creator@example.com"),
+            List.of(),
+            "Intro \uD83D",
+            false,
+            "Notes \uDE00");
+        BookingEventOptions options = new BookingEventOptions(Optional.of("Room \uD83D"), Optional.empty(), Optional.empty(), List.of(), List.of());
+
+        VEvent event = parseEvent(testee.build(request, OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, options).block());
+
+        assertThat(event.getSummary().getValue().strip()).isEqualTo("Intro");
+        assertThat(event.getDescription().getValue().strip()).isEqualTo("Notes");
+        assertThat(event.getLocation().getValue().strip()).isEqualTo("Room");
+        assertThat(event.getAttendees().stream()
+            .map(attendee -> attendee.getParameter(Parameter.CN).map(Parameter::getValue).orElse(""))
+            .toList())
+            .contains("Bob");
+    }
+
+    @Test
+    void buildShouldKeepAValidSurrogatePair() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.empty(), FIXED_UID_GENERATOR);
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("Bob \uD83D\uDE00", "creator@example.com"),
+            List.of(),
+            "Intro \uD83D\uDE00",
+            false,
+            "");
+
+        VEvent event = parseEvent(testee.build(request, OWNER, List.of(), Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID, false, BookingEventOptions.none()).block());
+
+        assertThat(event.getSummary().getValue()).isEqualTo("Intro \uD83D\uDE00");
+        assertThat(event.getAttendees().stream()
+            .map(attendee -> attendee.getParameter(Parameter.CN).map(Parameter::getValue).orElse(""))
+            .toList())
+            .contains("Bob \uD83D\uDE00");
+    }
+
     private VEvent parseEvent(BuildResult result) {
         Calendar calendar = CalendarUtil.parseIcs(result.icsBytes());
         return (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();

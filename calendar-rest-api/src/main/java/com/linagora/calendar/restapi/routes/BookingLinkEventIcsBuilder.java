@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
@@ -85,6 +86,7 @@ public class BookingLinkEventIcsBuilder {
     private static final String VISIO_DESCRIPTION_NOTICE = "Please do not edit this section.";
     private static final XProperty X_PROPERTY_PUBLIC = new XProperty("X-PUBLICLY-CREATED", "TRUE").add(Value.BOOLEAN);
     private static final String MAIL_TO_PREFIX = "mailto:";
+    private static final Pattern UNPAIRED_SURROGATE = Pattern.compile("\\p{Cs}");
     private static final CharMatcher TEXT_FORBIDDEN_CHARACTERS = CharMatcher.javaIsoControl().and(CharMatcher.noneOf("\n\t"));
     private static final CharMatcher PARAMETER_FORBIDDEN_CHARACTERS = CharMatcher.javaIsoControl().or(CharMatcher.anyOf("\"\\^"));
     private static final CharMatcher PARAMETER_FORBIDDEN_LEADING_CHARACTERS = CharMatcher.whitespace().or(CharMatcher.is('='));
@@ -337,7 +339,16 @@ public class BookingLinkEventIcsBuilder {
     static Optional<String> sanitizeText(String value) {
         return Optional.ofNullable(value)
             .map(text -> text.replace("\r\n", "\n").replace('\r', '\n'))
-            .map(TEXT_FORBIDDEN_CHARACTERS::removeFrom);
+            .map(TEXT_FORBIDDEN_CHARACTERS::removeFrom)
+            .map(BookingLinkEventIcsBuilder::withoutUnpairedSurrogates);
+    }
+
+    /**
+     * UTF-8 cannot encode half of a surrogate pair: {@link String#getBytes} would silently write it as '?'.
+     * Regular expressions match by code point, so that a valid pair is left alone.
+     */
+    private static String withoutUnpairedSurrogates(String value) {
+        return UNPAIRED_SURROGATE.matcher(value).replaceAll("");
     }
 
     /**
@@ -348,6 +359,7 @@ public class BookingLinkEventIcsBuilder {
      */
     private static Optional<Cn> cn(String name) {
         return Optional.ofNullable(name)
+            .map(BookingLinkEventIcsBuilder::withoutUnpairedSurrogates)
             .map(value -> PARAMETER_FORBIDDEN_CHARACTERS.replaceFrom(value, ' '))
             .map(PARAMETER_FORBIDDEN_LEADING_CHARACTERS::trimLeadingFrom)
             .filter(StringUtils::isNotBlank)

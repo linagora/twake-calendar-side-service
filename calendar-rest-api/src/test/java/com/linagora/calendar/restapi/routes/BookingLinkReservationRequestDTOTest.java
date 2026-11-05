@@ -215,6 +215,24 @@ public class BookingLinkReservationRequestDTOTest {
     }
 
     @Test
+    void toBookingRequestShouldFailWhenTitleHoldsOnlyAnUnpairedSurrogate() {
+        ReservationRequestDTO request = parse("""
+            {
+              "startUtc": "2036-01-26T09:30:00Z",
+              "creator": {
+                "name": "BOB",
+                "email": "creator@example.com"
+              },
+              "eventTitle": "\\ud83d"
+            }
+            """);
+
+        assertThatThrownBy(request::toBookingRequest)
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("'eventTitle' must not be blank");
+    }
+
+    @Test
     void toBookingRequestShouldFailWhenAdditionalAttendeesExceedLimit() {
         String additionalAttendeesJson = IntStream.range(0, MAX_ADDITIONAL_ATTENDEES + 1)
             .mapToObj(i -> """
