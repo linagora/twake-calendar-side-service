@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.Test;
@@ -313,9 +314,59 @@ class CollectedContactTest {
              "localizations": {"fr": {"organizations/work_1/name": "Acme France"}}}
             """);
 
-        byte[] result = CollectedContact.parse(input).toVCardAsBytes();
+        assertThat(organizationNames(CollectedContact.parse(input).toVCardAsBytes()))
+            .contains("Acme France");
+    }
 
-        assertThat(result).asString(StandardCharsets.UTF_8).contains("Acme France");
+    @Test
+    void shouldResolveEscapedLocalizationPointerOfARenamedId() throws Exception {
+        ObjectNode input = contact("""
+            {"@type": "Card", "version": "2.0", "uid": "contact-uid", "language": "en",
+             "organizations": {"a/b": {"@type": "Organization", "name": "Acme"}},
+             "localizations": {"fr": {"organizations/a~1b/name": "Acme France"}}}
+            """);
+
+        assertThat(organizationNames(CollectedContact.parse(input).toVCardAsBytes()))
+            .contains("Acme France");
+    }
+
+    // Parsed rather than matched as text: long vCard lines are folded, and hashed ids make them long.
+    private static List<String> organizationNames(byte[] vCard) {
+        return Ezvcard.parse(new String(vCard, StandardCharsets.UTF_8)).first()
+            .getOrganizations().stream()
+            .flatMap(organization -> organization.getValues().stream())
+            .toList();
+    }
+
+    @Test
+    void shouldRenameOrganizationReferenceOfALocalizedTitle() throws Exception {
+        ObjectNode input = contact("""
+            {"@type": "Card", "version": "2.0", "uid": "contact-uid", "language": "en",
+             "organizations": {"work_1": {"@type": "Organization", "name": "Acme"}},
+             "titles": {"title_1": {"@type": "Title", "kind": "title", "name": "Engineer", "organizationId": "work_1"}},
+             "localizations": {"fr": {
+               "titles/title_1": {"@type": "Title", "kind": "title", "name": "Ingenieur", "organizationId": "work_1"},
+               "titles/other_1/organizationId": "work_1"}}}
+            """);
+
+        ObjectNode result = contact(CollectedContact.parse(input).toJson());
+
+        assertThat(result.toString()).doesNotContain("work_1", "title_1", "other_1");
+        assertThat(CollectedContact.parse(CollectedContact.parse(input).toVCardAsBytes()).uid().value())
+            .isEqualTo("contact-uid");
+    }
+
+    @Test
+    void shouldKeepPatchesOfOtherPropertiesUntouched() throws Exception {
+        ObjectNode input = contact("""
+            {"@type": "Card", "version": "2.0", "uid": "contact-uid", "language": "en",
+             "name": {"@type": "Name", "full": "Bob"},
+             "localizations": {"fr": {"name/full": "Robert"}}}
+            """);
+
+        ObjectNode result = contact(CollectedContact.parse(input).toJson());
+
+        assertThat(result.at("/localizations/fr/name~1full").asText()).isEqualTo("Robert");
     }
 
     @Test
