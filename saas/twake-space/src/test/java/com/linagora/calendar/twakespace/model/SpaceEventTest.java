@@ -50,6 +50,15 @@ class SpaceEventTest {
     }
 
     @Test
+    void deserializeShouldFailOnANullId() {
+        String body = """
+            {"id": null, "timestamp": "2026-10-06T10:00:00.000Z"}""";
+
+        assertThatThrownBy(() -> SpaceEvent.deserialize(body.getBytes(StandardCharsets.UTF_8)))
+            .isInstanceOf(UnprocessableSpaceEventException.class);
+    }
+
+    @Test
     void deserializeShouldFailOnABlankId() {
         String body = """
             {"organizationId": "org", "id": " ", "name": "Marketing"}""";
