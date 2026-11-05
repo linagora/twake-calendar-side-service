@@ -19,6 +19,7 @@
 package com.linagora.calendar.saas.contact;
 
 import static com.linagora.calendar.saas.contact.CollectedContact.CollectedContactException;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -35,6 +36,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSId;
+
+import ezvcard.Ezvcard;
+import ezvcard.VCard;
 
 class CollectedContactTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -238,6 +242,80 @@ class CollectedContactTest {
         assertThat(CollectedContact.parse(contact(json)).toJson())
             .isEqualTo(CollectedContact.parse(contact(json)).toJson())
             .doesNotContain("work_1");
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void shouldPreserveBothEmailsWhenAnIdMatchesTheHashOfAnotherId(boolean reverseOrder) throws Exception {
+        ObjectNode input = contact("""
+            {"@type": "Card", "version": "2.0", "uid": "contact-uid", "emails": {}}
+            """);
+        ObjectNode emails = (ObjectNode) input.get("emails");
+        // SHA-1 of "work_1": this is also a valid, independent JSContact id.
+        String hashedId = "df48c7e96343e2216562834e1856020763c00e54";
+        ObjectNode firstEmail = contact("""
+            {"@type": "EmailAddress", "address": "first@example.com"}
+            """);
+        ObjectNode secondEmail = contact("""
+            {"@type": "EmailAddress", "address": "second@example.com"}
+            """);
+        if (reverseOrder) {
+            emails.set(hashedId, secondEmail);
+            emails.set("work_1", firstEmail);
+        } else {
+            emails.set("work_1", firstEmail);
+            emails.set(hashedId, secondEmail);
+        }
+
+        CollectedContact result = CollectedContact.parse(input);
+
+        assertThatJson(result.toJson()).inPath("emails").isObject().hasSize(2);
+        assertThat(Ezvcard.parse(new String(result.toVCardAsBytes(), StandardCharsets.UTF_8)).first().getEmails())
+            .extracting(email -> email.getValue())
+            .containsExactlyInAnyOrder("first@example.com", "second@example.com");
+    }
+
+    @Test
+    void shouldKeepTitleReferenceToAnExistingOrganization() throws Exception {
+        ObjectNode input = contact("""
+            {"@type": "Card", "version": "2.0", "uid": "contact-uid",
+             "organizations": {"work_1": {"@type": "Organization", "name": "Acme"}},
+             "titles": {"title1": {"@type": "Title", "kind": "title", "name": "Engineer", "organizationId": "work_1"}}}
+            """);
+
+        ObjectNode result = contact(CollectedContact.parse(input).toJson());
+
+        String organizationId = result.at("/titles/title1/organizationId").asText();
+        assertThatJson(result).inPath("organizations").isObject().containsKey(organizationId);
+    }
+
+    @Test
+    void shouldKeepTitleAndOrganizationInTheSameVCardGroup() throws Exception {
+        ObjectNode input = contact("""
+            {"@type": "Card", "version": "2.0", "uid": "contact-uid",
+             "organizations": {"work_1": {"@type": "Organization", "name": "Acme"}},
+             "titles": {"title1": {"@type": "Title", "kind": "title", "name": "Engineer", "organizationId": "work_1"}}}
+            """);
+
+        byte[] vCard = CollectedContact.parse(input).toVCardAsBytes();
+        VCard result = Ezvcard.parse(new String(vCard, StandardCharsets.UTF_8)).first();
+
+        assertThat(result.getTitles().getFirst().getGroup())
+            .isNotNull()
+            .isEqualTo(result.getOrganizations().getFirst().getGroup());
+    }
+
+    @Test
+    void shouldKeepLocalizedOrganizationNameInTheVCard() throws Exception {
+        ObjectNode input = contact("""
+            {"@type": "Card", "version": "2.0", "uid": "contact-uid", "language": "en",
+             "organizations": {"work_1": {"@type": "Organization", "name": "Acme"}},
+             "localizations": {"fr": {"organizations/work_1/name": "Acme France"}}}
+            """);
+
+        byte[] result = CollectedContact.parse(input).toVCardAsBytes();
+
+        assertThat(result).asString(StandardCharsets.UTF_8).contains("Acme France");
     }
 
     @Test
