@@ -64,6 +64,7 @@ import com.linagora.calendar.api.EventParticipationActionLinkFactory.ActionLinks
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.Mail.UnknownUserHandling;
 import com.linagora.calendar.smtp.MailSender;
+import com.linagora.calendar.smtp.MailUsernames;
 import com.linagora.calendar.smtp.SmtpSendingFailedException.UnknownUser;
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.MessageGenerator;
@@ -340,7 +341,7 @@ public class EventMailHandler {
 
             MailAddress fromAddress = event.base().senderEmail();
 
-            return messageGenerator.resolveInternetAddress(Username.fromMailAddress(fromAddress))
+            return messageGenerator.resolveInternetAddress(fromAddress)
                 .flatMap(fromInternetAddress -> {
                     Map<String, Object> model = modelBuilder.senderDisplayName(fromInternetAddress.getPersonal()).buildAsMap();
                     return messageGenerator.generate(recipientUser, fromInternetAddress, model, attachments);
@@ -531,7 +532,9 @@ public class EventMailHandler {
     private Mono<Mail> prepareEventMail(EventMessageGenerator generator, CalendarEventNotificationEmail event,
                                         UnknownUserHandling unknownUserHandling) {
         Username recipientUser = Username.fromMailAddress(event.recipientEmail());
-        return settingsResolver.resolveOrDefault(recipientUser, Username.fromMailAddress(event.senderEmail()))
+        return MailUsernames.asUsername(event.senderEmail())
+            .map(sender -> settingsResolver.resolveOrDefault(recipientUser, sender))
+            .orElseGet(() -> settingsResolver.resolveOrDefault(recipientUser))
             .flatMap(generator::generate)
             .map(message -> new Mail(MaybeSender.of(event.senderEmail()),
                 ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), message, unknownUserHandling));

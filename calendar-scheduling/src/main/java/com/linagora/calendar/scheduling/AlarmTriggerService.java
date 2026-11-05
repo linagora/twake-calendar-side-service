@@ -48,6 +48,7 @@ import org.slf4j.LoggerFactory;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
+import com.linagora.calendar.smtp.MailUsernames;
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
@@ -114,6 +115,11 @@ public class AlarmTriggerService {
     }
 
     public Mono<Void> sendAlarmAndCleanup(AlarmEvent alarmEvent) {
+        if (MailUsernames.asUsername(alarmEvent.recipient()).isEmpty()) {
+            LOGGER.warn("Alarm of event {} has a recipient that is not a username: {}, dropping it",
+                alarmEvent.eventUid().value(), alarmEvent.recipient().asString());
+            return alarmEventDAO.delete(alarmEvent.eventUid(), alarmEvent.recipient());
+        }
         Instant now = clock.instant().truncatedTo(ChronoUnit.MILLIS);
         return Mono.fromCallable(() -> CalendarUtil.parseIcs(alarmEvent.ics()))
             // Only parsing failures should drop the alarm; downstream failures must remain retryable.

@@ -22,6 +22,7 @@ import static com.linagora.calendar.amqp.model.CalendarEventNotificationEmail.GE
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -39,6 +40,7 @@ import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.amqp.model.CalendarEventInviteNotificationEmail;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
+import com.linagora.calendar.smtp.MailUsernames;
 import com.linagora.calendar.smtp.template.Language;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
 import com.linagora.calendar.smtp.template.MessageGenerator;
@@ -100,13 +102,16 @@ public class MailDeliveryFailureNotifier {
         MailAddress organizer = EventParseUtils.getOrganizer(vEvent)
             .map(Person::email)
             .orElse(senderEmail);
-        if (!HeaderAddressValidator.isWritableInHeader(organizer)) {
+        Optional<Username> maybeOrganizerUser = MailUsernames.asUsername(organizer);
+        if (!HeaderAddressValidator.isWritableInHeader(organizer) || maybeOrganizerUser.isEmpty()) {
             LOGGER.warn("Invitation to {} could not be delivered; cannot notify organizer: invalid address '{}'",
                 recipient, organizer.asString());
             return Mono.empty();
         }
-        Username organizerUser = Username.fromMailAddress(organizer);
-        return settingsResolver.resolveOrDefault(organizerUser, Username.fromMailAddress(senderEmail))
+        Username organizerUser = maybeOrganizerUser.get();
+        return MailUsernames.asUsername(senderEmail)
+            .map(sender -> settingsResolver.resolveOrDefault(organizerUser, sender))
+            .orElseGet(() -> settingsResolver.resolveOrDefault(organizerUser))
             .flatMap(settings -> generateMail(recipient, failedSubject, organizer, organizerUser, settings)
                 .flatMap(mailSenderFactory::send))
             .doOnSuccess(ignored -> LOGGER.warn("Invitation to {} could not be delivered; notified organizer {}",

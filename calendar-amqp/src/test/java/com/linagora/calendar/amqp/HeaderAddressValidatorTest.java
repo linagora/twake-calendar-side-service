@@ -21,6 +21,7 @@ package com.linagora.calendar.amqp;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.apache.james.core.MailAddress;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -48,6 +49,17 @@ class HeaderAddressValidatorTest {
     @ValueSource(strings = {"bob@example.com˕", "bob@exa˚mple.com"})
     void shouldRejectAddressJakartaMailCannotParse(String address) {
         assertThat(HeaderAddressValidator.isWritableInHeader(address)).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"$rg@example.com", "-bob@example.com", "pro", ""})
+    void shouldNotBeAValidRecipient(String address) {
+        assertThat(HeaderAddressValidator.isValidRecipient(address)).isFalse();
+    }
+
+    @Test
+    void shouldBeAValidRecipient() {
+        assertThat(HeaderAddressValidator.isValidRecipient("bob@domain.tld")).isTrue();
     }
 
     @ParameterizedTest

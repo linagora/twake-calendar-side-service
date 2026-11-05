@@ -169,6 +169,38 @@ public class AlarmTriggerServiceTest {
     }
 
     @Test
+    void shouldDropAnAlarmWhoseRecipientIsNotAUsername() throws AddressException {
+        Instant now = clock.instant();
+        MailAddress recipient = new MailAddress("$rg@abc.com");
+        AlarmEvent event = new AlarmEvent(
+            new EventUid("event-uid-not-a-username"),
+            now.minus(10, ChronoUnit.MINUTES),
+            now.plus(10, ChronoUnit.MINUTES),
+            NO_RECURRING,
+            Optional.empty(),
+            recipient,
+            """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event-uid-not-a-username
+            DTSTART:20250801T100000Z
+            DTEND:20250801T110000Z
+            SUMMARY:Alarm Test Event
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:$rg@abc.com
+            END:VEVENT
+            END:VCALENDAR
+            """,
+            "/calendars/xxx/yyy/zzz.ics",
+            AlarmAction.EMAIL);
+        alarmEventDAO.create(event).block();
+
+        testee.sendAlarmAndCleanup(event).block();
+
+        assertThat(alarmEventDAO.find(event.eventUid(), recipient).blockOptional()).isEmpty();
+    }
+
+    @Test
     void shouldSendAlarmEmailWhenValidAlarmEvent() throws AddressException {
         Instant now = clock.instant();
         AlarmEvent event = new AlarmEvent(

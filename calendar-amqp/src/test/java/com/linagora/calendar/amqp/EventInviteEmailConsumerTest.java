@@ -397,6 +397,29 @@ public class EventInviteEmailConsumerTest {
             });
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"$rg@example.com", "-bob@example.com"})
+    void shouldAckInvalidRecipientInvitationWhoseOrganizerIsNotAValidUsername(String icsOrganizer) throws Exception {
+        publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_REQUEST, IS_NEW_EVENT, INVALID_RECIPIENT, icsOrganizer));
+
+        calmlyAwait.during(Duration.ofSeconds(3)).atMost(Duration.ofSeconds(30))
+            .untilAsserted(() -> {
+                assertThat(deadLetteredMessageCount()).isZero();
+                assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty();
+            });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"$rg@example.com", "-bob@example.com"})
+    void shouldAckInvitationWhoseRecipientIsNotAValidUsername(String recipient) throws Exception {
+        publishNotificationEmailMessage(invalidRecipientMessage(Method.VALUE_REQUEST, IS_NEW_EVENT, recipient));
+
+        awaitAtMost.untilAsserted(() -> {
+            assertThat(deadLetteredMessageCount()).isZero();
+            assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1);
+        });
+    }
+
     @Test
     void shouldNotifyOrganizerWhenNewInvitationHasNoRecipientEmail() throws Exception {
         String eventUid = UUID.randomUUID().toString();
