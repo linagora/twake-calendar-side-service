@@ -443,8 +443,12 @@ public interface AlarmInstantFactory {
             }
 
             // Without COUNT, ical4j skips the occurrences before the period start: the cost does not depend on how
-            // far in the past DTSTART is.
+            // far in the past DTSTART is, up to what it can skip. A series further away has no computable alarm.
             private Stream<Temporal> expand(Temporal periodStart, Temporal periodEnd, int maxCount) {
+                if (!RecurSkipGuard.canSkip(recur, seed, periodStart)) {
+                    LOGGER.warn("Cannot expand {} from {} up to {}: no alarm computed", recur, seed, periodStart);
+                    return Stream.empty();
+                }
                 return recur.getDatesAsStream(seed, periodStart, periodEnd, maxCount)
                     .map(Default::normalizeTemporal);
             }

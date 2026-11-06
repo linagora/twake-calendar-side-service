@@ -57,7 +57,30 @@ import net.fortuna.ical4j.model.parameter.PartStat;
 import net.fortuna.ical4j.model.property.Description;
 import net.fortuna.ical4j.model.property.RecurrenceId;
 
+
 class EventParseUtilsTest {
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "RRULE:FREQ=SECONDLY",
+        "RRULE:FREQ=DAILY\nEXRULE:FREQ=SECONDLY"
+    })
+    void createInstanceVEventShouldRefuseARuleItCannotSkipAlong(String rule) {
+        VEvent master = (VEvent) CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-uid@test
+            DTSTART:19800101T000000Z
+            %s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(rule)).getComponents().getFirst();
+
+        assertTimeoutPreemptively(Duration.ofSeconds(5),
+            () -> assertThatThrownBy(() -> EventParseUtils.createInstanceVEvent(master, Instant.parse("2026-04-08T10:00:00Z")))
+                .isInstanceOf(IllegalArgumentException.class));
+    }
+
 
     @Test
     void getZoneIdFromStartDateShouldRejectMissingDtStart() {
