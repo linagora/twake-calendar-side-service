@@ -23,8 +23,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.temporal.Temporal;
+import java.util.Map;
 
 import net.fortuna.ical4j.model.Recur;
+import net.fortuna.ical4j.transform.recurrence.Frequency;
 
 /**
  * Without COUNT, ical4j reaches the start of a period by doubling an int multiplier of the rule's period. It can only
@@ -33,12 +35,20 @@ import net.fortuna.ical4j.model.Recur;
  */
 final class RecurSkipGuard {
     private static final long MAX_SKIPPED_UNITS = 1L << 30;
+    private static final Map<Frequency, Duration> SHORTEST_UNIT = Map.of(
+        Frequency.SECONDLY, Duration.ofSeconds(1),
+        Frequency.MINUTELY, Duration.ofMinutes(1),
+        Frequency.HOURLY, Duration.ofHours(1),
+        Frequency.DAILY, Duration.ofDays(1),
+        Frequency.WEEKLY, Duration.ofDays(7),
+        Frequency.MONTHLY, Duration.ofDays(28),
+        Frequency.YEARLY, Duration.ofDays(365));
 
     static boolean canSkip(Recur<?> recur, Temporal seed, Temporal periodStart) {
         if (recur.getCount() > 0) {
             return true;
         }
-        return Duration.between(instant(seed), instant(periodStart)).getSeconds() / unitSeconds(recur) < MAX_SKIPPED_UNITS;
+        return Duration.between(instant(seed), instant(periodStart)).dividedBy(SHORTEST_UNIT.get(recur.getFrequency())) < MAX_SKIPPED_UNITS;
     }
 
     private static Instant instant(Temporal temporal) {
@@ -46,18 +56,6 @@ final class RecurSkipGuard {
             return date.atStartOfDay(ZoneOffset.UTC).toInstant();
         }
         return Instant.from(temporal);
-    }
-
-    private static long unitSeconds(Recur<?> recur) {
-        return switch (recur.getFrequency()) {
-            case SECONDLY -> 1L;
-            case MINUTELY -> Duration.ofMinutes(1).getSeconds();
-            case HOURLY -> Duration.ofHours(1).getSeconds();
-            case DAILY -> Duration.ofDays(1).getSeconds();
-            case WEEKLY -> Duration.ofDays(7).getSeconds();
-            case MONTHLY -> Duration.ofDays(28).getSeconds();
-            case YEARLY -> Duration.ofDays(365).getSeconds();
-        };
     }
 
     private RecurSkipGuard() {
