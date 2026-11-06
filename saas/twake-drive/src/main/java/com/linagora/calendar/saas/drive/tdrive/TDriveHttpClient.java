@@ -30,9 +30,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.saas.drive.api.AttachmentStorageException;
 import com.linagora.calendar.saas.drive.api.AttachmentStorageException.Reason;
 
+import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ConnectTimeoutException;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpStatusClass;
 import io.netty.handler.ssl.SslContext;
@@ -47,6 +49,18 @@ final class TDriveHttpClient {
         @Override
         public String toString() {
             return "Request[method=" + method + ", credentials=REDACTED]";
+        }
+    }
+
+    record RequestBody(String contentType, byte[] payload, String checksum) {
+        private static final RequestBody EMPTY = new RequestBody(null, null, null);
+
+        RequestBody(String contentType, byte[] payload) {
+            this(contentType, payload, null);
+        }
+
+        static RequestBody json(byte[] payload) {
+            return new RequestBody(HttpHeaderValues.APPLICATION_JSON.toString(), payload);
         }
     }
 
@@ -75,8 +89,13 @@ final class TDriveHttpClient {
     }
 
     <T> Mono<T> request(Request request, Class<T> responseType, String operation) {
-        return Mono.defer(() -> withHeaders(request)
+        return request(request, RequestBody.EMPTY, responseType, operation);
+    }
+
+    <T> Mono<T> request(Request request, RequestBody body, Class<T> responseType, String operation) {
+        return Mono.defer(() -> withHeaders(request, body)
             .request(request.method()).uri(request.url())
+            .send(body.payload() == null ? Mono.empty() : Mono.fromSupplier(() -> Unpooled.wrappedBuffer(body.payload())))
             .responseSingle((response, content) -> content.asString(StandardCharsets.UTF_8).defaultIfEmpty("")
                 .flatMap(value -> parseResponse(response.status().code(), value, responseType, operation))))
             .timeout(timeout)
@@ -84,10 +103,16 @@ final class TDriveHttpClient {
                 new AttachmentStorageException(transportFailureReason(error), operation + ": request failed", error));
     }
 
-    private HttpClient withHeaders(Request request) {
+    private HttpClient withHeaders(Request request, RequestBody body) {
         return client.headers(headers -> {
             headers.set(HttpHeaderNames.ACCEPT, request.accept());
             headers.set(HttpHeaderNames.AUTHORIZATION, "Bearer " + request.bearer());
+            if (body.contentType() != null) {
+                headers.set(HttpHeaderNames.CONTENT_TYPE, body.contentType());
+            }
+            if (body.checksum() != null) {
+                headers.set(HttpHeaderNames.CONTENT_MD5, body.checksum());
+            }
         });
     }
 
