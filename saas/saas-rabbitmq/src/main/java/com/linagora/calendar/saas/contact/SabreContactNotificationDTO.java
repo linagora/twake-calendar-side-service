@@ -19,16 +19,32 @@
 package com.linagora.calendar.saas.contact;
 
 import java.io.IOException;
+import java.util.Optional;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 
+/**
+ * Sabre publishes one notification for the address book holding the contact, and one for each address book
+ * subscribed to or delegated from it: the latter carry the {@code sourcePath} of the contact they mirror.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record SabreContactNotificationDTO(@JsonProperty(required = true) String path,
                                           @JsonProperty(required = true) String owner,
-                                          @JsonProperty(required = true) String carddata) {
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+                                          @JsonProperty(required = true) String carddata,
+                                          @JsonProperty(required = true) long syncToken,
+                                          @JsonProperty(required = true) String etag,
+                                          Optional<String> sourcePath) {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+        .registerModule(new Jdk8Module())
+        .enable(DeserializationFeature.FAIL_ON_NULL_FOR_PRIMITIVES);
+
+    public boolean isMirrorCopy() {
+        return sourcePath.isPresent();
+    }
 
     public static SabreContactNotificationDTO deserialize(byte[] body) {
         try {

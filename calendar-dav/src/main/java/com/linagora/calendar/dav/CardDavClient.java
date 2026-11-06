@@ -888,9 +888,17 @@ public class CardDavClient extends DavClient {
     }
 
     public Mono<SyncToken> retrieveSyncToken(Username username, AddressBookURL addressBookURL) {
+        return retrieveSyncToken(Mono.just(httpClientWithImpersonation(username)), username.asString(), addressBookURL);
+    }
+
+    public Mono<SyncToken> retrieveDomainAddressBookSyncToken(OpenPaaSId domainId, AddressBookURL addressBookURL) {
+        return retrieveSyncToken(httpClientWithTechnicalToken(domainId), "technical user of domain " + domainId.value(), addressBookURL);
+    }
+
+    private Mono<SyncToken> retrieveSyncToken(Mono<HttpClient> authenticatedClient, String requester, AddressBookURL addressBookURL) {
         String uri = addressBookURL.asUri().toASCIIString() + "?" + LIMIT_PARAM + "=0";
 
-        return httpClientWithImpersonation(username)
+        return authenticatedClient.flatMap(client -> client
             .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, HttpHeaderValues.APPLICATION_JSON))
             .get()
             .uri(uri)
@@ -902,7 +910,7 @@ public class CardDavClient extends DavClient {
                         .switchIfEmpty(Mono.error(() -> new DavClientException("Missing '%s' when retrieving sync token for: %s".formatted(SYNC_TOKEN_PROPERTY, uri))));
                     case HttpStatus.SC_NOT_FOUND -> Mono.error(new AddressBookNotFoundException(addressBookURL));
                     case HttpStatus.SC_FORBIDDEN -> {
-                        LOGGER.debug("User {} has no rights to read address book {}", username.asString(), uri);
+                        LOGGER.debug("{} has no rights to read address book {}", requester, uri);
                         yield Mono.empty();
                     }
                     default -> Mono.error(new DavClientException("""
@@ -910,7 +918,7 @@ public class CardDavClient extends DavClient {
                         Status: %d
                         Body: %s
                         """.formatted(uri, response.status().code(), body)));
-                }));
+                })));
     }
 
     private Optional<SyncToken> parseSyncToken(String body) throws JsonProcessingException {

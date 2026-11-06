@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
@@ -39,6 +40,8 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 
 class CommonContactOutboundEventConverterTest {
     private static final String CONTACT_PATH = "addressbooks/principal/collected/contact-resource.vcf";
+    private static final long SYNC_TOKEN = 42L;
+    private static final String ETAG = "\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\"";
 
     private CommonContactEventConverter testee;
     private MemoryOpenPaaSDomainDAO domainDAO;
@@ -95,7 +98,7 @@ class CommonContactOutboundEventConverterTest {
                 UID:contact-uid
                 FN:Alice
                 END:VCARD
-                """)).block();
+                """, SYNC_TOKEN, ETAG, Optional.empty())).block();
 
         assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8)).isEqualTo("""
             {
@@ -103,6 +106,8 @@ class CommonContactOutboundEventConverterTest {
               "action": "ADD",
               "path": "addressbooks/principal/collected/contact-resource.vcf",
               "uid": "contact-uid",
+              "revision": 42,
+              "etag": "\\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\\"",
               "payload": {
                 "@type": "Card",
                 "version": "2.0",
@@ -128,7 +133,7 @@ class CommonContactOutboundEventConverterTest {
                 UID:contact-uid
                 FN:Alice
                 END:VCARD
-                """)).block();
+                """, SYNC_TOKEN, ETAG, Optional.empty())).block();
 
         assertThat(event.audience()).isEqualTo(new CommonContactOutboundEvent.Audience.User(owner.username()));
     }
@@ -144,7 +149,7 @@ class CommonContactOutboundEventConverterTest {
                 UID:contact-uid
                 FN:Alice
                 END:VCARD
-                """)).block();
+                """, SYNC_TOKEN, ETAG, Optional.empty())).block();
 
         assertThat(event.audience()).isEqualTo(new CommonContactOutboundEvent.Audience.Domain(domain.domain()));
     }
@@ -165,7 +170,7 @@ class CommonContactOutboundEventConverterTest {
                 EMAIL:alice@org.example.com
                 X-TWAKE-WORKPLACE-FQDN:alice.org.example.com
                 END:VCARD
-                """)).block();
+                """, SYNC_TOKEN, ETAG, Optional.empty())).block();
 
         // Then the workspace host is published among the vCard properties, for the stack to build the cozy URL
         assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8))
@@ -188,7 +193,7 @@ class CommonContactOutboundEventConverterTest {
                 FN:Alice
                 REV:20261030T101500Z
                 END:VCARD
-                """)).block();
+                """, SYNC_TOKEN, ETAG, Optional.empty())).block();
 
         assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8))
             .inPath("$.payload.updated")
@@ -208,7 +213,7 @@ class CommonContactOutboundEventConverterTest {
                 BDAY:19850412
                 ANNIVERSARY:20100605
                 END:VCARD
-                """)).block();
+                """, SYNC_TOKEN, ETAG, Optional.empty())).block();
 
         assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8))
             .inPath("$.payload.anniversaries")
@@ -224,7 +229,7 @@ class CommonContactOutboundEventConverterTest {
             UID:contact-uid
             FN:contact-uid
             END:VCARD
-            """);
+            """, SYNC_TOKEN, ETAG);
 
         assertThat(event.payload().path("name").path("full").asText(null))
             .isEqualTo("contact-uid");
@@ -239,7 +244,7 @@ class CommonContactOutboundEventConverterTest {
             FN:contact-uid
             N:Martin;Alice;;;
             END:VCARD
-            """);
+            """, SYNC_TOKEN, ETAG);
 
         assertThat(event.payload().path("name").path("full").asText(null))
             .isEqualTo("contact-uid");
@@ -255,7 +260,7 @@ class CommonContactOutboundEventConverterTest {
                 VERSION:4.0
                 FN:Alice
                 END:VCARD
-                """)).block())
+                """, SYNC_TOKEN, ETAG, Optional.empty())).block())
             .isInstanceOf(CommonContactEventConversionException.class);
     }
 
@@ -268,7 +273,7 @@ class CommonContactOutboundEventConverterTest {
                 UID:contact-uid
                 FN:Alice
                 END:VCARD
-                """)).block())
+                """, SYNC_TOKEN, ETAG, Optional.empty())).block())
             .isInstanceOf(CommonContactEventConversionException.class);
     }
 
@@ -277,7 +282,7 @@ class CommonContactOutboundEventConverterTest {
         OpenPaaSUser owner = userDAO.add(Username.of("owner@linagora.com")).block();
 
         assertThatThrownBy(() -> testee.convert(Action.ADD,
-            new SabreContactNotificationDTO(CONTACT_PATH, "principals/users/" + owner.id().value(), "not-a-vcard")).block())
+            new SabreContactNotificationDTO(CONTACT_PATH, "principals/users/" + owner.id().value(), "not-a-vcard", SYNC_TOKEN, ETAG, Optional.empty())).block())
             .isInstanceOf(CommonContactEventConversionException.class);
     }
 

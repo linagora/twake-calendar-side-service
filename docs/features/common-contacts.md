@@ -42,6 +42,8 @@ Sample payload:
   "action": "ADD",
   "path": "addressbooks/64d2a99f1d4ddc4e88e4e001/contacts/contact-uid.vcf",
   "uid": "contact-uid",
+  "revision": 1234,
+  "etag": "\"5d41402abc4b2a76b9719d911017c592\"",
   "payload": {
     "@type": "Card",
     "version": "2.0",
@@ -57,9 +59,21 @@ Sample payload:
 - Event fields:
   - `audience`: an object containing `user`, `domain`, or neither.
   - `action`: `ADD`, `UPDATE`, or `DELETE`, derived from the source exchange.
-  - `path`: the contact resource path supplied by Sabre.
+  - `path`: the contact resource path supplied by Sabre, in the address book holding the contact.
   - `uid`: the vCard UID.
+  - `revision`: the sync token of the address book holding the contact, after the change. It grows with every change
+    of the address book.
+  - `etag`: the etag of the contact. For `DELETE`, the one of the deleted contact.
   - `payload`: the JSContact `Card` (RFC 9553).
+
+A contact belongs to the owner of its address book: whoever writes it, and whichever way, one event is published, on the
+path of that address book and with its owner as audience. The copies of the contact in the address books subscribed to,
+or delegated from, that address book are not published (Sabre notifications carrying a `sourcePath`).
+
+Events can be delivered out of order. Applications should drop an event whose `revision` is lower than the one they
+hold for its `path`, and keep the revision of a deleted contact so that a late `ADD` or `UPDATE` does not bring it back.
+Republished contacts carry the revision of their address book when the republication read it, before reading the
+contacts: an unchanged contact comes with a higher `revision` but the same `etag`.
 
 Deleting an address book emits one `DELETE` event for the whole address book. Its `audience` is resolved
 from the Sabre `owner`, and its `path` identifies the address book. The event omits `uid` and `payload`:

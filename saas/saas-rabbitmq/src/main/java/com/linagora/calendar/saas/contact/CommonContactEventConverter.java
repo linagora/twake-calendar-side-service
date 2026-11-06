@@ -71,10 +71,10 @@ public class CommonContactEventConverter {
             .map(audience -> new AddressBookDeletedEvent(audience, URI.create(notification.path())));
     }
 
-    public ContactChangedEvent convert(Action action, Audience audience, String path, String cardData) {
+    public ContactChangedEvent convert(Action action, Audience audience, String path, String cardData, long revision, String etag) {
         try {
             ConvertedContact convertedContact = convertVCard(cardData);
-            return new ContactChangedEvent(audience, action, URI.create(path), convertedContact.uid(), convertedContact.payload());
+            return new ContactChangedEvent(audience, action, URI.create(path), convertedContact.uid(), revision, etag, convertedContact.payload());
         } catch (CommonContactEventConversionException e) {
             throw e;
         } catch (Exception | LinkageError e) {
@@ -84,7 +84,7 @@ public class CommonContactEventConverter {
     }
 
     private ContactChangedEvent convertContact(Action action, SabreContactNotificationDTO notification, Audience audience) {
-        return convert(action, audience, notification.path(), notification.carddata());
+        return convert(action, audience, notification.path(), notification.carddata(), notification.syncToken(), notification.etag());
     }
 
     private ConvertedContact convertVCard(String cardData) {

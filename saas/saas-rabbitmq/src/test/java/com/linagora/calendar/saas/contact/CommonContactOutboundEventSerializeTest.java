@@ -57,7 +57,7 @@ class CommonContactOutboundEventSerializeTest {
             """, ObjectNode.class);
         CommonContactOutboundEvent event = new ContactChangedEvent(new CommonContactOutboundEvent.Audience.User(Username.of("alice@linagora.com")), CommonContactOutboundEvent.Action.ADD,
             URI.create("addressbooks/alice/collected"), new ContactUid("contact-uid"),
-            jsContact);
+            42L, "\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\"", jsContact);
 
         String actual = new String(event.serialize(), StandardCharsets.UTF_8);
 
@@ -67,6 +67,8 @@ class CommonContactOutboundEventSerializeTest {
               "action": "ADD",
               "path": "addressbooks/alice/collected",
               "uid": "contact-uid",
+              "revision": 42,
+              "etag": "\\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\\"",
               "payload": {
                 "version": "1.0",
                 "uid": "contact-uid",
@@ -79,7 +81,8 @@ class CommonContactOutboundEventSerializeTest {
     @Test
     void shouldOmitContactDataAndKeepEmptyAudience() throws Exception {
         CommonContactOutboundEvent event = new ContactChangedEvent(new CommonContactOutboundEvent.Audience.Unknown(), CommonContactOutboundEvent.Action.DELETE,
-            URI.create("addressbooks/alice/collected"), new ContactUid("contact-uid"), null);
+            URI.create("addressbooks/alice/collected"), new ContactUid("contact-uid"),
+            42L, "\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\"", null);
 
         String actual = new String(event.serialize(), StandardCharsets.UTF_8);
 
@@ -88,7 +91,9 @@ class CommonContactOutboundEventSerializeTest {
               "audience": {},
               "action": "DELETE",
               "path": "addressbooks/alice/collected",
-              "uid": "contact-uid"
+              "uid": "contact-uid",
+              "revision": 42,
+              "etag": "\\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\\""
             }
             """);
     }
@@ -96,14 +101,17 @@ class CommonContactOutboundEventSerializeTest {
     @Test
     void shouldSerializeDomainAudience() throws Exception {
         CommonContactOutboundEvent event = new ContactChangedEvent(new Domain(org.apache.james.core.Domain.of("linagora.com")), CommonContactOutboundEvent.Action.ADD,
-            URI.create("addressbooks/domain/domain-members/contact-uid.vcf"), new ContactUid("contact-uid"), null);
+            URI.create("addressbooks/domain/domain-members/contact-uid.vcf"), new ContactUid("contact-uid"),
+            42L, "\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\"", null);
 
         assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8)).isEqualTo("""
             {
               "audience": { "domain": "linagora.com" },
               "action": "ADD",
               "path": "addressbooks/domain/domain-members/contact-uid.vcf",
-              "uid": "contact-uid"
+              "uid": "contact-uid",
+              "revision": 42,
+              "etag": "\\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\\""
             }
             """);
     }

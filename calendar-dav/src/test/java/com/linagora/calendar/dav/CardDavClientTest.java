@@ -223,6 +223,28 @@ public class CardDavClientTest {
     }
 
     @Test
+    void retrieveDomainAddressBookSyncTokenShouldReturnCurrentAddressBookToken() {
+        // Given a domain members address book
+        OpenPaaSDomain domain = createNewDomainMemberAddressBook();
+        AddressBookURL addressBookURL = new AddressBookURL(domain.id(), CardDavClient.DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
+        SyncToken initialToken = testee.retrieveDomainAddressBookSyncToken(domain.id(), addressBookURL).block();
+
+        // When a contact is added to it
+        String vcardUid = UUID.randomUUID().toString();
+        testee.upsertContactDomainMembers(domain.id(), vcardUid, """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:%s
+            FN:Domain Member
+            END:VCARD
+            """.formatted(vcardUid).getBytes(StandardCharsets.UTF_8)).block();
+
+        // Then the sync token read with the technical token of the domain moves forward
+        SyncToken updatedToken = testee.retrieveDomainAddressBookSyncToken(domain.id(), addressBookURL).block();
+        assertThat(Long.parseLong(updatedToken.value())).isGreaterThan(Long.parseLong(initialToken.value()));
+    }
+
+    @Test
     void countContactsShouldReturnZeroWhenAddressBookIsEmpty() {
         assertThat(testee.countContacts(user.username(), user.id(), "contacts").block())
             .isEqualTo(0L);
@@ -847,6 +869,7 @@ public class CardDavClientTest {
             .satisfies(contact -> {
                 assertThat(contact.href().toASCIIString())
                     .isEqualTo("/addressbooks/%s/collected/%s.vcf".formatted(user.id().value(), contactFileName));
+                assertThat(contact.etag()).matches("\"[0-9a-f]{32}\"");
                 assertThat(contact.cardData()).contains("UID:" + vcardUid);
             });
     }

@@ -36,6 +36,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.MoreObjects;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.CardDavClient.MirrorAddressBooks;
+import com.linagora.calendar.dav.SyncToken;
 import com.linagora.calendar.dav.dto.AddressBookReportXmlResponse;
 import com.linagora.calendar.saas.contact.CommonContactEventConverter;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Action;
@@ -55,7 +56,7 @@ import reactor.core.scheduler.Schedulers;
 
 public class CommonContactRepublishService {
 
-    public record ContactToRepublish(Audience audience, String path, String cardData) {
+    public record ContactToRepublish(Audience audience, String path, String cardData, long revision, String etag) {
     }
 
     public static class Context {
@@ -167,7 +168,8 @@ public class CommonContactRepublishService {
     }
 
     private Mono<Task.Result> republish(Context context, ContactToRepublish contact) {
-        return Mono.fromCallable(() -> converter.convert(Action.ADD, contact.audience(), contact.path(), contact.cardData()))
+        return Mono.fromCallable(() -> converter.convert(Action.ADD, contact.audience(), contact.path(), contact.cardData(),
+                contact.revision(), contact.etag()))
             .subscribeOn(Schedulers.boundedElastic())
             .flatMap(publisher::publish)
             .then(Mono.fromCallable(() -> {
@@ -210,8 +212,10 @@ public class CommonContactRepublishService {
 
     private Flux<ContactToRepublish> userContacts(Context context, OpenPaaSUser user) {
         return cardDavClient.listUserAddressBookUrls(user.username(), user.id(), MirrorAddressBooks.EXCLUDE)
-            .flatMap(addressBookURL -> cardDavClient.reportUserAddressBookContacts(user.username(), addressBookURL)
-                    .flatMapMany(payload -> contacts(context, new Audience.User(user.username()), addressBookURL, payload)),
+            .flatMap(addressBookURL -> cardDavClient.retrieveSyncToken(user.username(), addressBookURL)
+                    .switchIfEmpty(Mono.error(() -> new IllegalStateException("No sync token readable for address book " + addressBookURL.asUri().toASCIIString())))
+                    .flatMapMany(syncToken -> cardDavClient.reportUserAddressBookContacts(user.username(), addressBookURL)
+                        .flatMapMany(response -> contacts(context, new Audience.User(user.username()), addressBookURL, revision(syncToken), response))),
                 DEFAULT_CONCURRENCY)
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for user {}", TASK_NAME, user.username().asString(), e);
@@ -227,8 +231,10 @@ public class CommonContactRepublishService {
 
     private Flux<ContactToRepublish> domainContacts(Context context, OpenPaaSDomain domain) {
         return cardDavClient.listDomainAddressBookUrls(domain.id(), MirrorAddressBooks.EXCLUDE)
-            .flatMap(addressBookURL -> cardDavClient.reportDomainAddressBookContacts(domain.id(), addressBookURL)
-                    .flatMapMany(response -> contacts(context, new Audience.Domain(domain.domain()), addressBookURL, response)),
+            .flatMap(addressBookURL -> cardDavClient.retrieveDomainAddressBookSyncToken(domain.id(), addressBookURL)
+                    .switchIfEmpty(Mono.error(() -> new IllegalStateException("No sync token readable for address book " + addressBookURL.asUri().toASCIIString())))
+                    .flatMapMany(syncToken -> cardDavClient.reportDomainAddressBookContacts(domain.id(), addressBookURL)
+                        .flatMapMany(response -> contacts(context, new Audience.Domain(domain.domain()), addressBookURL, revision(syncToken), response))),
                 DEFAULT_CONCURRENCY)
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for domain {}", TASK_NAME, domain.domain().asString(), e);
@@ -237,17 +243,27 @@ public class CommonContactRepublishService {
             });
     }
 
-    private Flux<ContactToRepublish> contacts(Context context, Audience audience, AddressBookURL addressBookURL,
+    /**
+     * The sync token is read before the contacts: a contact changed in between is republished with a revision lower
+     * than the one of its live event, so that applications keep the live event. Read after the contacts, the token
+     * would let a stale contact override a newer live event.
+     */
+    private Flux<ContactToRepublish> contacts(Context context, Audience audience, AddressBookURL addressBookURL, long revision,
                                               AddressBookReportXmlResponse response) {
         return Mono.fromCallable(response::extractContactObjects)
             .subscribeOn(Schedulers.boundedElastic())
             .flatMapMany(Flux::fromIterable)
-            .map(contactObject -> new ContactToRepublish(audience, contactPath(contactObject.href()), contactObject.cardData()))
+            .map(contactObject -> new ContactToRepublish(audience, contactPath(contactObject.href()), contactObject.cardData(),
+                revision, contactObject.etag()))
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for address book {}", TASK_NAME, addressBookURL.asUri().toASCIIString(), e);
                 context.incrementFailedAddressBook();
                 return Flux.empty();
             });
+    }
+
+    private long revision(SyncToken syncToken) {
+        return Long.parseLong(syncToken.value());
     }
 
     private String contactPath(URI href) {
