@@ -21,8 +21,11 @@ package com.linagora.calendar.dav;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -46,6 +49,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.api.CalendarUtil;
@@ -56,7 +60,50 @@ import com.linagora.calendar.storage.event.AlarmInstantFactory.AlarmInstant;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.property.RecurrenceId;
 
+
 public class AlarmInstantFactoryTest {
+    private static Calendar farAwayRule(String rule) {
+        return CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-event
+            %s
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(rule).getBytes(StandardCharsets.UTF_8));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "DTSTART:19800101T000000Z\nRRULE:FREQ=SECONDLY",
+        "DTSTART:19800101T000000Z\nRRULE:FREQ=SECONDLY;INTERVAL=3",
+        "DTSTART:19800101T000000Z\nRRULE:FREQ=SECONDLY;UNTIL=19800101T000000Z",
+        "DTSTART:00010101T000000Z\nRRULE:FREQ=MINUTELY;INTERVAL=1000000"
+    })
+    void computeNextAlarmInstantShouldReturnOnARuleItCannotSkipAlong(String rule) {
+        AlarmInstantFactory factory = new AlarmInstantFactory.Default(
+            Clock.fixed(Instant.parse("2025-07-23T00:00:00Z"), ZoneOffset.UTC));
+
+        assertTimeoutPreemptively(Duration.ofSeconds(5),
+            () -> factory.computeNextAlarmInstant(farAwayRule(rule), Username.of("bob@example.com")));
+    }
+
+    @Test
+    void computeNextAlarmInstantShouldStillComputeASecondlyRuleItCanSkipAlong() {
+        AlarmInstantFactory factory = new AlarmInstantFactory.Default(
+            Clock.fixed(Instant.parse("2025-07-23T00:00:00Z"), ZoneOffset.UTC));
+
+        assertThat(assertTimeoutPreemptively(Duration.ofSeconds(5),
+            () -> factory.computeNextAlarmInstant(farAwayRule("DTSTART:20000101T000000Z\nRRULE:FREQ=SECONDLY"), Username.of("bob@example.com")))).isPresent();
+    }
+
 
     private AlarmInstantFactory testee(Instant clockFixedInstant) {
         return new AlarmInstantFactory.Default(Clock.fixed(clockFixedInstant, ZoneOffset.UTC));

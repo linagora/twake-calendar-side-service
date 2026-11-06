@@ -47,6 +47,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import jakarta.mail.internet.AddressException;
 
@@ -77,7 +78,9 @@ import net.fortuna.ical4j.model.property.DateListProperty;
 import net.fortuna.ical4j.model.property.Description;
 import net.fortuna.ical4j.model.property.DtEnd;
 import net.fortuna.ical4j.model.property.DtStart;
+import net.fortuna.ical4j.model.property.ExRule;
 import net.fortuna.ical4j.model.property.Location;
+import net.fortuna.ical4j.model.property.RRule;
 import net.fortuna.ical4j.model.property.RecurrenceId;
 import net.fortuna.ical4j.model.property.Sequence;
 import net.fortuna.ical4j.model.property.Summary;
@@ -567,6 +570,7 @@ public class EventParseUtils {
                 default -> datetimePeriod(master, toInstant(recurrenceDate, floatingZone));
             };
 
+            checkRulesCanBeExpanded(master, recurrenceDate, floatingZone);
             Set<Period<Temporal>> occurrences = withoutUnreadableDateLists(master).calculateRecurrenceSet(withSpanLookBack(master, period));
             // The lookup period spans several days: pick the occurrence starting at the recurrence date (e.g. hourly series).
             // A recurrence date that is not an occurrence is rejected rather than substituted by another nearby occurrence.
@@ -579,6 +583,23 @@ public class EventParseUtils {
             throw new IllegalArgumentException("Cannot calculateRecurrenceSet for recurrenceDate: " + recurrenceDate
                 + " of event with UID " + describeUid(master), exception);
         }
+    }
+
+    /**
+     * The lookup period starts no later than the recurrence date: a rule that can skip up to it can skip up to the period.
+     */
+    private static void checkRulesCanBeExpanded(VEvent master, Temporal recurrenceDate, ZoneId floatingZone) {
+        Temporal target = recurrenceDate instanceof LocalDate ? recurrenceDate : toInstant(recurrenceDate, floatingZone);
+        master.getProperty(Property.DTSTART)
+            .flatMap(EventParseUtils::parseTime)
+            .ifPresent(start -> Stream.concat(
+                    master.getProperties(Property.RRULE).stream().filter(RRule.class::isInstance).map(rule -> ((RRule<?>) rule).getRecur()),
+                    master.getProperties(Property.EXRULE).stream().filter(ExRule.class::isInstance).map(rule -> ((ExRule<?>) rule).getRecur()))
+                .filter(recur -> !RecurSkipGuard.canSkip(recur, start, target))
+                .findAny()
+                .ifPresent(recur -> {
+                    throw new IllegalArgumentException("Cannot expand " + recur + " from " + start + " up to " + target);
+                }));
     }
 
     /**
