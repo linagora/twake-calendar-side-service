@@ -30,6 +30,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
 import java.io.ByteArrayInputStream;
 import java.net.URI;
@@ -55,6 +58,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
+import javax.net.ssl.SSLException;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpStatus;
@@ -75,9 +79,13 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.ArgumentMatchers;
 
 import com.github.fge.lambdas.Throwing;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.inject.AbstractModule;
+import com.google.inject.Provides;
+import com.google.inject.Singleton;
 import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.api.Participation;
@@ -90,6 +98,7 @@ import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavCalendarObject;
+import com.linagora.calendar.dav.DavConfiguration;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
@@ -101,6 +110,7 @@ import com.linagora.calendar.smtp.MockSmtpServerExtension;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 
 import io.restassured.RestAssured;
@@ -115,15 +125,19 @@ import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import net.javacrumbs.jsonunit.core.Option;
+import reactor.core.publisher.Mono;
+import reactor.netty.http.client.HttpClient;
 
 class EventParticipationRouteTest {
 
     static class ParticipationTokenProbe implements GuiceProbe {
         private final ParticipationTokenSigner participationTokenSigner;
+        private final CalDavClient calDavClient;
 
         @Inject
-        ParticipationTokenProbe(ParticipationTokenSigner participationTokenSigner) {
+        ParticipationTokenProbe(ParticipationTokenSigner participationTokenSigner, CalDavClient calDavClient) {
             this.participationTokenSigner = participationTokenSigner;
+            this.calDavClient = calDavClient;
         }
 
         public String signAsJwt(Participation participation) {
@@ -153,11 +167,20 @@ class EventParticipationRouteTest {
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         AppTestHelper.OIDC_BY_PASS_MODULE,
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
-        binder -> {
-            Multibinder.newSetBinder(binder, GuiceProbe.class).addBinding()
-                .to(ParticipationTokenProbe.class);
-            binder.bind(MailSenderConfiguration.class)
-                .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension));
+        new AbstractModule() {
+            @Override
+            protected void configure() {
+                Multibinder.newSetBinder(binder(), GuiceProbe.class).addBinding()
+                    .to(ParticipationTokenProbe.class);
+                bind(MailSenderConfiguration.class)
+                    .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension));
+            }
+
+            @Provides
+            @Singleton
+            CalDavClient provideCalDavClient(DavConfiguration configuration, TechnicalTokenService technicalTokenService) throws SSLException {
+                return spy(new CalDavClient(configuration, technicalTokenService));
+            }
         });
 
     static RequestSpecification mockSMTPRequestSpecification() {
@@ -1170,10 +1193,16 @@ class EventParticipationRouteTest {
     @Test
     void shouldReturn400WhenEventHasUnparsableDate(TwakeCalendarGuiceServer server) {
         String eventUid = UUID.randomUUID().toString();
-        String calendarData = generateCalendarData(eventUid, organizer.username().asString(), attendee.username().asString())
-            .replaceFirst("DTSTART;TZID=Asia/Ho_Chi_Minh:\\w+", "DTSTART;TZID=Asia/Ho_Chi_Minh:20251000T100000");
+        String calendarData = generateCalendarData(eventUid, organizer.username().asString(), attendee.username().asString());
         davTestHelper.upsertCalendar(attendee, calendarData, eventUid);
-        awaitAtMost.until(() -> davTestHelper.findFirstEventId(attendee), Optional::isPresent);
+
+        // Return malformed data only on the event fetch, since Sabre also filters it out of REPORT.
+        URI eventHref = calDavClient.calendarReportByUid(attendee.username(), attendee.id(), eventUid).block().calendarHref();
+        String malformedCalendarData = calendarData
+            .replaceFirst("DTSTART;TZID=Asia/Ho_Chi_Minh:\\w+", "DTSTART;TZID=Asia/Ho_Chi_Minh:20251000T100000");
+        doReturn(Mono.fromSupplier(() -> new DavCalendarObject(eventHref, CalendarUtil.parseIcs(malformedCalendarData), null)))
+            .when(server.getProbe(ParticipationTokenProbe.class).calDavClient)
+            .fetchCalendarEvent(ArgumentMatchers.<Mono<HttpClient>>any(), eq(eventHref));
 
         Participation participation = getParticipation(eventUid, ParticipantAction.ACCEPTED);
         URL participationTokenUrl = getParticipationTokenUrl(participation, server);
