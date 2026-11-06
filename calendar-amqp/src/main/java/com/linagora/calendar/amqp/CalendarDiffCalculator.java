@@ -23,6 +23,7 @@ import static com.linagora.calendar.amqp.CalendarDiffCalculator.DateTimeProperty
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.Temporal;
@@ -176,17 +177,24 @@ public class CalendarDiffCalculator {
 
         return previousEventsByRecurrenceId.entrySet().stream()
             .filter(entry -> !currentEventsByRecurrenceId.containsKey(entry.getKey()))
-            .flatMap(entry -> revertedOccurrence(currentMasterEvent, entry.getValue()).stream()
+            .flatMap(entry -> revertedOccurrence(previousMasterEvent, currentMasterEvent, entry.getValue()).stream()
                 .map(occurrence -> Map.entry(entry.getKey(), occurrence)));
     }
 
     /**
      * Empty when the occurrence is now excluded from the series: its cancellation is notified instead.
+     *
+     * <p>A floating RECURRENCE-ID reads in the zone of the series it was written for, which may no longer be the current one.
      */
-    private static Optional<VEvent> revertedOccurrence(VEvent currentMasterEvent, VEvent previousOverride) {
+    private static Optional<VEvent> revertedOccurrence(VEvent previousMasterEvent, VEvent currentMasterEvent, VEvent previousOverride) {
         try {
+            Temporal recurrenceDate = previousOverride.getRecurrenceId().getDate();
+            if (recurrenceDate instanceof LocalDateTime floating) {
+                return Optional.of(EventParseUtils.createInstanceVEvent(currentMasterEvent,
+                    floating.atZone(EventParseUtils.floatingZone(previousMasterEvent)).toInstant()));
+            }
             return Optional.of(occurrenceFromMaster(currentMasterEvent, previousOverride));
-        } catch (IllegalArgumentException exception) {
+        } catch (DateTimeException | IllegalArgumentException exception) {
             return Optional.empty();
         }
     }

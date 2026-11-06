@@ -101,6 +101,68 @@ class ItipEmailNotificationPublisherTest {
             .allSatisfy(notification -> assertThat(CalendarUtil.parseIcs(notification.event()).getComponents(Component.VEVENT)).hasSize(1));
     }
 
+    @Test
+    void droppedOverridesShouldNotNotifyTheSameOccurrenceTwice() {
+        String newParis = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Calendar//EN
+            BEGIN:VEVENT
+            UID:event-uid@test
+            DTSTART;TZID=Europe/Paris:20261013T140000
+            DTEND;TZID=Europe/Paris:20261013T150000
+            RRULE:FREQ=WEEKLY;BYDAY=TU
+            SUMMARY:Weekly meeting
+            ORGANIZER:mailto:bob@example.com
+            ATTENDEE:mailto:alice@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+        String oldUtc = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Calendar//EN
+            BEGIN:VEVENT
+            UID:event-uid@test
+            DTSTART:20261013T120000Z
+            DTEND:20261013T130000Z
+            RRULE:FREQ=WEEKLY;BYDAY=TU
+            SUMMARY:Weekly meeting
+            ORGANIZER:mailto:bob@example.com
+            ATTENDEE:mailto:alice@example.com
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:event-uid@test
+            RECURRENCE-ID:20261020T120000Z
+            DTSTART:20261020T130000Z
+            DTEND:20261020T140000Z
+            SUMMARY:Weekly meeting moved
+            ORGANIZER:mailto:bob@example.com
+            ATTENDEE:mailto:alice@example.com
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:event-uid@test
+            RECURRENCE-ID:20261020T140000
+            DTSTART:20261020T150000Z
+            DTEND:20261020T160000Z
+            SUMMARY:Weekly meeting moved again
+            ORGANIZER:mailto:bob@example.com
+            ATTENDEE:mailto:alice@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+        ItipLocalDeliveryDTO dto = dto(Method.VALUE_REQUEST, newParis, Optional.of(oldUtc));
+
+        List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(dto, EVENT_PATH, Optional.of(CalendarUtil.parseIcs(oldUtc)));
+
+        List<String> recurrenceIds = notifications.stream()
+            .map(notification -> (VEvent) CalendarUtil.parseIcs(notification.event()).getComponents(Component.VEVENT).getFirst())
+            .filter(vevent -> vevent.getRecurrenceId() != null)
+            .map(vevent -> vevent.getRecurrenceId().getValue())
+            .toList();
+        assertThat(recurrenceIds).containsExactly("20261020T140000");
+    }
+
     @BeforeEach
     void setUp() {
         testee = publisherWithClock(CLOCK_BEFORE_EVENTS);
