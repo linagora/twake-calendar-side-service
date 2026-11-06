@@ -19,8 +19,10 @@
 package com.linagora.calendar.saas.drive.configuration;
 
 import java.io.FileNotFoundException;
+import java.util.Optional;
 
 import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.user.ldap.LdapRepositoryConfiguration;
 import org.apache.james.utils.PropertiesProvider;
 
 import com.google.inject.AbstractModule;
@@ -29,14 +31,18 @@ import com.google.inject.Singleton;
 import com.google.inject.multibindings.OptionalBinder;
 import com.linagora.calendar.saas.drive.api.AttachmentStorageClient;
 import com.linagora.calendar.saas.drive.tdrive.ClouderyTDriveInstanceResolver;
+import com.linagora.calendar.saas.drive.tdrive.LdapTDriveInstanceResolver;
 import com.linagora.calendar.saas.drive.tdrive.LocalPartTDriveInstanceResolver;
 import com.linagora.calendar.saas.drive.tdrive.TDriveAttachmentStorageClient;
 import com.linagora.calendar.saas.drive.tdrive.TDriveInstanceResolver;
+import com.unboundid.ldap.sdk.LDAPConnectionPool;
 
 /** Installed by the application only when the Drive integration is enabled. */
 public final class TDriveModule extends AbstractModule {
     @Override
     protected void configure() {
+        OptionalBinder.newOptionalBinder(binder(), LdapRepositoryConfiguration.class);
+        OptionalBinder.newOptionalBinder(binder(), LDAPConnectionPool.class);
         OptionalBinder.newOptionalBinder(binder(), AttachmentStorageClient.class)
             .setBinding().to(TDriveAttachmentStorageClient.class).in(Singleton.class);
     }
@@ -53,12 +59,17 @@ public final class TDriveModule extends AbstractModule {
 
     @Provides
     @Singleton
-    TDriveInstanceResolver provideInstanceResolver(TDriveConfiguration configuration) {
+    TDriveInstanceResolver provideInstanceResolver(TDriveConfiguration configuration,
+                                                 Optional<LdapRepositoryConfiguration> ldapConfiguration,
+                                                 Optional<LDAPConnectionPool> ldapConnectionPool) {
         return switch (configuration.instanceResolver()) {
             case LOCAL_PART -> new LocalPartTDriveInstanceResolver(configuration.instanceDomain());
             case CLOUDERY -> new ClouderyTDriveInstanceResolver(
                 configuration.clouderyLookup().orElseThrow(() -> new IllegalArgumentException("Cloudery lookup configuration is required")),
                 configuration.timeout(), configuration.trustAllSslCerts());
+            case LDAP -> new LdapTDriveInstanceResolver(
+                ldapConfiguration.orElseThrow(() -> new IllegalArgumentException("LDAP Drive resolver requires LDAP user configuration")),
+                ldapConnectionPool.orElseThrow(() -> new IllegalArgumentException("LDAP Drive resolver requires an LDAP connection pool")));
         };
     }
 }

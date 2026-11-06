@@ -152,6 +152,21 @@ class TDriveConfigurationWiringTest {
     }
 
     @Test
+    void shouldRejectLdapResolverWithoutLdapUserBackend() throws IOException {
+        TwakeCalendarConfiguration application = configuration("""
+            twp.drive.enabled=true
+            twp.drive.instance.domain=example.com
+            twp.drive.token.url.template=https://manager.example.com/api/public/instances/{fqdn}/token
+            twp.drive.partner.token=example-public-token
+            twp.drive.public.url.template=https://{driveFqdn}/public?sharecode={sharecode}#/
+            twp.drive.instance.resolver=ldap
+            """);
+
+        assertThatThrownBy(() -> injector(application))
+            .hasMessageContaining("LDAP Drive resolver requires LDAP user configuration");
+    }
+
+    @Test
     void shouldIgnoreInvalidDrivePropertiesWhenDisabled() throws IOException {
         TwakeCalendarConfiguration application = configuration("""
             twp.drive.enabled=false

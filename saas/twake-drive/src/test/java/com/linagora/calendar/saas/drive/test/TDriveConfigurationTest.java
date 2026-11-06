@@ -33,6 +33,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import com.linagora.calendar.saas.drive.configuration.TDriveConfiguration;
+import com.linagora.calendar.saas.drive.configuration.TDriveConfiguration.InstanceResolver;
 import com.linagora.calendar.saas.drive.tdrive.LocalPartTDriveInstanceResolver;
 import com.linagora.calendar.saas.drive.tdrive.TDriveAttachmentStorageClient;
 
@@ -75,6 +76,17 @@ class TDriveConfigurationTest {
         assertThat(configuration.timeout()).isEqualTo(Duration.ofSeconds(10));
         assertThat(configuration.folderName()).isEqualTo("Calendar attachments");
         assertThat(configuration.trustAllSslCerts()).isFalse();
+        assertThat(configuration.clouderyLookup()).isEmpty();
+    }
+
+    @Test
+    void shouldSelectLdapWithoutClouderyLookupCredentials() {
+        BaseConfiguration properties = properties();
+        properties.setProperty("twp.drive.instance.resolver", "ldap");
+
+        TDriveConfiguration configuration = TDriveConfiguration.from(properties);
+
+        assertThat(configuration.instanceResolver()).isEqualTo(InstanceResolver.LDAP);
         assertThat(configuration.clouderyLookup()).isEmpty();
     }
 
