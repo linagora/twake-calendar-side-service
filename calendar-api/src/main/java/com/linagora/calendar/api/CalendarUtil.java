@@ -57,7 +57,6 @@ import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.ComponentContainer;
 import net.fortuna.ical4j.model.ComponentFactory;
 import net.fortuna.ical4j.model.ComponentList;
-import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyFactory;
 import net.fortuna.ical4j.model.PropertyList;
@@ -70,7 +69,6 @@ import net.fortuna.ical4j.model.component.Observance;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.component.VTimeZone;
 import net.fortuna.ical4j.model.component.XComponent;
-import net.fortuna.ical4j.model.parameter.Value;
 import net.fortuna.ical4j.model.property.DtStart;
 import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.model.property.RRule;
@@ -278,31 +276,6 @@ public class CalendarUtil {
         System.setProperty("net.fortuna.ical4j.timezone.cache.impl", MapTimeZoneCache.class.getName());
     }
 
-    /**
-     * ical4j decodes the value of an extension property when reading it, but does not encode it back when writing it if
-     * its VALUE is not TEXT: a backslash-n becomes a real line break, and the rendered calendar another structure.
-     */
-    private static Calendar keepingNonTextExtensionsOnOneLine(Calendar calendar) {
-        calendar.getProperties().forEach(CalendarUtil::keepOnOneLine);
-        calendar.getComponents().forEach(CalendarUtil::keepOnOneLine);
-        return calendar;
-    }
-
-    private static void keepOnOneLine(Component component) {
-        component.getProperties().forEach(CalendarUtil::keepOnOneLine);
-        if (component instanceof ComponentContainer<?> container) {
-            container.getComponents().forEach(CalendarUtil::keepOnOneLine);
-        }
-    }
-
-    private static void keepOnOneLine(Property property) {
-        if (property instanceof XProperty
-            && property.getParameter(Parameter.VALUE).filter(value -> !Value.TEXT.equals(value)).isPresent()
-            && property.getValue() != null) {
-            property.setValue(property.getValue().replace("\n", "\\n"));
-        }
-    }
-
     public static Calendar parseIcs(String icsContent) {
         return parseIcs(icsContent.getBytes(StandardCharsets.UTF_8));
     }
@@ -316,7 +289,7 @@ public class CalendarUtil {
             new CustomizedTimeZoneRegistry());
         try {
             ByteArrayInputStream inputStream = new ByteArrayInputStream(icsContent);
-            return keepingNonTextExtensionsOnOneLine(builder.build(inputStream));
+            return builder.build(inputStream);
         } catch (IOException e) {
             throw new RuntimeException("Error while reading calendar input", e);
         } catch (ParserException e) {
@@ -325,12 +298,17 @@ public class CalendarUtil {
     }
 
     /**
-     * The ical4j property factories, VERSION being parsed by {@link LenientVersion}. Factories are looked up in
-     * order, the first one supporting a property name wins.
+     * The ical4j property factories, VERSION being parsed by {@link LenientVersion} and the unknown properties by
+     * {@link NonTextExtensionProperty.Factory}. Factories are looked up in order, the first one supporting a property
+     * name wins.
+     *
+     * <p>ical4j calls this supplier for each property it parses, so each property gets its own factories.
      */
     private static List<PropertyFactory<?>> propertyFactories() {
-        return Stream.concat(Stream.of(new LenientVersion.Factory()),
-                new DefaultPropertyFactorySupplier().get().stream())
+        return Stream.<Stream<? extends PropertyFactory<?>>>of(Stream.of(new LenientVersion.Factory()),
+                new DefaultPropertyFactorySupplier().get().stream(),
+                Stream.of(new NonTextExtensionProperty.Factory()))
+            .<PropertyFactory<?>>flatMap(factories -> factories)
             .toList();
     }
 
@@ -451,6 +429,9 @@ public class CalendarUtil {
     private static Property copyIgnoringPrefix(Property property) {
         if (property instanceof XProperty) {
             return asXProperty(property);
+        }
+        if (property instanceof NonTextExtensionProperty) {
+            return new NonTextExtensionProperty(property.getName(), property.getParameterList(), property.getValue());
         }
         if (property instanceof Version) {
             return new LenientVersion(property.getParameterList(), property.getValue());

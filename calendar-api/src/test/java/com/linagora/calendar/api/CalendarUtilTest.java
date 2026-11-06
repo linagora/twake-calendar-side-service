@@ -73,6 +73,29 @@ class CalendarUtilTest {
     }
 
     @Test
+    void renderingShouldKeepABackslashNOfANonTextUnknownPropertyWithoutXPrefixOnItsLine() {
+        // Given an event carrying an unknown property, without the X- prefix, whose DATE value holds a backslash-n
+        String property = "UEXDATE;VALUE=DATE:ID:recurri\\nng-ui.comb@example.com";
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:a
+            DTSTART:20260401T100000Z
+            %s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(property);
+
+        // When the parsed calendar is rendered
+        String rendered = CalendarUtil.parseIcs(ics).toString();
+
+        // Then the property is written back as received, and the rendering parses back to itself
+        assertThat(rendered).contains(property);
+        assertThat(CalendarUtil.parseIcs(rendered).toString()).isEqualTo(rendered);
+    }
+
+    @Test
     void textExtensionsShouldStillBeDecoded() {
         String ics = """
             BEGIN:VCALENDAR
