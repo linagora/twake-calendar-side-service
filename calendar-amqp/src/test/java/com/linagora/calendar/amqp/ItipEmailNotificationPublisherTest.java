@@ -48,8 +48,10 @@ import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.model.property.RecurrenceId;
+
 import reactor.rabbitmq.OutboundMessage;
 import reactor.rabbitmq.Sender;
+
 
 class ItipEmailNotificationPublisherTest {
 
@@ -61,6 +63,43 @@ class ItipEmailNotificationPublisherTest {
     private static final Clock CLOCK_BEFORE_EVENTS = Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC);
 
     private ItipEmailNotificationPublisher testee;
+
+    @Test
+    void anEscapedNewlineInANonTextUnknownPropertyShouldNotPreventNotifying() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Calendar//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:event-uid@test
+            DTSTART:20260401T100000Z
+            DTEND:20260401T110000Z
+            RRULE:FREQ=WEEKLY;COUNT=3
+            SUMMARY:Weekly sync
+            ORGANIZER:mailto:bob@example.com
+            ATTENDEE:mailto:alice@example.com
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:event-uid@test
+            RECURRENCE-ID:20260408T100000Z
+            DTSTART:20260408T120000Z
+            DTEND:20260408T130000Z
+            SUMMARY:Weekly sync moved
+            ORGANIZER:mailto:bob@example.com
+            ATTENDEE:mailto:alice@example.com
+            X-FOO;VALUE=URI:file:///share/new\\notes
+            END:VEVENT
+            END:VCALENDAR
+            """;
+        ItipLocalDeliveryDTO dto = dto(Method.VALUE_REQUEST, ics, Optional.empty());
+
+        List<NotificationEmailDTO> notifications = testee.buildNotificationMessages(dto, EVENT_PATH, Optional.empty());
+
+        assertThat(notifications)
+            .anySatisfy(notification -> assertThat(notification.event()).contains("X-FOO;VALUE=URI:file:///share/new\\notes"))
+            .allSatisfy(notification -> assertThat(CalendarUtil.parseIcs(notification.event()).getComponents(Component.VEVENT)).hasSize(1));
+    }
 
     @BeforeEach
     void setUp() {

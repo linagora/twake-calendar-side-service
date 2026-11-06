@@ -43,7 +43,54 @@ import net.fortuna.ical4j.model.component.VTimeZone;
 import net.fortuna.ical4j.model.property.XProperty;
 import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 
+
 class CalendarUtilTest {
+    @ParameterizedTest
+    @ValueSource(strings = {"BEFORE", "IN_VEVENT", "IN_VALARM"})
+    void renderingShouldKeepABackslashNOfANonTextExtensionOnItsLine(String place) {
+        String property = "X-FOO;VALUE=URI:file:///share/new\\notes";
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            %s
+            BEGIN:VEVENT
+            UID:a
+            DTSTART:20260401T100000Z
+            %s
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:DISPLAY
+            %s
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(place.equals("BEFORE") ? property : "PRODID:x", place.equals("IN_VEVENT") ? property : "SUMMARY:x", place.equals("IN_VALARM") ? property : "DESCRIPTION:x");
+
+        String rendered = CalendarUtil.parseIcs(ics).toString();
+
+        assertThat(rendered).contains(property);
+        assertThat(CalendarUtil.parseIcs(rendered).toString()).isEqualTo(rendered);
+    }
+
+    @Test
+    void textExtensionsShouldStillBeDecoded() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:a
+            X-FOO:first\\nsecond
+            X-BAR;VALUE=TEXT:first\\nsecond
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Component event = CalendarUtil.parseIcs(ics).getComponents().getFirst();
+
+        assertThat(event.getProperty("X-FOO").orElseThrow().getValue()).isEqualTo("first\nsecond");
+        assertThat(event.getProperty("X-BAR").orElseThrow().getValue()).isEqualTo("first\nsecond");
+    }
+
 
     private static final String ICS_WITHOUT_METHOD = """
         BEGIN:VCALENDAR
