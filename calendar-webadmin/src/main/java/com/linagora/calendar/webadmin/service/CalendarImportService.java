@@ -92,7 +92,7 @@ public class CalendarImportService {
     private Mono<Task.Result> importEvents(CalendarURL calendarURL, String requester, List<EventToImport> events,
                                            Context context, Function<EventToImport, Mono<Void>> importer) {
         return Flux.fromIterable(events)
-            .concatMap(event -> importer.apply(event)
+            .concatMap(event -> Mono.defer(() -> importer.apply(event))
                 .doOnSuccess(any -> context.importedCount.incrementAndGet())
                 .thenReturn(Task.Result.COMPLETED)
                 .onErrorResume(error -> {

@@ -37,6 +37,7 @@ import com.linagora.calendar.storage.model.ImportId;
 
 import reactor.core.publisher.Mono;
 
+
 class ImportICSToDavHandlerTest {
     private static final Username BOB = Username.of("bob@open-paas.org");
     private static final String BASE_ID = "659387b9d486dc0046aeff21";
@@ -70,6 +71,37 @@ class ImportICSToDavHandlerTest {
         assertThat(result.succeedCount()).isZero();
         assertThat(result.failed()).hasSize(1);
         assertThat(result.failed().getFirst().keyValues()).containsEntry("uid", "all-day");
+    }
+
+    @Test
+    void eventWithUnprintableDateShouldNotFailTheOtherEvents() {
+        CalDavClient calDavClient = mock(CalDavClient.class);
+        when(calDavClient.importCalendar(any(CalendarURL.class), any(), any(Username.class), any()))
+            .thenReturn(Mono.empty());
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//EN
+            BEGIN:VEVENT
+            UID:good-event
+            DTSTAMP:20260101T000000Z
+            DTSTART:20260601T100000Z
+            SUMMARY:Good event
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:bad-event
+            DTSTAMP:20260101T000000Z
+            DTSTART;TZID=Europe/Paris:
+            SUMMARY:Event with an empty start
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("\n", "\r\n");
+
+        ImportProcessor.ImportResult result = new ImportProcessor.ImportICSToDavHandler(calDavClient).handle(command(ics), BOB).block();
+
+        assertThat(result.succeedCount()).isEqualTo(1);
+        assertThat(result.failed()).hasSize(1);
+        assertThat(result.failed().getFirst().keyValues()).containsEntry("uid", "bad-event");
     }
 
     private ImportProcessor.ImportCommand command(String ics) {

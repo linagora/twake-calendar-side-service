@@ -133,7 +133,7 @@ public class ImportProcessor {
             return Mono.fromCallable(() -> EventToImport.parse(importCommand.uploadData()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(Flux::fromIterable)
-                .flatMap(event -> calDavClient.importCalendar(calendarURL, event.resourceName(), username, event.ics())
+                .flatMap(event -> Mono.defer(() -> calDavClient.importCalendar(calendarURL, event.resourceName(), username, event.ics()))
                     .thenReturn(ImportResult.succeed())
                     .onErrorResume(error -> {
                         LOGGER.error("Error importing event with UID {}: {}", event.uid(), error.getMessage());
