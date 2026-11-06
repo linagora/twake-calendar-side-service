@@ -302,7 +302,8 @@ public class DockerSabreDavSetup {
             new UsernamePasswordCredentials(DAV_ADMIN, DAV_ADMIN_PASSWORD),
             getSabreDavURI(),
             Optional.of(TRUST_ALL_SSL_CERTS),
-            Optional.empty(),
+            // Shared Docker services can take longer to respond under CI load.
+            Optional.of(Duration.ofSeconds(30)),
             Optional.empty());
     }
 

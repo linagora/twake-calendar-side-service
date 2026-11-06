@@ -922,12 +922,17 @@ public class CardDavClient extends DavClient {
 
     public Mono<ContactSearchResponse> searchContacts(Username requester, AddressBookURL addressBook, String query, int limit) {
         String context = "Contact search failed for requester " + requester.asString() + " and address book " + addressBook.asUri();
-        return Mono.fromCallable(() -> new URIBuilder(addressBook.asUri())
-                .addParameter("search", query)
-                .addParameter("sort", "uri")
-                .addParameter("offset", "0")
-                .addParameter("limit", Integer.toString(limit))
-                .build().toASCIIString())
+        return Mono.fromCallable(() -> {
+                URIBuilder uriBuilder = new URIBuilder(addressBook.asUri());
+                // Sabre applies its minimum search length when the search parameter is present.
+                if (StringUtils.isNotEmpty(query)) {
+                    uriBuilder.addParameter("search", query);
+                }
+                return uriBuilder.addParameter("sort", "uri")
+                    .addParameter("offset", "0")
+                    .addParameter("limit", Integer.toString(limit))
+                    .build().toASCIIString();
+            })
             .flatMap(uri -> httpClientWithImpersonation(requester)
                 .headers(headers -> headers.set(HttpHeaderNames.ACCEPT, "application/json"))
                 .get()

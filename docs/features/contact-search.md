@@ -28,7 +28,7 @@ Request body:
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `query` | No | Case-insensitive regular expression matched against vCard content. Missing, null or empty values match all contacts. |
+| `query` | No | Case-insensitive literal substring matched against vCard content. Missing, null or empty values match all contacts. |
 | `addressBooks` | No | Address books to search. Missing, null or empty values return an empty result. |
 | `addressBooks[].userId` | Yes | ID of the user or domain owning the address book. |
 | `addressBooks[].addressBookId` | Yes | Address book URI segment, such as `contacts`, `collected`, `domain-members` or a delegated mirror ID. |

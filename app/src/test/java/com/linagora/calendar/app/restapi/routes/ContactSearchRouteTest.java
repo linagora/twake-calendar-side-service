@@ -514,8 +514,9 @@ class ContactSearchRouteTest {
 
     @Test
     void shouldEncodeSearchQueryContainingPlusAmpersandAndUnicode() {
-        // Given a contact matching a regex containing URI-sensitive and Unicode characters
-        createContact(requester, "contacts", "encoded-query", "AAAB & Nguyễn");
+        // Given a contact whose name contains URI-sensitive and Unicode characters
+        createContact(requester, "contacts", "encoded-query", "A+B & Nguyễn");
+        createContact(requester, "contacts", "regex-only", "AAAB & Nguyễn");
 
         // When searching with plus, ampersand, and Unicode characters
         String response = given()
@@ -542,7 +543,7 @@ class ContactSearchRouteTest {
                   "/addressbooks/{userId}/contacts/encoded-query.vcf"
                 ]
                 """.replace("{userId}", requester.id().value()));
-        assertThat(response).contains("AAAB & Nguyễn");
+        assertThat(response).contains("A+B & Nguyễn");
     }
 
     @Test
