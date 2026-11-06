@@ -31,7 +31,7 @@ import net.fortuna.ical4j.model.component.VEvent;
  * A single calendar object, as stored on the DAV server: the VEVENTs sharing a given UID - a master event
  * and its recurrence overrides - alongside the calendar level properties and time zones they rely on.
  */
-public record EventToImport(String uid, String resourceName, List<VEvent> vEvents, byte[] ics) {
+public record EventToImport(String uid, String resourceName, List<VEvent> vEvents, Calendar calendar) {
 
     public static List<EventToImport> parse(byte[] icsPayload) {
         Calendar calendar = CalendarUtil.parseIcs(icsPayload);
@@ -44,7 +44,13 @@ public record EventToImport(String uid, String resourceName, List<VEvent> vEvent
     }
 
     private static EventToImport of(Calendar calendar, String uid, List<VEvent> vEvents) {
-        return new EventToImport(uid, DavResourceName.fromUid(uid), vEvents,
-            CalendarUtil.withVEvents(calendar, vEvents).toString().getBytes(StandardCharsets.UTF_8));
+        return new EventToImport(uid, DavResourceName.fromUid(uid), vEvents, calendar);
+    }
+
+    /**
+     * Rendered on demand: ical4j keeps unreadable dates as text and fails on rendering them, which must only fail this event.
+     */
+    public byte[] ics() {
+        return CalendarUtil.withVEvents(calendar, vEvents).toString().getBytes(StandardCharsets.UTF_8);
     }
 }

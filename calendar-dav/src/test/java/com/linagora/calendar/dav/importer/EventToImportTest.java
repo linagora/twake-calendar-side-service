@@ -24,7 +24,27 @@ import java.nio.charset.StandardCharsets;
 
 import org.junit.jupiter.api.Test;
 
+
 class EventToImportTest {
+    @Test
+    void parseShouldNotFailTheFileOnAnEventItCannotRender() {
+        byte[] ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:good-event
+            DTSTART:20260601T100000Z
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:bad-event
+            DTSTART;TZID=Europe/Paris:
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("\n", "\r\n").getBytes(StandardCharsets.UTF_8);
+
+        assertThat(EventToImport.parse(ics)).extracting(EventToImport::uid).containsExactlyInAnyOrder("good-event", "bad-event");
+    }
+
 
     @Test
     void parseShouldSupportUnknownProperties() {
