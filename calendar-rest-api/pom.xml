@@ -53,6 +53,10 @@
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
+            <artifactId>calendar-twake-drive</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
             <artifactId>jmap-extensions-api</artifactId>
             <version>${project.version}</version>
         </dependency>
