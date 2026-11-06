@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.saas.drive.tdrive;
 
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -62,7 +63,7 @@ public final class ClouderyTDriveInstanceResolver implements TDriveInstanceResol
             return Mono.error(new AttachmentStorageException(Reason.INVALID_ATTACHMENT, "Drive lookup requires an email address"));
         }
         String email = username.asString();
-        String url = lookup.url() + "?email=" + URLEncoder.encode(email, StandardCharsets.UTF_8) + "&limit=" + LOOKUP_RESULT_LIMIT;
+        URI url = URI.create(lookup.url() + "?email=" + URLEncoder.encode(email, StandardCharsets.UTF_8) + "&limit=" + LOOKUP_RESULT_LIMIT);
         return http.request(new Request(HttpMethod.GET, url, lookup.partnerToken(), HttpHeaderValues.APPLICATION_JSON.toString()),
                 Instances.class, "Cloudery instance lookup")
             .map(result -> resolvedHostname(result, email));

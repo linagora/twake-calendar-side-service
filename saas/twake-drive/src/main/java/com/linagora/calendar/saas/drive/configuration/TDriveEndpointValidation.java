@@ -20,6 +20,8 @@ package com.linagora.calendar.saas.drive.configuration;
 
 import java.net.URI;
 
+import org.apache.commons.lang3.StringUtils;
+
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Preconditions;
 
@@ -27,7 +29,26 @@ public final class TDriveEndpointValidation {
     private TDriveEndpointValidation() {
     }
 
-    static void validateHttpUrl(URI uri, String key) {
+    static void validateServiceUrlTemplate(String template, String key) {
+        URI uri = validateTemplate(template, key, "{fqdn}");
+        Preconditions.checkArgument(uri.getRawFragment() == null, "%s must not contain a fragment", key);
+        Preconditions.checkArgument(uri.getRawQuery() == null, "%s must not contain query or fragment", key);
+    }
+
+    static void validatePublicUrlTemplate(String template, String key) {
+        validateTemplate(template, key, "{sharecode}");
+    }
+
+    private static URI validateTemplate(String template, String key, String placeholder) {
+        Preconditions.checkArgument(StringUtils.isNotBlank(template), "%s is required", key);
+        Preconditions.checkArgument(template.contains(placeholder), "%s must contain %s", key, placeholder);
+        URI uri = URI.create(template.replace("{fqdn}", "user.example.com").replace("{driveFqdn}", "user-drive.example.com")
+            .replace("{sharecode}", "share-code"));
+        validateHttpUrl(uri, key);
+        return uri;
+    }
+
+    public static void validateHttpUrl(URI uri, String key) {
         Preconditions.checkArgument(uri != null && uri.getHost() != null && uri.getUserInfo() == null
             && ("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())),
             key + " must be an absolute HTTP(S) URL without credentials");
