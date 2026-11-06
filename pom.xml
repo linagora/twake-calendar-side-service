@@ -47,6 +47,7 @@
         <module>common-contacts-api</module>
         <module>saas/saas-rabbitmq</module>
         <module>saas/twake-space</module>
+        <module>saas/twake-drive</module>
         <module>storage-api</module>
         <module>storage-ldap</module>
         <module>storage-mongodb</module>
@@ -63,6 +64,11 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>calendar-twake-drive</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>calendar-amqp</artifactId>
