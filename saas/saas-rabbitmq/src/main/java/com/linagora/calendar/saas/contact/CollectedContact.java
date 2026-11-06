@@ -62,6 +62,7 @@ final class CollectedContact {
     private static final char EMAIL_SEPARATOR = '@';
     private static final int NO_PREFERENCE = Integer.MAX_VALUE;
     private static final String PREF = "pref";
+    private static final String JSPROP = "JSPROP";
     private static final String UID = "uid";
     private static final int MIN_PREF = 1;
     private static final int MAX_PREF = 100;
@@ -148,6 +149,16 @@ final class CollectedContact {
             .getBytes(StandardCharsets.UTF_8);
     }
 
+    // An invalid JSContact is refused as a whole: only what is lost through the vCard gets dropped
+    private static boolean isReadableJSContact(ObjectNode card) {
+        try {
+            Card.toJSCard(card.toString());
+            return true;
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
     private static boolean goesThroughAVCard(ObjectNode card) {
         try {
             parseVCard(writeVCard(Card.toJSCard(card.toString())));
@@ -177,6 +188,9 @@ final class CollectedContact {
         clampPrefs(copy);
         VCardSafeIds.renameUnsafeIds(copy);
         VCardSafeProps.dropUnsafeProps(copy, CollectedContact::goesThroughAVCard);
+        if (isReadableJSContact(copy)) {
+            VCardSafeFields.dropUnsafeFields(copy, CollectedContact::goesThroughAVCard);
+        }
         return copy;
     }
 
@@ -218,6 +232,13 @@ final class CollectedContact {
     private static Card readVCard(List<VCard> vCards) throws CardException {
         try {
             return VCARD_TO_JSCONTACT.convert(vCards.toArray(VCard[]::new)).getFirst();
+        } catch (CardException e) {
+            if (!isUnreadableJSProp(e)) {
+                throw e;
+            }
+            // Written from a field holding only what JSContact does not define: it has nothing to attach to on reading
+            vCards.forEach(vCard -> vCard.removeExtendedProperty(JSPROP));
+            return VCARD_TO_JSCONTACT.convert(vCards.toArray(VCard[]::new)).getFirst();
         } catch (RuntimeException e) {
             if (!isUnreadableExtensionParameter(e)) {
                 throw e;
@@ -250,6 +271,10 @@ final class CollectedContact {
         } catch (CardException | RuntimeException e) {
             return isUnreadableExtensionParameter(e);
         }
+    }
+
+    private static boolean isUnreadableJSProp(CardException e) {
+        return Strings.CS.contains(e.getMessage(), JSPROP);
     }
 
     private static boolean isUnreadableExtensionParameter(Exception e) {

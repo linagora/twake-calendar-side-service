@@ -44,6 +44,64 @@ import ezvcard.Ezvcard;
 import ezvcard.VCard;
 
 class CollectedContactTest {
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "\"name\":{\"@type\":\"Name\",\"foo\":\"x\"}",
+        "\"speakToAs\":{\"@type\":\"SpeakToAs\",\"foo\":\"x\"}",
+        "\"organizations\":{\"o\":{\"@type\":\"Organization\",\"foo\":\"x\"}}"
+    })
+    void aFieldHoldingOnlyAnUnknownPropertyShouldNotCostTheContact(String field) throws Exception {
+        CollectedContact incoming = CollectedContact.parse((ObjectNode) OBJECT_MAPPER.readTree("""
+            {"@type": "Card", "version": "2.0", "uid": "contact-uid",
+             "emails": {"e": {"@type": "EmailAddress", "address": "alice@example.com"}},
+             %s}
+            """.formatted(field)));
+
+        CollectedContact stored = CollectedContact.parse(incoming.toVCardAsBytes());
+
+        assertThat(stored.uid()).isEqualTo(incoming.uid());
+        assertThat(stored.hasEmailAddress()).isTrue();
+    }
+
+    @Test
+    void oneUnreadableEntryShouldNotCostTheOtherEntriesOfAMap() throws Exception {
+        CollectedContact incoming = CollectedContact.parse((ObjectNode) OBJECT_MAPPER.readTree("""
+            {"@type": "Card", "version": "2.0", "uid": "contact-uid",
+             "emails": {"e": {"@type": "EmailAddress", "address": "alice@example.com"}},
+             "organizations": {"o": {"@type": "Organization", "foo": "x"}, "p": {"@type": "Organization", "name": "Linagora"}}}
+            """));
+
+        assertThat(CollectedContact.parse(incoming.toVCardAsBytes()).toJson()).contains("Linagora");
+    }
+
+    @Test
+    void readableUnknownPropertiesShouldBeKept() throws Exception {
+        CollectedContact incoming = CollectedContact.parse((ObjectNode) OBJECT_MAPPER.readTree("""
+            {"@type": "Card", "version": "2.0", "uid": "contact-uid",
+             "emails": {"e": {"@type": "EmailAddress", "address": "alice@example.com"}},
+             "name": {"@type": "Name", "full": "Bob", "foo": "x"}}
+            """));
+
+        assertThat(CollectedContact.parse(incoming.toVCardAsBytes()).toJson()).contains("Bob");
+    }
+
+    @Test
+    void storedCardHoldingAnUnreadableJSPropShouldBeReadable() {
+        byte[] vCard = """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:a
+            FN;DERIVED=true:a
+            EMAIL:alice@example.com
+            JSPROP;JSPTR=name/foo;VALUE=text:"x"
+            END:VCARD
+            """.getBytes(StandardCharsets.UTF_8);
+
+        CollectedContact result = CollectedContact.parse(vCard);
+
+        assertThat(result.hasEmailAddress()).isTrue();
+    }
+
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
