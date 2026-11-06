@@ -50,6 +50,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.TextNode;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
@@ -257,8 +258,11 @@ class CommonContactNotificationConsumerTest {
                 EMAIL:contact@example.com
                 END:VCARD
                 """.replace("{uid}", uid).getBytes(StandardCharsets.UTF_8)).block();
+        long revision = currentRevision();
+        String etag = etagOf(uid);
 
-        // Then the consumer republishes an ADD event to the common contacts exchange
+        // Then the consumer republishes an ADD event to the common contacts exchange, carrying the sync token of the
+        // address book as revision and the etag of the contact
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(commonContactEvents)
             .filteredOn(event -> event.at("/action").asText().equals("ADD")
                 && event.at("/uid").asText().equals(uid))
@@ -272,11 +276,15 @@ class CommonContactNotificationConsumerTest {
                           "action": "ADD",
                           "path": "addressbooks/{userId}/collected/{uid}.vcf",
                           "uid": "{uid}",
+                          "revision": {revision},
+                          "etag": {etag},
                           "payload": "${json-unit.ignore}"
                         }
                         """.replace("{user}", user.username().asString())
                         .replace("{userId}", user.id().value())
-                        .replace("{uid}", uid));
+                        .replace("{uid}", uid)
+                        .replace("{revision}", String.valueOf(revision))
+                        .replace("{etag}", TextNode.valueOf(etag).toString()));
 
                 assertThatJson(event.toString())
                     .when(Option.IGNORING_EXTRA_FIELDS)
@@ -324,8 +332,11 @@ class CommonContactNotificationConsumerTest {
             EMAIL:contact@example.com
             END:VCARD
             """.replace("{uid}", uid).getBytes(StandardCharsets.UTF_8)).block();
+        long revision = currentRevision();
+        String etag = etagOf(uid);
 
-        // Then the consumer republishes an UPDATE event
+        // Then the consumer republishes an UPDATE event, carrying the sync token of the address book after the update
+        // as revision and the etag of the updated contact
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(commonContactEvents)
             .filteredOn(event -> event.at("/action").asText().equals("UPDATE")
                 && event.at("/uid").asText().equals(uid))
@@ -337,6 +348,8 @@ class CommonContactNotificationConsumerTest {
                       "action": "UPDATE",
                       "path": "addressbooks/{userId}/collected/{uid}.vcf",
                       "uid": "{uid}",
+                      "revision": {revision},
+                      "etag": {etag},
                       "payload": {
                         "@type": "Card",
                         "version": "2.0",
@@ -350,7 +363,9 @@ class CommonContactNotificationConsumerTest {
                     }
                     """.replace("{user}", user.username().asString())
                     .replace("{userId}", user.id().value())
-                    .replace("{uid}", uid));
+                    .replace("{uid}", uid)
+                    .replace("{revision}", String.valueOf(revision))
+                    .replace("{etag}", TextNode.valueOf(etag).toString()));
             }));
     }
 
@@ -371,10 +386,14 @@ class CommonContactNotificationConsumerTest {
                 && event.at("/uid").asText().equals(uid))
             .hasSize(1));
 
+        String etag = etagOf(uid);
+
         // When the user deletes that contact through Sabre DAV
         cardDavClient.deleteContact(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid).block();
+        long revision = currentRevision();
 
-        // Then the consumer emits one DELETE event for the original contact change
+        // Then the consumer emits one DELETE event for the original contact change, carrying the sync token of the
+        // address book after the deletion as revision and the etag of the deleted contact
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(commonContactEvents)
             .filteredOn(event -> event.at("/action").asText().equals("DELETE")
                 && event.at("/uid").asText().equals(uid))
@@ -386,6 +405,8 @@ class CommonContactNotificationConsumerTest {
                       "action": "DELETE",
                       "path": "addressbooks/{userId}/collected/{uid}.vcf",
                       "uid": "{uid}",
+                      "revision": {revision},
+                      "etag": {etag},
                       "payload": {
                         "@type": "Card",
                         "version": "2.0",
@@ -399,7 +420,9 @@ class CommonContactNotificationConsumerTest {
                     }
                     """.replace("{user}", user.username().asString())
                     .replace("{userId}", user.id().value())
-                    .replace("{uid}", uid));
+                    .replace("{uid}", uid)
+                    .replace("{revision}", String.valueOf(revision))
+                    .replace("{etag}", TextNode.valueOf(etag).toString()));
             }));
     }
 
@@ -435,7 +458,6 @@ class CommonContactNotificationConsumerTest {
             """.replace("{uid}", uid).getBytes(StandardCharsets.UTF_8)).block();
 
         // Then the event keeps the owner's path and identifies its owner as the audience
-        // The subscribed copy has the same action and uid, so path identifies the owner's contact.
         AWAIT_AT_MOST.untilAsserted(() -> assertThat(commonContactEvents)
             .filteredOn(event -> event.at("/action").asText().equals("UPDATE")
                 && event.at("/path").asText().equals(ownerPath)
@@ -555,6 +577,47 @@ class CommonContactNotificationConsumerTest {
     }
 
     @Test
+    void shouldNotPublishTheCopyOfAContactInADelegatedAddressBook() {
+        // Given an owner who delegated their address book
+        cardDavClient.updateAddressBookShares(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK),
+            List.of(new CardDavClient.AddressBookSharee("mailto:" + delegate.username().asString(), 3))).block();
+
+        // When the owner creates a contact in it, Sabre notifying the delegated address book as well
+        String uid = UUID.randomUUID().toString();
+        cardDavClient.upsertContact(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK), uid, """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:{uid}
+            FN:Delegated contact
+            END:VCARD
+            """.replace("{uid}", uid).getBytes(StandardCharsets.UTF_8)).block();
+
+        // Then a single event is published, for the contact of the owner
+        assertSingleEventOnOwnerPath(uid);
+    }
+
+    @Test
+    void shouldNotPublishTheCopyOfAContactInASubscribedAddressBook() {
+        // Given an owner who published their address book, and a user subscribed to it
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), ADDRESS_BOOK);
+        cardDavClient.updateAddressBookPublicRight(user.username(), addressBookURL, true).block();
+        davTestHelper.createAddressBookSubscription(delegate, UUID.randomUUID().toString(), "Subscription", addressBookURL).block();
+
+        // When the owner creates a contact in it, Sabre notifying the subscription as well
+        String uid = UUID.randomUUID().toString();
+        cardDavClient.upsertContact(user.username(), addressBookURL, uid, """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:{uid}
+            FN:Subscribed contact
+            END:VCARD
+            """.replace("{uid}", uid).getBytes(StandardCharsets.UTF_8)).block();
+
+        // Then a single event is published, for the contact of the owner
+        assertSingleEventOnOwnerPath(uid);
+    }
+
+    @Test
     void shouldDeadLetterMalformedContactNotification() throws IOException {
         // Given a malformed vCard received on Sabre's contact-created exchange
         String uid = UUID.randomUUID().toString();
@@ -562,7 +625,9 @@ class CommonContactNotificationConsumerTest {
             {
               "path": "addressbooks/{userId}/collected/{uid}.vcf",
               "owner": "principals/users/{userId}",
-              "carddata": "not a vCard"
+              "carddata": "not a vCard",
+              "syncToken": 42,
+              "etag": "\\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\\""
             }
             """.replace("{userId}", user.id().value())
             .replace("{uid}", uid);
@@ -587,7 +652,9 @@ class CommonContactNotificationConsumerTest {
             {
               "path": "addressbooks/{userId}/collected/{uid}.vcf",
               "owner": "principals/users/{unknownUserId}",
-              "carddata": "BEGIN:VCARD\\nVERSION:4.0\\nUID:{uid}\\nFN:Unknown owner\\nEND:VCARD\\n"
+              "carddata": "BEGIN:VCARD\\nVERSION:4.0\\nUID:{uid}\\nFN:Unknown owner\\nEND:VCARD\\n",
+              "syncToken": 42,
+              "etag": "\\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\\""
             }
             """.replace("{userId}", user.id().value())
             .replace("{unknownUserId}", unknownUserId)
@@ -626,7 +693,9 @@ class CommonContactNotificationConsumerTest {
             {
               "path": "addressbooks/{userId}/collected/{uid}.vcf",
               "owner": "principals/users/{userId}",
-              "carddata": "BEGIN:VCARD\\nVERSION:4.0\\nUID:{uid}\\nFN:Publication failure\\nEND:VCARD\\n"
+              "carddata": "BEGIN:VCARD\\nVERSION:4.0\\nUID:{uid}\\nFN:Publication failure\\nEND:VCARD\\n",
+              "syncToken": 42,
+              "etag": "\\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\\""
             }
             """.replace("{userId}", user.id().value())
             .replace("{uid}", uid);
@@ -640,6 +709,34 @@ class CommonContactNotificationConsumerTest {
             assertThat(deadLetter).isNotNull();
             assertThat(new String(deadLetter.getBody(), StandardCharsets.UTF_8)).isEqualTo(notification);
         });
+    }
+
+    private void assertSingleEventOnOwnerPath(String uid) {
+        String ownerPath = "addressbooks/" + user.id().value() + "/" + ADDRESS_BOOK + "/" + uid + ".vcf";
+        AWAIT_AT_MOST.during(Duration.ofSeconds(1)).untilAsserted(() -> assertThat(commonContactEvents)
+            .filteredOn(event -> event.at("/uid").asText().equals(uid))
+            .singleElement()
+            .satisfies(event -> {
+                assertThat(event.at("/path").asText()).isEqualTo(ownerPath);
+                assertThat(event.at("/audience/user").asText()).isEqualTo(user.username().asString());
+            }));
+    }
+
+    private long currentRevision() {
+        return Long.parseLong(cardDavClient.retrieveSyncToken(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK))
+            .block()
+            .value());
+    }
+
+    private String etagOf(String uid) {
+        return cardDavClient.reportUserAddressBookContacts(user.username(), new AddressBookURL(user.id(), ADDRESS_BOOK))
+            .block()
+            .extractContactObjects()
+            .stream()
+            .filter(contact -> contact.href().getPath().endsWith("/" + uid + ".vcf"))
+            .findFirst()
+            .orElseThrow()
+            .etag();
     }
 
     private void publishToSabreContactExchange(String notification) throws IOException {

@@ -52,11 +52,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import com.fasterxml.jackson.databind.node.TextNode;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.dav.dto.AddressBookReportXmlResponse;
 import com.linagora.calendar.saas.contact.CommonContactEventConverter;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.ContactChangedEvent;
 import com.linagora.calendar.saas.contact.CommonContactPublisher;
@@ -133,6 +135,9 @@ public class ContactRoutesTest {
     void republishShouldPublishUserContacts() {
         String uid = UUID.randomUUID().toString();
         upsertUserContact(COLLECTED_ADDRESS_BOOK, uid, "John Doe");
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
+        long revision = Long.parseLong(cardDavClient.retrieveSyncToken(user.username(), addressBookURL).block().value());
+        String etag = etagOf(cardDavClient.reportUserAddressBookContacts(user.username(), addressBookURL).block(), uid);
 
         awaitRepublishTask();
 
@@ -143,6 +148,8 @@ public class ContactRoutesTest {
                   "action": "ADD",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
+                  "revision": %d,
+                  "etag": %s,
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -154,7 +161,8 @@ public class ContactRoutesTest {
                     },
                     "vCardProps": [["version", {}, "text", "3.0"]]
                   }
-                }""".formatted(user.username().asString(), user.id().value(), COLLECTED_ADDRESS_BOOK, uid, uid, uid, uid));
+                }""".formatted(user.username().asString(), user.id().value(), COLLECTED_ADDRESS_BOOK, uid, uid,
+                revision, TextNode.valueOf(etag).toString(), uid, uid));
     }
 
     @Test
@@ -175,6 +183,8 @@ public class ContactRoutesTest {
                   "action": "ADD",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
+                  "revision": "${json-unit.ignore}",
+                  "etag": "${json-unit.ignore}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -195,6 +205,8 @@ public class ContactRoutesTest {
                   "action": "ADD",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
+                  "revision": "${json-unit.ignore}",
+                  "etag": "${json-unit.ignore}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -225,6 +237,8 @@ public class ContactRoutesTest {
                   "action": "ADD",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
+                  "revision": "${json-unit.ignore}",
+                  "etag": "${json-unit.ignore}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -262,6 +276,9 @@ public class ContactRoutesTest {
         cardDavClient.createDomainMembersAddressBook(domain.id()).block();
         String uid = UUID.randomUUID().toString();
         cardDavClient.upsertContactDomainMembers(domain.id(), uid, vcard(uid, "Domain Member").getBytes(StandardCharsets.UTF_8)).block();
+        AddressBookURL addressBookURL = new AddressBookURL(domain.id(), DOMAIN_MEMBERS_ADDRESS_BOOK);
+        long revision = Long.parseLong(cardDavClient.retrieveDomainAddressBookSyncToken(domain.id(), addressBookURL).block().value());
+        String etag = etagOf(cardDavClient.reportDomainAddressBookContacts(domain.id(), addressBookURL).block(), uid);
 
         awaitRepublishTask();
 
@@ -272,6 +289,8 @@ public class ContactRoutesTest {
                   "action": "ADD",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
+                  "revision": %d,
+                  "etag": %s,
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -283,7 +302,8 @@ public class ContactRoutesTest {
                     },
                     "vCardProps": [["version", {}, "text", "3.0"]]
                   }
-                }""".formatted(domain.domain().asString(), domain.id().value(), DOMAIN_MEMBERS_ADDRESS_BOOK, uid, uid, uid, uid));
+                }""".formatted(domain.domain().asString(), domain.id().value(), DOMAIN_MEMBERS_ADDRESS_BOOK, uid, uid,
+                revision, TextNode.valueOf(etag).toString(), uid, uid));
     }
 
     @Test
@@ -291,8 +311,10 @@ public class ContactRoutesTest {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("new-domain" + UUID.randomUUID() + ".tld")).block();
         davTestHelper.createDomainAddressBook(domain.id()).block();
         String uid = UUID.randomUUID().toString();
-        davTestHelper.upsertDomainContact(domain.id(), new AddressBookURL(domain.id(), DOMAIN_ADDRESS_BOOK), uid,
-            vcard(uid, "Domain Contact")).block();
+        AddressBookURL addressBookURL = new AddressBookURL(domain.id(), DOMAIN_ADDRESS_BOOK);
+        davTestHelper.upsertDomainContact(domain.id(), addressBookURL, uid, vcard(uid, "Domain Contact")).block();
+        long revision = Long.parseLong(cardDavClient.retrieveDomainAddressBookSyncToken(domain.id(), addressBookURL).block().value());
+        String etag = etagOf(cardDavClient.reportDomainAddressBookContacts(domain.id(), addressBookURL).block(), uid);
 
         awaitRepublishTask();
 
@@ -303,6 +325,8 @@ public class ContactRoutesTest {
                   "action": "ADD",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
+                  "revision": %d,
+                  "etag": %s,
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -314,7 +338,8 @@ public class ContactRoutesTest {
                     },
                     "vCardProps": [["version", {}, "text", "3.0"]]
                   }
-                }""".formatted(domain.domain().asString(), domain.id().value(), DOMAIN_ADDRESS_BOOK, uid, uid, uid, uid));
+                }""".formatted(domain.domain().asString(), domain.id().value(), DOMAIN_ADDRESS_BOOK, uid, uid,
+                revision, TextNode.valueOf(etag).toString(), uid, uid));
     }
 
     @Test
@@ -359,6 +384,8 @@ public class ContactRoutesTest {
                   "action": "ADD",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
+                  "revision": "${json-unit.ignore}",
+                  "etag": "${json-unit.ignore}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -430,6 +457,8 @@ public class ContactRoutesTest {
                   "action": "ADD",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
+                  "revision": "${json-unit.ignore}",
+                  "etag": "${json-unit.ignore}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -460,6 +489,8 @@ public class ContactRoutesTest {
                   "action": "ADD",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
+                  "revision": "${json-unit.ignore}",
+                  "etag": "${json-unit.ignore}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -504,6 +535,8 @@ public class ContactRoutesTest {
                   "action": "ADD",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
+                  "revision": "${json-unit.ignore}",
+                  "etag": "${json-unit.ignore}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -547,6 +580,8 @@ public class ContactRoutesTest {
                   "action": "ADD",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
+                  "revision": "${json-unit.ignore}",
+                  "etag": "${json-unit.ignore}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -655,6 +690,8 @@ public class ContactRoutesTest {
                   "action": "ADD",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
+                  "revision": "${json-unit.ignore}",
+                  "etag": "${json-unit.ignore}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -698,6 +735,8 @@ public class ContactRoutesTest {
                   "action": "ADD",
                   "path": "addressbooks/%s/%s/%s.vcf",
                   "uid": "%s",
+                  "revision": "${json-unit.ignore}",
+                  "etag": "${json-unit.ignore}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -833,6 +872,14 @@ public class ContactRoutesTest {
         assertThat(events).as("published events of contact %s", uid).hasSize(1);
 
         return Throwing.supplier(() -> new String(events.getFirst().serialize(), StandardCharsets.UTF_8)).get();
+    }
+
+    private String etagOf(AddressBookReportXmlResponse response, String uid) {
+        return response.extractContactObjects().stream()
+            .filter(contact -> contact.href().getPath().endsWith("/" + uid + ".vcf"))
+            .findFirst()
+            .orElseThrow()
+            .etag();
     }
 
     private String vcard(String uid, String fullName) {

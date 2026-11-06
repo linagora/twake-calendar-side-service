@@ -120,6 +120,9 @@ public class CommonContactNotificationConsumer implements Closeable, Startable {
             case ADDRESS_BOOK_DELETE -> Mono.fromCallable(() -> SabreAddressBookDeletedNotificationDTO.deserialize(delivery.getBody()))
                 .flatMap(converter::convertAddressBookDeletion);
             case CREATE, UPDATE, DELETE -> Mono.fromCallable(() -> SabreContactNotificationDTO.deserialize(delivery.getBody()))
+                // A contact belongs to the owner of its address book: its copies in subscribed and delegated
+                // address books are not published, consistently with the republication
+                .filter(notificationDTO -> !notificationDTO.isMirrorCopy())
                 .flatMap(notificationDTO -> converter.convert(exchange.action, notificationDTO));
         };
     }

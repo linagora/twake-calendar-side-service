@@ -41,9 +41,10 @@ public record AddressBookReportXmlResponse(byte[] xml) {
         XML_INPUT_FACTORY.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false);
     }
 
-    public record ContactObject(URI href, String cardData) {
+    public record ContactObject(URI href, String etag, String cardData) {
         public ContactObject {
             Preconditions.checkNotNull(href, "href must not be null");
+            Preconditions.checkNotNull(etag, "etag must not be null");
             Preconditions.checkNotNull(cardData, "cardData must not be null");
         }
     }
@@ -93,23 +94,28 @@ public record AddressBookReportXmlResponse(byte[] xml) {
     private List<ContactObject> readContactObjects(XMLStreamReader reader) throws XMLStreamException {
         List<ContactObject> items = new ArrayList<>();
         URI currentHref = null;
+        String currentEtag = null;
         String currentCardData = null;
 
         while (reader.hasNext()) {
-            if (reader.next() == XMLStreamConstants.START_ELEMENT) {
+            int event = reader.next();
+            if (event == XMLStreamConstants.START_ELEMENT) {
                 QName name = reader.getName();
 
-                if (isDavHref(name)) {
+                if (isDavResponse(name)) {
+                    currentHref = null;
+                    currentEtag = null;
+                    currentCardData = null;
+                } else if (isDavHref(name)) {
                     currentHref = URI.create(reader.getElementText());
+                } else if (isDavEtag(name)) {
+                    currentEtag = reader.getElementText();
                 } else if (isAddressData(name)) {
                     currentCardData = reader.getElementText();
                 }
-            }
-
-            if (currentHref != null && currentCardData != null) {
-                items.add(new ContactObject(currentHref, currentCardData));
-                currentHref = null;
-                currentCardData = null;
+            } else if (event == XMLStreamConstants.END_ELEMENT && isDavResponse(reader.getName())
+                && currentHref != null && currentCardData != null) {
+                items.add(new ContactObject(currentHref, currentEtag, currentCardData));
             }
         }
 
@@ -129,6 +135,16 @@ public record AddressBookReportXmlResponse(byte[] xml) {
 
     private static boolean isDavHref(QName name) {
         return "href".equals(name.getLocalPart())
+            && "DAV:".equals(name.getNamespaceURI());
+    }
+
+    private static boolean isDavResponse(QName name) {
+        return "response".equals(name.getLocalPart())
+            && "DAV:".equals(name.getNamespaceURI());
+    }
+
+    private static boolean isDavEtag(QName name) {
+        return "getetag".equals(name.getLocalPart())
             && "DAV:".equals(name.getNamespaceURI());
     }
 

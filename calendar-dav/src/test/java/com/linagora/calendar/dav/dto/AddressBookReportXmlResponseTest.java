@@ -20,6 +20,7 @@ package com.linagora.calendar.dav.dto;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 
 import org.junit.jupiter.api.Test;
@@ -61,5 +62,48 @@ class AddressBookReportXmlResponseTest {
             </d:multistatus>
             """).countContacts())
             .isEqualTo(2L);
+    }
+
+    @Test
+    void extractContactObjectsShouldReadTheEtagOfEachContact() {
+        // Given a multistatus response of two contacts, the etag of the second one following its address data
+        AddressBookReportXmlResponse response = response("""
+            <?xml version="1.0"?>
+            <d:multistatus xmlns:d="DAV:" xmlns:card="urn:ietf:params:xml:ns:carddav">
+              <d:response>
+                <d:href>/addressbooks/ownerId/contacts/contact1.vcf</d:href>
+                <d:propstat>
+                  <d:prop>
+                    <d:getetag>&quot;etag1&quot;</d:getetag>
+                    <card:address-data>BEGIN:VCARD
+            UID:contact1
+            END:VCARD</card:address-data>
+                  </d:prop>
+                  <d:status>HTTP/1.1 200 OK</d:status>
+                </d:propstat>
+              </d:response>
+              <d:response>
+                <d:href>/addressbooks/ownerId/contacts/contact2.vcf</d:href>
+                <d:propstat>
+                  <d:prop>
+                    <card:address-data>BEGIN:VCARD
+            UID:contact2
+            END:VCARD</card:address-data>
+                    <d:getetag>&quot;etag2&quot;</d:getetag>
+                  </d:prop>
+                  <d:status>HTTP/1.1 200 OK</d:status>
+                </d:propstat>
+              </d:response>
+            </d:multistatus>
+            """);
+
+        // When its contacts are extracted
+        // Then each contact carries its own etag
+        assertThat(response.extractContactObjects())
+            .containsExactly(
+                new AddressBookReportXmlResponse.ContactObject(URI.create("/addressbooks/ownerId/contacts/contact1.vcf"),
+                    "\"etag1\"", "BEGIN:VCARD\nUID:contact1\nEND:VCARD"),
+                new AddressBookReportXmlResponse.ContactObject(URI.create("/addressbooks/ownerId/contacts/contact2.vcf"),
+                    "\"etag2\"", "BEGIN:VCARD\nUID:contact2\nEND:VCARD"));
     }
 }

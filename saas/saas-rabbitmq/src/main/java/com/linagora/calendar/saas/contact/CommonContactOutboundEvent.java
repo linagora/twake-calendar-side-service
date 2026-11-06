@@ -55,6 +55,8 @@ public sealed interface CommonContactOutboundEvent permits ContactChangedEvent, 
                                Action action,
                                URI path,
                                @JsonIgnore ContactUid uid,
+                               long revision,
+                               String etag,
                                @JsonInclude(JsonInclude.Include.NON_NULL) JsonNode payload) implements CommonContactOutboundEvent {
         @JsonGetter("uid")
         public String uidAsString() {
