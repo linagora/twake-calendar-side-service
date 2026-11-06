@@ -19,6 +19,7 @@
 package com.linagora.calendar.amqp;
 
 import java.io.IOException;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -185,6 +186,10 @@ public class EventFieldConverter {
                 LOGGER.warn("Skipping invalid attendee event property: {}", node, e);
                 return Optional.empty();
             }
+            if (isEventProperty(node, EventProperty.DURATION_PROPERTY)) {
+                LOGGER.warn("Skipping invalid duration event property: {}", node, e);
+                return Optional.empty();
+            }
             throw new CalendarEventDeserializeException("Cannot deserialize EventProperty" + node.toPrettyString(), e);
         }
     }
@@ -234,8 +239,19 @@ public class EventFieldConverter {
     private static Optional<Instant> calculateEndTimeFromDuration(List<EventProperty> eventProperties) {
         return findPropertyByName(eventProperties, EventProperty.DTSTART_PROPERTY)
             .flatMap(dtStartProperty -> findPropertyByName(eventProperties, EventProperty.DURATION_PROPERTY)
-                .map(durationProperty ->
-                    ((DateProperty) dtStartProperty).getDate().plus(((EventProperty.DurationProperty) durationProperty).getDuration())));
+                .flatMap(durationProperty -> endTime((DateProperty) dtStartProperty, (EventProperty.DurationProperty) durationProperty)));
+    }
+
+    /**
+     * An end out of the Instant range tells nothing useful: the event stays searchable without it.
+     */
+    private static Optional<Instant> endTime(DateProperty start, EventProperty.DurationProperty duration) {
+        try {
+            return Optional.of(start.getDate().plus(duration.getDuration()));
+        } catch (DateTimeException | ArithmeticException e) {
+            LOGGER.warn("Ignoring the end of an event whose duration is out of range: {}", duration.value, e);
+            return Optional.empty();
+        }
     }
 
     private static Optional<EventProperty> findPropertyByName(List<EventProperty> properties, String name) {
