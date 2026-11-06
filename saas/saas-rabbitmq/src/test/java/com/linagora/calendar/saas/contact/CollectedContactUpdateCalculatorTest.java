@@ -29,6 +29,66 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 class CollectedContactUpdateCalculatorTest {
+    @Test
+    void mergeShouldKeepExistingMatrixIdWhenIncomingEmailContactHasAnotherOnlineService() throws Exception {
+        byte[] existingVCard = convertedVCard("""
+            {"@type": "Card", "version": "2.0",
+             "onlineServices": {"matrix": {"@type": "OnlineService", "service": "matrix", "user": "@bob:example.com"}}}
+            """);
+        ObjectNode incomingContact = contact("""
+            {"@type": "Card", "version": "2.0",
+             "emails": {"main": {"@type": "EmailAddress", "address": "bob@example.com"}},
+             "onlineServices": {"xmpp": {"@type": "OnlineService", "service": "xmpp", "user": "bob@example.org"}}}
+            """);
+
+        Optional<byte[]> result = calculateUpdate(existingVCard, incomingContact);
+
+        assertThat(result)
+            .hasValueSatisfying(vCard -> assertThat(asString(vCard))
+                .contains("EMAIL;PROP-ID=main:bob@example.com",
+                    "SERVICE-TYPE=matrix;PROP-ID=matrix;VALUE=text:@bob:example.com",
+                    "SERVICE-TYPE=xmpp;PROP-ID=xmpp;VALUE=text:bob@example.org"));
+    }
+
+    @Test
+    void mergeShouldKeepTheExistingIdentityWhenAnIncomingEntryHasTheSameId() throws Exception {
+        byte[] existingVCard = convertedVCard("""
+            {"@type": "Card", "version": "2.0",
+             "onlineServices": {"m": {"@type": "OnlineService", "service": "matrix", "user": "@bob:example.com"}}}
+            """);
+        ObjectNode incomingContact = contact("""
+            {"@type": "Card", "version": "2.0",
+             "emails": {"main": {"@type": "EmailAddress", "address": "bob@example.com"}},
+             "onlineServices": {"m": {"@type": "OnlineService", "service": "xmpp", "user": "bob@example.org"}}}
+            """);
+
+        Optional<byte[]> result = calculateUpdate(existingVCard, incomingContact);
+
+        assertThat(result)
+            .hasValueSatisfying(vCard -> assertThat(asString(vCard))
+                .contains("EMAIL;PROP-ID=main:bob@example.com", "@bob:example.com"));
+    }
+
+    @Test
+    void mergeShouldKeepExistingEmailWhenIncomingMatrixContactHasABlankEmail() throws Exception {
+        byte[] existingVCard = convertedVCard("""
+            {"@type": "Card", "version": "2.0",
+             "emails": {"main": {"@type": "EmailAddress", "address": "bob@example.com"}}}
+            """);
+        ObjectNode incomingContact = contact("""
+            {"@type": "Card", "version": "2.0",
+             "emails": {"main": {"@type": "EmailAddress", "address": " "}},
+             "onlineServices": {"matrix": {"@type": "OnlineService", "service": "matrix", "user": "@bob:example.com"}}}
+            """);
+
+        Optional<byte[]> result = calculateUpdate(existingVCard, incomingContact);
+
+        assertThat(result)
+            .hasValueSatisfying(vCard -> assertThat(asString(vCard))
+                .contains("EMAIL;PROP-ID=main:bob@example.com",
+                    "SERVICE-TYPE=matrix;PROP-ID=matrix;VALUE=text:@bob:example.com"));
+    }
+
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final CollectedContactUpdateCalculator testee = new CollectedContactUpdateCalculator();

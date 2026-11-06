@@ -26,6 +26,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 public class CollectedContactUpdateCalculator {
+    private static final String EMAILS = "emails";
+    private static final String ONLINE_SERVICES = "onlineServices";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     Optional<byte[]> calculate(CollectedContact existingContact,
@@ -60,8 +62,22 @@ public class CollectedContactUpdateCalculator {
         ObjectNode mergedContactData = existingContactData.deepCopy();
         // Incoming contacts always contain a UID, keeping the merged update on the same CardDAV resource.
         mergedContactData.setAll(incomingContactData);
+        // The incoming card may hold these maps without the identity it is merged for: a blank email, another online service.
+        if (!incomingContact.hasEmailAddress()) {
+            keepExistingEntries(mergedContactData, existingContactData, EMAILS);
+        }
+        if (!incomingContact.hasMatrixId()) {
+            keepExistingEntries(mergedContactData, existingContactData, ONLINE_SERVICES);
+        }
 
         return calculateUpdateIfChanged(existingContactData, CollectedContact.parse(mergedContactData));
+    }
+
+    private void keepExistingEntries(ObjectNode mergedContactData, ObjectNode existingContactData, String field) {
+        if (existingContactData.get(field) instanceof ObjectNode existingEntries
+            && mergedContactData.get(field) instanceof ObjectNode incomingEntries) {
+            mergedContactData.set(field, incomingEntries.deepCopy().setAll(existingEntries));
+        }
     }
 
     private Optional<byte[]> calculateUpdateIfChanged(ObjectNode existingContactData,
