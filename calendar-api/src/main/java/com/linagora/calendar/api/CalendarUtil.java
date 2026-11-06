@@ -57,6 +57,7 @@ import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.ComponentContainer;
 import net.fortuna.ical4j.model.ComponentFactory;
 import net.fortuna.ical4j.model.ComponentList;
+import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyFactory;
 import net.fortuna.ical4j.model.PropertyList;
@@ -69,6 +70,7 @@ import net.fortuna.ical4j.model.component.Observance;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.component.VTimeZone;
 import net.fortuna.ical4j.model.component.XComponent;
+import net.fortuna.ical4j.model.parameter.Value;
 import net.fortuna.ical4j.model.property.DtStart;
 import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.model.property.RRule;
@@ -276,6 +278,31 @@ public class CalendarUtil {
         System.setProperty("net.fortuna.ical4j.timezone.cache.impl", MapTimeZoneCache.class.getName());
     }
 
+    /**
+     * ical4j decodes the value of an extension property when reading it, but does not encode it back when writing it if
+     * its VALUE is not TEXT: a backslash-n becomes a real line break, and the rendered calendar another structure.
+     */
+    private static Calendar keepingNonTextExtensionsOnOneLine(Calendar calendar) {
+        calendar.getProperties().forEach(CalendarUtil::keepOnOneLine);
+        calendar.getComponents().forEach(CalendarUtil::keepOnOneLine);
+        return calendar;
+    }
+
+    private static void keepOnOneLine(Component component) {
+        component.getProperties().forEach(CalendarUtil::keepOnOneLine);
+        if (component instanceof ComponentContainer<?> container) {
+            container.getComponents().forEach(CalendarUtil::keepOnOneLine);
+        }
+    }
+
+    private static void keepOnOneLine(Property property) {
+        if (property instanceof XProperty
+            && property.getParameter(Parameter.VALUE).filter(value -> !Value.TEXT.equals(value)).isPresent()
+            && property.getValue() != null) {
+            property.setValue(property.getValue().replace("\n", "\\n"));
+        }
+    }
+
     public static Calendar parseIcs(String icsContent) {
         return parseIcs(icsContent.getBytes(StandardCharsets.UTF_8));
     }
@@ -289,7 +316,7 @@ public class CalendarUtil {
             new CustomizedTimeZoneRegistry());
         try {
             ByteArrayInputStream inputStream = new ByteArrayInputStream(icsContent);
-            return builder.build(inputStream);
+            return keepingNonTextExtensionsOnOneLine(builder.build(inputStream));
         } catch (IOException e) {
             throw new RuntimeException("Error while reading calendar input", e);
         } catch (ParserException e) {
