@@ -57,7 +57,7 @@ public record TDriveConfiguration(boolean enabled, String instanceDomain, String
     private static final int MAX_HOSTNAME_LENGTH = 253;
 
     public enum InstanceResolver {
-        LOCAL_PART, CLOUDERY
+        LOCAL_PART, CLOUDERY, LDAP
     }
 
     public TDriveConfiguration {
@@ -87,7 +87,8 @@ public record TDriveConfiguration(boolean enabled, String instanceDomain, String
         InstanceResolver resolver = switch (properties.getString(INSTANCE_RESOLVER_PROPERTY, "local-part")) {
             case "local-part" -> InstanceResolver.LOCAL_PART;
             case "cloudery" -> InstanceResolver.CLOUDERY;
-            default -> throw new IllegalArgumentException("twp.drive.instance.resolver must be local-part or cloudery");
+            case "ldap" -> InstanceResolver.LDAP;
+            default -> throw new IllegalArgumentException("twp.drive.instance.resolver must be local-part, cloudery or ldap");
         };
         return new TDriveConfiguration(true,
             required(properties, INSTANCE_DOMAIN_PROPERTY),
