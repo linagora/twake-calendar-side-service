@@ -44,8 +44,12 @@ import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.ResourceInsertRequest;
+import com.linagora.calendar.storage.TeamCalendarInsertRequest;
+import com.linagora.calendar.dav.CalendarSearchSourceResolver.SearchSource;
 import com.linagora.calendar.storage.model.ResourceId;
+import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBTeamCalendarRepository;
 
 class CalendarSearchSourceResolverTest {
     @RegisterExtension
@@ -55,6 +59,7 @@ class CalendarSearchSourceResolverTest {
 
     private CalDavClient calDavClient;
     private MongoDBResourceDAO resourceDAO;
+    private MongoDBTeamCalendarRepository teamCalendarRepository;
     private CalendarSearchSourceResolver testee;
     private OpenPaaSUser requester;
     private OpenPaaSUser sourceUser;
@@ -68,7 +73,8 @@ class CalendarSearchSourceResolverTest {
     void setupEach() throws SSLException {
         calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         resourceDAO = new MongoDBResourceDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), Clock.systemUTC());
-        testee = new CalendarSearchSourceResolver(calDavClient);
+        teamCalendarRepository = new MongoDBTeamCalendarRepository(sabreDavExtension.dockerSabreDavSetup().getMongoDB(), Clock.systemUTC());
+        testee = new CalendarSearchSourceResolver(calDavClient, teamCalendarRepository);
         requester = sabreDavExtension.newTestUser();
         sourceUser = sabreDavExtension.newTestUser();
     }
@@ -266,6 +272,90 @@ class CalendarSearchSourceResolverTest {
         assertThat(result)
             .describedAs("Resolver should filter resource calendars from another domain")
             .isEmpty();
+    }
+
+    @Test
+    void resolveSearchSourcesShouldShowPrivateEventsOfTheRequesterOwnCalendars() {
+        CalendarURL ownCalendar = CalendarURL.from(requester.id());
+        CalendarURL otherOwnCalendar = createCalendar(requester, "own-" + UUID.randomUUID(), PublicRight.HIDE_ALL_EVENT);
+
+        assertThat(testee.resolveSearchSources(requester, List.of(ownCalendar)).block())
+            .containsExactly(new SearchSource(ownCalendar, false));
+        assertThat(testee.resolveSearchSources(requester, List.of(ownCalendar, otherOwnCalendar)).block())
+            .containsExactlyInAnyOrder(new SearchSource(ownCalendar, false), new SearchSource(otherOwnCalendar, false));
+    }
+
+    @Test
+    void resolveSearchSourcesShouldHidePrivateEventsOfDelegatedCalendars() {
+        // Given requester is a delegate of D/E, through mirror A/B.
+        CalendarURL sourceCalendar = createDelegatedSourceCalendar(requester, PublicRight.HIDE_ALL_EVENT);
+        CalendarURL mirrorCalendar = findMirrorCalendar(requester);
+
+        // Then the private events of D/E stay hidden, whether A/B or D/E is requested.
+        assertThat(testee.resolveSearchSources(requester, List.of(mirrorCalendar)).block())
+            .containsExactly(new SearchSource(sourceCalendar, true));
+        assertThat(testee.resolveSearchSources(requester, List.of(sourceCalendar)).block())
+            .containsExactly(new SearchSource(sourceCalendar, true));
+    }
+
+    @Test
+    void resolveSearchSourcesShouldHidePrivateEventsOfSubscribedCalendars() {
+        // Given requester subscribed to D/E, through mirror A/B.
+        CalendarURL sourceCalendar = createSubscribedSourceCalendar();
+        CalendarURL mirrorCalendar = findMirrorCalendar(requester);
+
+        assertThat(testee.resolveSearchSources(requester, List.of(mirrorCalendar)).block())
+            .containsExactly(new SearchSource(sourceCalendar, true));
+        assertThat(testee.resolveSearchSources(requester, List.of(sourceCalendar)).block())
+            .containsExactly(new SearchSource(sourceCalendar, true));
+    }
+
+    @Test
+    void resolveSearchSourcesShouldHidePrivateEventsOfAdministeredResourceCalendars() {
+        OpenPaaSDomain domain = sabreDavExtension.dockerSabreDavSetup()
+            .getOpenPaaSProvisioningService()
+            .getDomain()
+            .block();
+        ResourceId resourceId = createResource(domain, requester);
+        CalendarURL resourceCalendar = CalendarURL.from(resourceId.asOpenPaaSId());
+        calDavClient.grantReadWriteRights(domain.id(), resourceId, List.of(requester.username())).block();
+
+        assertThat(testee.resolveSearchSources(requester, List.of(resourceCalendar)).block())
+            .containsExactly(new SearchSource(resourceCalendar, true));
+    }
+
+    @Test
+    void resolveSearchSourcesShouldShowPrivateEventsOfTeamCalendarsToTheirMembers() {
+        // Given requester is a member of team calendar T/T, shared to them through instance A/B.
+        OpenPaaSDomain domain = sabreDavExtension.dockerSabreDavSetup()
+            .getOpenPaaSProvisioningService()
+            .getDomain()
+            .block();
+        TeamCalendar teamCalendar = teamCalendarRepository
+            .create(new TeamCalendarInsertRequest(domain, "team-" + UUID.randomUUID(), "Team Calendar"))
+            .block();
+        CalendarURL teamCalendarURL = CalendarURL.from(teamCalendar.id().asOpenPaaSId());
+        calDavClient.updateCalendarShares(domain.id(), teamCalendarURL,
+            CalendarSharingUpdate.grant(requester.username(), DavRight.READ)).block();
+        CalendarURL sharedInstance = findMirrorCalendar(requester);
+
+        // Then the private events of T/T are shown, as esn-sabre does for team calendar members.
+        assertThat(testee.resolveSearchSources(requester, List.of(sharedInstance)).block())
+            .containsExactly(new SearchSource(teamCalendarURL, false));
+        assertThat(testee.resolveSearchSources(requester, List.of(teamCalendarURL)).block())
+            .containsExactly(new SearchSource(teamCalendarURL, false));
+    }
+
+    @Test
+    void resolveSearchSourcesShouldTellEachSourceApart() {
+        CalendarURL ownCalendar = CalendarURL.from(requester.id());
+        CalendarURL delegatedSourceCalendar = createDelegatedSourceCalendar(requester, PublicRight.HIDE_ALL_EVENT);
+        CalendarURL notReadableCalendar = createCalendar(sabreDavExtension.newTestUser(), "not-readable-" + UUID.randomUUID(), PublicRight.HIDE_ALL_EVENT);
+
+        assertThat(testee.resolveSearchSources(requester, List.of(ownCalendar, delegatedSourceCalendar, notReadableCalendar)).block())
+            .containsExactlyInAnyOrder(
+                new SearchSource(ownCalendar, false),
+                new SearchSource(delegatedSourceCalendar, true));
     }
 
     private CalendarURL createCalendar(OpenPaaSUser calendarUser, String calendarId, PublicRight publicRight) {

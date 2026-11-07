@@ -128,10 +128,18 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
     }
 
     private boolean matchesQuery(EventFields event, EventSearchQuery query) {
+        if (isHiddenPrivateEvent(event, query)) {
+            return false;
+        }
         if (!matchesQueryKeyword(event, query.query())) {
             return false;
         }
         return matchesOptionalFields(event, query);
+    }
+
+    private boolean isHiddenPrivateEvent(EventFields event, EventSearchQuery query) {
+        return query.calendarsHidingPrivateEvents().contains(event.calendarURL())
+            && EventSearchQuery.isPrivateClassification(event.clazz());
     }
 
     private boolean matchesOptionalFields(EventFields event, EventSearchQuery query) {

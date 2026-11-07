@@ -29,6 +29,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
@@ -2138,6 +2139,152 @@ public interface CalendarSearchServiceContract {
                     .build())
                 .collectList().block()).isEmpty();
         });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PRIVATE", "CONFIDENTIAL", "private", "Confidential"})
+    default void searchShouldLeaveOutPrivateEventsOfCalendarsHidingThem(String clazz) {
+        CalendarURL calendarURL = generateCalendarURL();
+        EventFields privateEvent = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Doctor appointment")
+            .clazz(clazz)
+            .calendarURL(calendarURL)
+            .build();
+        EventFields publicEvent = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Team appointment")
+            .clazz("PUBLIC")
+            .calendarURL(calendarURL)
+            .build();
+        indexEvents(privateEvent);
+        indexEvents(publicEvent);
+
+        EventSearchQuery query = EventSearchQuery.builder()
+            .query("appointment")
+            .calendars(calendarURL)
+            .calendarsHidingPrivateEvents(Set.of(calendarURL))
+            .build();
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(query).collectList().block())
+            .containsExactly(publicEvent));
+    }
+
+    @Test
+    default void searchShouldNotMatchTheFreeTextOfHiddenPrivateEvents() {
+        CalendarURL calendarURL = generateCalendarURL();
+        EventFields privateEvent = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Doctor appointment")
+            .description("Oncology follow-up")
+            .location("Hospital")
+            .clazz("PRIVATE")
+            .calendarURL(calendarURL)
+            .build();
+        indexEvents(privateEvent);
+
+        List.of("doctor", "oncology", "hospital", "").forEach(text ->
+            assertThat(testee().search(EventSearchQuery.builder()
+                    .query(text)
+                    .calendars(calendarURL)
+                    .calendarsHidingPrivateEvents(Set.of(calendarURL))
+                    .build())
+                .collectList().block())
+                .describedAs("searching '%s'", text)
+                .isEmpty());
+    }
+
+    @Test
+    default void searchShouldKeepEventsWithoutClassificationOfCalendarsHidingPrivateEvents() {
+        CalendarURL calendarURL = generateCalendarURL();
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Unclassified appointment")
+            .calendarURL(calendarURL)
+            .build();
+        indexEvents(event);
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(EventSearchQuery.builder()
+                .query("appointment")
+                .calendars(calendarURL)
+                .calendarsHidingPrivateEvents(Set.of(calendarURL))
+                .build())
+            .collectList().block())
+            .containsExactly(event));
+    }
+
+    @Test
+    default void searchShouldOnlyHidePrivateEventsOfTheCalendarsHidingThem() {
+        CalendarURL ownCalendar = generateCalendarURL();
+        CalendarURL delegatedCalendar = generateCalendarURL();
+        EventFields ownPrivateEvent = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Own private appointment")
+            .clazz("PRIVATE")
+            .calendarURL(ownCalendar)
+            .build();
+        EventFields delegatedPrivateEvent = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Delegated private appointment")
+            .clazz("PRIVATE")
+            .calendarURL(delegatedCalendar)
+            .build();
+        EventFields delegatedPublicEvent = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Delegated public appointment")
+            .clazz("PUBLIC")
+            .calendarURL(delegatedCalendar)
+            .build();
+        indexEvents(ownPrivateEvent);
+        indexEvents(delegatedPrivateEvent);
+        indexEvents(delegatedPublicEvent);
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(EventSearchQuery.builder()
+                .query("appointment")
+                .calendars(ownCalendar, delegatedCalendar)
+                .calendarsHidingPrivateEvents(Set.of(delegatedCalendar))
+                .build())
+            .collectList().block())
+            .containsExactlyInAnyOrder(ownPrivateEvent, delegatedPublicEvent));
+    }
+
+    @Test
+    default void searchShouldPageOverTheEventsLeftOnceHiddenPrivateEventsAreLeftOut() {
+        CalendarURL calendarURL = generateCalendarURL();
+        EventFields privateEvent = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Paged appointment")
+            .clazz("PRIVATE")
+            .start(Instant.parse("2030-01-03T10:00:00Z"))
+            .calendarURL(calendarURL)
+            .build();
+        EventFields firstPublicEvent = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Paged appointment")
+            .start(Instant.parse("2030-01-02T10:00:00Z"))
+            .calendarURL(calendarURL)
+            .build();
+        EventFields secondPublicEvent = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("Paged appointment")
+            .start(Instant.parse("2030-01-01T10:00:00Z"))
+            .calendarURL(calendarURL)
+            .build();
+        testee().index(CalendarEvents.of(privateEvent)).block();
+        testee().index(CalendarEvents.of(firstPublicEvent)).block();
+        testee().index(CalendarEvents.of(secondPublicEvent)).block();
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("appointment", calendarURL))
+            .collectList().block())
+            .hasSize(3));
+
+        assertThat(testee().search(EventSearchQuery.builder()
+                .query("appointment")
+                .calendars(calendarURL)
+                .calendarsHidingPrivateEvents(Set.of(calendarURL))
+                .limit(1)
+                .build())
+            .collectList().block())
+            .containsExactly(firstPublicEvent);
     }
 
     private void indexEvents(EventFields events) {

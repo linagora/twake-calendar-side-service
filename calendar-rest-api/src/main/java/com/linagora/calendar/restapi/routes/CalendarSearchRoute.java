@@ -268,7 +268,7 @@ public class CalendarSearchRoute extends CalendarRoute {
                 List<CalendarURL> requestedCalendars = extractCalendarUrls(searchRequest);
 
                 return resolveSearchSourceCalendars(session, requestedCalendars)
-                    .map(searchSourceCalendars -> toEventSearchQuery(searchRequest, searchSourceCalendars, limit, offset))
+                    .map(searchSources -> toEventSearchQuery(searchRequest, searchSources, limit, offset))
                     .flatMapMany(searchService::search)
                     .collectList()
                     .map(Throwing.function(events -> OBJECT_MAPPER.writeValueAsString(SearchResponse.from(events, limit, offset, queryStringDecoder.path()))))
@@ -284,24 +284,29 @@ public class CalendarSearchRoute extends CalendarRoute {
             .onErrorMap(JsonProcessingException.class, error -> new IllegalArgumentException("Invalid request body: " + error.getOriginalMessage(), error));
     }
 
-    private Mono<List<CalendarURL>> resolveSearchSourceCalendars(MailboxSession session, List<CalendarURL> requestedCalendars) {
+    private Mono<List<CalendarSearchSourceResolver.SearchSource>> resolveSearchSourceCalendars(MailboxSession session, List<CalendarURL> requestedCalendars) {
         if (requestedCalendars.isEmpty()) {
             return Mono.just(List.of());
         }
 
         return openPaaSUserDAO.retrieve(session.getUser())
-            .flatMap(requester -> calendarSearchSourceResolver.resolve(requester, requestedCalendars))
-            .map(searchSourceCalendarByRequested -> List.copyOf(searchSourceCalendarByRequested.values()))
+            .flatMap(requester -> calendarSearchSourceResolver.resolveSearchSources(requester, requestedCalendars))
             .switchIfEmpty(Mono.just(List.of()));
     }
 
     private EventSearchQuery toEventSearchQuery(SearchRequest searchRequest,
-                                                List<CalendarURL> searchSourceCalendars,
+                                                List<CalendarSearchSourceResolver.SearchSource> searchSources,
                                                 int limit,
                                                 int offset) {
         EventSearchQuery.Builder queryBuilder = EventSearchQuery.builder()
             .query(Optional.ofNullable(searchRequest.query).orElse(""))
-            .calendars(searchSourceCalendars)
+            .calendars(searchSources.stream()
+                .map(CalendarSearchSourceResolver.SearchSource::calendar)
+                .toList())
+            .calendarsHidingPrivateEvents(searchSources.stream()
+                .filter(CalendarSearchSourceResolver.SearchSource::hidesPrivateEvents)
+                .map(CalendarSearchSourceResolver.SearchSource::calendar)
+                .collect(Collectors.toSet()))
             .limit(limit)
             .offset(offset);
         extractOrganizers(searchRequest).ifPresent(queryBuilder::organizers);

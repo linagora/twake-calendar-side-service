@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -46,6 +47,7 @@ import org.opensearch.client.opensearch._types.Script;
 import org.opensearch.client.opensearch._types.SortOptions;
 import org.opensearch.client.opensearch._types.SortOrder;
 import org.opensearch.client.opensearch._types.WriteResponseBase;
+import org.opensearch.client.opensearch._types.query_dsl.BoolQuery;
 import org.opensearch.client.opensearch._types.query_dsl.MultiMatchQuery;
 import org.opensearch.client.opensearch._types.query_dsl.Operator;
 import org.opensearch.client.opensearch._types.query_dsl.Query;
@@ -254,7 +256,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
         }
 
         List<Query> mustClauses = new ArrayList<>();
-        mustClauses.add(buildCalendarFilter(calendars));
+        mustClauses.add(buildCalendarFilter(calendars, query.calendarsHidingPrivateEvents()));
 
         buildSearchStringQuery(query).ifPresent(mustClauses::add);
         query.organizers().ifPresent(organizerList ->
@@ -399,6 +401,43 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .query(FieldValue.of(value))
             .build()
             .toQuery();
+    }
+
+    // The PRIVATE / CONFIDENTIAL events of the calendars hiding them must never match, not even the free text
+    // query: a hit count alone would tell their content. They are left out within the query, so that paging holds.
+    // Documents indexed before the classification field existed carry none, and are left out too until reindexed.
+    private Query buildCalendarFilter(List<CalendarURL> calendars, Set<CalendarURL> calendarsHidingPrivateEvents) {
+        List<CalendarURL> hidingCalendars = calendars.stream()
+            .filter(calendarsHidingPrivateEvents::contains)
+            .toList();
+        if (hidingCalendars.isEmpty()) {
+            return buildCalendarFilter(calendars);
+        }
+        List<CalendarURL> fullyVisibleCalendars = calendars.stream()
+            .filter(calendar -> !calendarsHidingPrivateEvents.contains(calendar))
+            .toList();
+
+        BoolQuery.Builder calendarFilter = new BoolQuery.Builder()
+            .should(QueryBuilders.bool()
+                .must(buildCalendarFilter(hidingCalendars))
+                .must(QueryBuilders.exists().field(CalendarFields.CLASSIFICATION).build().toQuery())
+                .mustNot(QueryBuilders.terms()
+                    .field(CalendarFields.CLASSIFICATION)
+                    .terms(new TermsQueryField.Builder()
+                        .value(EventSearchQuery.PRIVATE_CLASSIFICATIONS.stream()
+                            .sorted()
+                            .map(FieldValue::of)
+                            .toList())
+                        .build())
+                    .build()
+                    .toQuery())
+                .build()
+                .toQuery())
+            .minimumShouldMatch("1");
+        if (!fullyVisibleCalendars.isEmpty()) {
+            calendarFilter.should(buildCalendarFilter(fullyVisibleCalendars));
+        }
+        return calendarFilter.build().toQuery();
     }
 
     private Query buildCalendarFilter(List<CalendarURL> calendarURLList) {

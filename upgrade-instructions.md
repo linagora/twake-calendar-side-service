@@ -4,6 +4,43 @@ This document describes breaking changes and migration steps required when upgra
 
 ## 2.4.3 (upcoming)
 
+### Added classification field to Calendar Event index mapping
+
+Date: 07/11/2026
+
+Event search (`POST /calendar/api/events/search`) returned the PRIVATE and CONFIDENTIAL events of delegated,
+subscribed and resource calendars in full, while esn-sabre only shows them as busy blocks to anyone but their
+owner (and the members of a team calendar). Such events are now left out of the search results of these readers,
+and do not match their free text queries either.
+
+To do so, the new `classification` field stores the event `CLASS`, upper-cased, `PUBLIC` when absent. The
+existing `clazz` field is not indexed, and the mapping of an existing field cannot be changed in place.
+
+#### Breaking Change
+
+Documents indexed before the upgrade carry no `classification`. Until they are reindexed, delegates,
+subscribers and resource administrators find none of them through search. Owners are not affected.
+
+#### Required Actions
+
+**1. Add the field to your existing index mapping:**
+
+```bash
+PUT /calendar_events/_mapping
+{
+  "properties": {
+    "classification": {
+      "type": "keyword",
+      "index": true
+    }
+  }
+}
+```
+
+**2. [Reindex the calendar events](/docs/apis/webadmin.md#calendar-event-reindexing).**
+
+**Note:** Replace `calendar_events` with your actual index name if different.
+
 ### Stop edge-ngramming the query against organizer / attendee names in event search
 
 Date: 30/07/2026

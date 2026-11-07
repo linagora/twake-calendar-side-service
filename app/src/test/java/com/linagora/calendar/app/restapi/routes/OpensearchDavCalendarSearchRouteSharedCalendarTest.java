@@ -26,12 +26,14 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.empty;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -426,6 +428,88 @@ class OpensearchDavCalendarSearchRouteSharedCalendarTest {
             .body("_embedded.events.data.uid", contains(eventUid.value()))
             .body("_embedded.events.data.userId", contains(resourceCalendar.base().value()))
             .body("_embedded.events.data.calendarId", contains(resourceCalendar.calendarId().value())));
+    }
+
+    @Test
+    void searchShouldHidePrivateAndConfidentialEventsOfDelegatedCalendar() {
+        // Given Alice delegates her calendar Alice/Alice to Bob, holding a public, a private and a confidential event.
+        CalendarURL sourceCalendar = CalendarURL.from(alice.id());
+        String marker = "marker" + UUID.randomUUID().toString().replace("-", "");
+        EventUid publicEvent = upsertClassifiedEvent(marker, "PUBLIC");
+        upsertClassifiedEvent(marker, "PRIVATE");
+        upsertClassifiedEvent(marker, "CONFIDENTIAL");
+        awaitOwnerSeesEveryEvent(sourceCalendar, marker);
+
+        davTestHelper.grantDelegation(alice, sourceCalendar, bob, "dav:read");
+        CalendarURL delegatedCalendar = findMirrorCalendar(bob);
+
+        // Then Bob, reading through the mirror Bob/D or the source Alice/Alice, only finds the public event,
+        // and a free text query on the hidden content finds nothing.
+        assertBobOnlyFindsPublicEvent(List.of(delegatedCalendar, sourceCalendar), marker, publicEvent);
+    }
+
+    @Test
+    void searchShouldHidePrivateAndConfidentialEventsOfSubscribedCalendar() {
+        // Given Bob subscribes to Alice's public calendar Alice/Alice, holding a public, a private and a confidential event.
+        CalendarURL sourceCalendar = CalendarURL.from(alice.id());
+        String marker = "marker" + UUID.randomUUID().toString().replace("-", "");
+        EventUid publicEvent = upsertClassifiedEvent(marker, "PUBLIC");
+        upsertClassifiedEvent(marker, "PRIVATE");
+        upsertClassifiedEvent(marker, "CONFIDENTIAL");
+        awaitOwnerSeesEveryEvent(sourceCalendar, marker);
+
+        calDavClient.updateCalendarAcl(alice.username(), sourceCalendar, CalDavClient.PublicRight.READ).block();
+        CalendarURL subscribedCalendar = davTestHelper.subscribeToSharedCalendar(bob, SubscribedCalendarRequest.builder()
+            .id("subscribed-private-" + UUID.randomUUID())
+            .sourceUserId(alice.id().value())
+            .sourceCalendarId(alice.id().value())
+            .name("Alice subscribed calendar")
+            .color("#123456")
+            .readOnly(true)
+            .build());
+
+        // Then Bob, reading through the mirror Bob/S or the source Alice/Alice, only finds the public event.
+        assertBobOnlyFindsPublicEvent(List.of(subscribedCalendar, sourceCalendar), marker, publicEvent);
+    }
+
+    private EventUid upsertClassifiedEvent(String marker, String clazz) {
+        EventUid eventUid = new EventUid("event-" + clazz.toLowerCase(Locale.ROOT) + "-" + UUID.randomUUID());
+        String summary = "classified" + clazz.toLowerCase(Locale.ROOT) + " " + marker;
+        davTestHelper.upsertCalendar(alice, generateCalendarData(eventUid, summary, alice)
+            .replace("CLASS:PUBLIC", "CLASS:" + clazz), eventUid);
+        return eventUid;
+    }
+
+    private void awaitOwnerSeesEveryEvent(CalendarURL sourceCalendar, String marker) {
+        awaitAtMost.untilAsserted(() -> given()
+            .auth().preemptive()
+            .basic(alice.username().asString(), PASSWORD)
+            .body(searchRequest(sourceCalendar, marker))
+            .post("/calendar/api/events/search")
+        .then()
+            .statusCode(200)
+            .body("_total_hits", equalTo(3))
+            .body("_embedded.events.data.class", containsInAnyOrder("PUBLIC", "PRIVATE", "CONFIDENTIAL")));
+    }
+
+    private void assertBobOnlyFindsPublicEvent(List<CalendarURL> requestedCalendars, String marker, EventUid publicEvent) {
+        requestedCalendars.forEach(requestedCalendar -> {
+            awaitAtMost.untilAsserted(() -> given(bobRequestSpecification)
+                .body(searchRequest(requestedCalendar, marker))
+                .post("/calendar/api/events/search")
+            .then()
+                .statusCode(200)
+                .body("_total_hits", equalTo(1))
+                .body("_embedded.events.data.uid", contains(publicEvent.value())));
+
+            List.of("classifiedprivate", "classifiedconfidential").forEach(hiddenText -> given(bobRequestSpecification)
+                .body(searchRequest(requestedCalendar, hiddenText))
+                .post("/calendar/api/events/search")
+            .then()
+                .statusCode(200)
+                .body("_total_hits", equalTo(0))
+                .body("_embedded.events", empty()));
+        });
     }
 
     private String generateCalendarData(EventUid eventUid, String summary, OpenPaaSUser organizer) {

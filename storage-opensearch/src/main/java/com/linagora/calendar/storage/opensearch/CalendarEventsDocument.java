@@ -20,6 +20,7 @@ package com.linagora.calendar.storage.opensearch;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 import jakarta.mail.internet.AddressException;
@@ -49,12 +50,15 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_
                                      @JsonProperty(CalendarFields.SEQUENCE) Integer sequence,
                                      @JsonProperty(CalendarFields.RESOURCE_NAME) String resourceName,
                                      @JsonProperty(CalendarFields.RECURRENCE_ID) String recurrenceId,
-                                     @JsonProperty(CalendarFields.COLLAPSE_RANK) Integer collapseRank) {
+                                     @JsonProperty(CalendarFields.COLLAPSE_RANK) Integer collapseRank,
+                                     @JsonProperty(CalendarFields.CLASSIFICATION) String classification) {
 
     // Representative rank used to keep the recurrence master (or a standalone event) when collapsing
     // search results on the event uid: an overridden occurrence sorts after the master.
     private static final int MASTER_COLLAPSE_RANK = 0;
     private static final int OVERRIDDEN_OCCURRENCE_COLLAPSE_RANK = 1;
+    // RFC 5545 3.8.1.3: an event without CLASS is PUBLIC.
+    private static final String DEFAULT_CLASSIFICATION = "PUBLIC";
 
     public static class DeserializeException extends RuntimeException {
         public DeserializeException(String message, Throwable cause) {
@@ -106,7 +110,16 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_
             eventFields.sequence().orElse(null),
             eventFields.resourceName().orElse(null),
             eventFields.recurrenceId().orElse(null),
-            computeCollapseRank(eventFields));
+            computeCollapseRank(eventFields),
+            computeClassification(eventFields));
+    }
+
+    private static String computeClassification(EventFields eventFields) {
+        return Optional.ofNullable(eventFields.clazz())
+            .map(String::trim)
+            .filter(clazz -> !clazz.isEmpty())
+            .map(clazz -> clazz.toUpperCase(Locale.ROOT))
+            .orElse(DEFAULT_CLASSIFICATION);
     }
 
     private static int computeCollapseRank(EventFields eventFields) {

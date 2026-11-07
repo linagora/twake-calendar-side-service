@@ -60,7 +60,7 @@ public class MemoryCalendarSearchRouteTest implements CalendarSearchRouteContrac
             @Singleton
             CalendarSearchSourceResolver calendarSearchSourceResolver() {
                 // Memory route tests do not start SabreDAV; keep resolution local to the requester's default calendar.
-                return new CalendarSearchSourceResolver(null) {
+                return new CalendarSearchSourceResolver(null, null) {
                     @Override
                     public Mono<Map<CalendarURL, CalendarURL>> resolve(OpenPaaSUser requester,
                                                                         List<CalendarURL> requestedCalendars) {
@@ -72,6 +72,16 @@ public class MemoryCalendarSearchRouteTest implements CalendarSearchRouteContrac
                             .forEach(calendarURL -> resolvedCalendars.put(calendarURL, calendarURL));
 
                         return Mono.just(resolvedCalendars);
+                    }
+
+                    @Override
+                    public Mono<List<SearchSource>> resolveSearchSources(OpenPaaSUser requester,
+                                                                         List<CalendarURL> requestedCalendars) {
+                        return resolve(requester, requestedCalendars)
+                            .map(resolvedCalendars -> resolvedCalendars.values().stream()
+                                .distinct()
+                                .map(calendarURL -> new SearchSource(calendarURL, false))
+                                .toList());
                     }
                 };
             }
