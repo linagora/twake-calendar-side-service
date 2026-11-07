@@ -34,6 +34,7 @@ import org.apache.james.utils.PropertiesProvider;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.amqp.meet.MeetConfiguration;
+import com.linagora.calendar.saas.drive.configuration.TDriveConfiguration;
 import com.linagora.calendar.twakespace.TwakeSpaceConfiguration;
 
 public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, JamesDirectoriesProvider directories,
@@ -44,6 +45,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                                          boolean commonContactsEnabled,
                                          boolean saasSubscriptionEnabled,
                                          boolean meetEnabled,
+                                         boolean tdriveEnabled,
                                          boolean twakeSpaceEnabled) implements Configuration {
 
     public static final boolean ENABLED = true;
@@ -59,6 +61,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
         private Optional<Boolean> commonContactsEnabled;
         private Optional<Boolean> saasSubscriptionEnabled;
         private Optional<Boolean> meetEnabled;
+        private Optional<Boolean> tdriveEnabled;
         private Optional<Boolean> twakeSpaceEnabled;
         private Optional<CalendarEventSearchChoice> calendarEventSearchChoice;
 
@@ -73,6 +76,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
             commonContactsEnabled = Optional.empty();
             saasSubscriptionEnabled = Optional.empty();
             meetEnabled = Optional.empty();
+            tdriveEnabled = Optional.empty();
             twakeSpaceEnabled = Optional.empty();
             calendarEventSearchChoice = Optional.empty();
         }
@@ -124,6 +128,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
         public Builder enableMeet() {
             meetEnabled = Optional.of(true);
+            return this;
+        }
+
+        public Builder enableTDrive() {
+            tdriveEnabled = Optional.of(true);
             return this;
         }
 
@@ -210,6 +219,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 return configuration.getBoolean(MeetConfiguration.MEET_ENABLED_PROPERTY, !ENABLED);
             }));
 
+            boolean tdriveEnabledValue = this.tdriveEnabled.orElseGet(Throwing.supplier(() -> {
+                var configuration = propertiesProvider.getConfiguration("configuration");
+                return configuration.getBoolean(TDriveConfiguration.ENABLED_PROPERTY, !ENABLED);
+            }));
+
             boolean twakeSpaceEnabledValue = this.twakeSpaceEnabled.orElseGet(Throwing.supplier(() -> {
                 var configuration = propertiesProvider.getConfiguration("configuration");
                 return configuration.getBoolean(TwakeSpaceConfiguration.ENABLED_PROPERTY, !ENABLED);
@@ -252,6 +266,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 commonContactsEnabledValue,
                 saasSubscriptionEnabledValue,
                 meetEnabledValue,
+                tdriveEnabledValue,
                 twakeSpaceEnabledValue);
         }
 
