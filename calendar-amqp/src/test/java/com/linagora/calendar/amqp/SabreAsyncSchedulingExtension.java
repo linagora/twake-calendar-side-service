@@ -46,6 +46,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarSearchSourceResolver;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.storage.MemoryTeamCalendarRepository;
 import com.linagora.calendar.storage.UserNameResolver;
 import com.linagora.calendar.storage.UserProvisioner;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
@@ -95,7 +96,7 @@ public class SabreAsyncSchedulingExtension implements BeforeAllCallback, BeforeE
         itipLocalDeliveryConsumer = new ItipLocalDeliveryConsumer(channelPool,
             QueueArguments.Builder::new,
             calDavClient,
-            new CalendarSearchSourceResolver(calDavClient),
+            new CalendarSearchSourceResolver(calDavClient, new MemoryTeamCalendarRepository(Clock.systemUTC())),
             localRecipientResolver(),
             DEFAULT_ITIP_EVENT_MESSAGES_PREFETCH_COUNT,
             Clock.systemUTC());

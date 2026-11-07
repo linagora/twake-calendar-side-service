@@ -20,7 +20,9 @@ package com.linagora.calendar.storage.eventsearch;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 import org.apache.james.core.MailAddress;
 
@@ -33,6 +35,7 @@ public record EventSearchQuery(String query,
                                Optional<List<MailAddress>> organizers,
                                Optional<List<MailAddress>> attendees,
                                Optional<BookingLinkPublicId> bookingLink,
+                               Set<CalendarURL> calendarsHidingPrivateEvents,
                                int limit,
                                int offset) {
 
@@ -44,12 +47,29 @@ public record EventSearchQuery(String query,
         return new Builder();
     }
 
+    public static final Set<String> PRIVATE_CLASSIFICATIONS = Set.of("PRIVATE", "CONFIDENTIAL");
+
+    public static boolean isPrivateClassification(String clazz) {
+        return clazz != null && PRIVATE_CLASSIFICATIONS.contains(clazz.trim().toUpperCase(Locale.ROOT));
+    }
+
+    public EventSearchQuery(String query,
+                            Optional<List<CalendarURL>> calendars,
+                            Optional<List<MailAddress>> organizers,
+                            Optional<List<MailAddress>> attendees,
+                            Optional<BookingLinkPublicId> bookingLink,
+                            int limit,
+                            int offset) {
+        this(query, calendars, organizers, attendees, bookingLink, Set.of(), limit, offset);
+    }
+
     public EventSearchQuery {
         Preconditions.checkNotNull(query, "query must not be null");
         Preconditions.checkNotNull(calendars, "calendars must not be null");
         Preconditions.checkNotNull(organizers, "organizers must not be null");
         Preconditions.checkNotNull(attendees, "attendees must not be null");
         Preconditions.checkNotNull(bookingLink, "bookingLink must not be null");
+        Preconditions.checkNotNull(calendarsHidingPrivateEvents, "calendarsHidingPrivateEvents must not be null");
         Preconditions.checkArgument(limit > 0, "limit must be positive");
         Preconditions.checkArgument(offset >= 0, "offset must be non-negative");
         Preconditions.checkArgument(limit <= MAX_LIMIT, "limit must be less than or equal to " + MAX_LIMIT);
@@ -61,6 +81,7 @@ public record EventSearchQuery(String query,
         private Optional<List<MailAddress>> organizers = Optional.empty();
         private Optional<List<MailAddress>> attendees = Optional.empty();
         private Optional<BookingLinkPublicId> bookingLink = Optional.empty();
+        private Set<CalendarURL> calendarsHidingPrivateEvents = Set.of();
         private int limit = DEFAULT_LIMIT;
         private int offset = OFFSET_INITIAL;
 
@@ -104,6 +125,15 @@ public record EventSearchQuery(String query,
             return this;
         }
 
+        /**
+         * Calendars whose PRIVATE / CONFIDENTIAL events are left out of the results, for a requester who only
+         * sees them as busy blocks through DAV.
+         */
+        public Builder calendarsHidingPrivateEvents(Set<CalendarURL> calendarsHidingPrivateEvents) {
+            this.calendarsHidingPrivateEvents = Set.copyOf(calendarsHidingPrivateEvents);
+            return this;
+        }
+
         public Builder limit(int limit) {
             this.limit = limit;
             return this;
@@ -115,7 +145,7 @@ public record EventSearchQuery(String query,
         }
 
         public EventSearchQuery build() {
-            return new EventSearchQuery(query, calendars, organizers, attendees, bookingLink, limit, offset);
+            return new EventSearchQuery(query, calendars, organizers, attendees, bookingLink, calendarsHidingPrivateEvents, limit, offset);
         }
     }
 }
