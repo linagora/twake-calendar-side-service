@@ -363,7 +363,41 @@ class CollectedContactUpdateCalculatorTest {
     }
 
     @Test
-    void shouldReplaceMergedContactWhenIncomingContactContainsEmailOnly() throws Exception {
+    void shouldReturnEmptyWhenSameEmailIsReceivedAfterMerge() throws Exception {
+        // Given a Matrix ID contact already merged with an equivalent email
+        byte[] matrixVCard = convertedVCard("""
+            {
+              "@type": "Card",
+              "version": "2.0",
+              "onlineServices": {
+                "matrix": { "@type": "OnlineService", "service": "matrix", "user": "@bob:example.com" }
+              }
+            }
+            """);
+        ObjectNode emailContact = contact("""
+            {
+              "@type": "Card",
+              "version": "2.0",
+              "emails": {
+                "main": { "@type": "EmailAddress", "address": "bob@example.com" }
+              }
+            }
+            """);
+        byte[] mergedVCard = calculateUpdate(matrixVCard, emailContact)
+            .orElseThrow();
+
+        // When receiving the same email again
+        Optional<byte[]> result = calculateUpdate(mergedVCard, emailContact);
+
+        // Then no update is required and both identities remain in the existing contact
+        assertThat(result).isEmpty();
+        assertThat(asString(mergedVCard))
+            .contains("EMAIL;PROP-ID=main:bob@example.com",
+                "SOCIALPROFILE;SERVICE-TYPE=matrix;PROP-ID=matrix;VALUE=text:@bob:example.com");
+    }
+
+    @Test
+    void shouldKeepMatrixIdOfMergedContactWhenIncomingContactContainsEmailOnly() throws Exception {
         // Given an existing contact with both an email and an equivalent Matrix ID
         byte[] existingVCard = convertedVCard("""
             {
@@ -391,11 +425,8 @@ class CollectedContactUpdateCalculatorTest {
         // When updating it with an email-only contact
         Optional<byte[]> result = calculateUpdate(existingVCard, incomingContact);
 
-        // Then the incoming contact replaces the Matrix ID
-        assertThat(result)
-            .hasValueSatisfying(vCard -> assertThat(asString(vCard))
-                .contains("EMAIL;PROP-ID=main:bob@example.com")
-                .doesNotContain("SOCIALPROFILE", "@bob:example.com"));
+        // Then the Matrix ID is kept and no update is required
+        assertThat(result).isEmpty();
     }
 
     @Test
