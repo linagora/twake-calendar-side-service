@@ -28,12 +28,14 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -56,6 +58,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.inject.multibindings.OptionalBinder;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
@@ -65,6 +68,9 @@ import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.restapi.TDriveRestApiModule;
+import com.linagora.calendar.saas.drive.api.AttachmentStore;
+import com.linagora.calendar.saas.drive.api.AttachmentUri;
 import com.linagora.calendar.smtp.MailSenderConfiguration;
 import com.linagora.calendar.smtp.MockSmtpServerExtension;
 import com.linagora.calendar.smtp.template.MailTemplateConfiguration;
@@ -83,12 +89,18 @@ import io.restassured.path.json.JsonPath;
 import io.restassured.specification.RequestSpecification;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.CalendarComponent;
+import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.parameter.Value;
+import net.fortuna.ical4j.model.property.Attach;
+import reactor.core.publisher.Mono;
 
 public class ImportRouteTest {
 
     private static final String PASSWORD = "secret";
+    private static final URI UPLOADED_ATTACHMENT = URI.create("https://drive.example.test/public?sharecode=attachment");
 
     ConditionFactory CALMLY_AWAIT = Awaitility
         .with().pollInterval(ONE_HUNDRED_MILLISECONDS)
@@ -122,6 +134,9 @@ public class ImportRouteTest {
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         AppTestHelper.OIDC_BY_PASS_MODULE,
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
+        new TDriveRestApiModule(),
+        binder -> OptionalBinder.newOptionalBinder(binder, AttachmentStore.class)
+            .setBinding().toInstance((attachment, username) -> Mono.just(new AttachmentUri(UPLOADED_ATTACHMENT))),
         binder -> binder.bind(MailTemplateConfiguration.class)
             .toInstance(new MailTemplateConfiguration("classpath://templates/",
                 MaybeSender.getMailSender("no-reply@twake.app"))),
@@ -560,6 +575,52 @@ public class ImportRouteTest {
         assertThat(actual.getComponents(Component.VEVENT))
             .map(component -> ((CalendarComponent) component).getProperty(Property.UID).get().getValue())
             .containsExactly(uid);
+    }
+
+    @Test
+    void shouldStoreAnUploadedUriWhenImportingAnEmbeddedAttachment(TwakeCalendarGuiceServer server) {
+        String uid = UUID.randomUUID().toString();
+        byte[] ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Twake Calendar//Import test//EN
+            BEGIN:VEVENT
+            UID:{uid}
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Event with attachments
+            ATTACH;VALUE=BINARY;ENCODING=BASE64;FMTTYPE=text/plain;
+             X-FILENAME=notes.txt:dGVzdA==
+            ATTACH:https://drive.example.test/other.txt
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{uid}", uid).replace("\n", "\r\n").getBytes(StandardCharsets.UTF_8);
+
+        CalendarURL calendarURL = new CalendarURL(openPaaSUser.id(), openPaaSUser.id());
+        String target = calendarURL.asUri() + ".json";
+        server.getProbe(CalendarDataProbe.class).exportCalendarFromCalDav(calendarURL, MailboxSessionUtil.create(openPaaSUser.username()));
+
+        importIcs(server, ics, target);
+
+        CALMLY_AWAIT.atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            Calendar calendar = CalendarUtil.parseIcs(server.getProbe(CalendarDataProbe.class)
+                .exportCalendarFromCalDav(calendarURL, MailboxSessionUtil.create(openPaaSUser.username())));
+            List<VEvent> events = calendar.getComponents(Component.VEVENT);
+            assertThat(events).singleElement().satisfies(event -> {
+                assertThat(event.getProperty(Property.UID).orElseThrow().getValue()).isEqualTo(uid);
+                List<Attach> attachments = event.getProperties(Property.ATTACH);
+                assertThat(attachments).extracting(Attach::getUri)
+                    .containsExactlyInAnyOrder(URI.create("https://drive.example.test/other.txt"), UPLOADED_ATTACHMENT);
+                Attach uploaded = attachments.stream()
+                    .filter(attachment -> UPLOADED_ATTACHMENT.equals(attachment.getUri()))
+                    .findFirst().orElseThrow();
+                assertThat(uploaded.getParameter(Parameter.ENCODING)).isEmpty();
+                assertThat(uploaded.getParameter(Parameter.VALUE)).contains(Value.URI);
+                assertThat(uploaded.getParameter(Parameter.FMTTYPE).map(Parameter::getValue)).contains("text/plain");
+                assertThat(uploaded.getParameter("X-FILENAME").map(Parameter::getValue)).contains("notes.txt");
+            });
+        });
     }
 
     private void importIcs(TwakeCalendarGuiceServer server, byte[] ics, String target) {

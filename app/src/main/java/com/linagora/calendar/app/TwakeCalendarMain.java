@@ -75,6 +75,7 @@ import com.linagora.calendar.commoncontacts.api.CommonContactsApiModule;
 import com.linagora.calendar.dav.DavModule;
 import com.linagora.calendar.restapi.MeetRestApiModule;
 import com.linagora.calendar.restapi.RestApiModule;
+import com.linagora.calendar.restapi.TDriveRestApiModule;
 import com.linagora.calendar.saas.TWPCalendarUserCreationModule;
 import com.linagora.calendar.saas.TWPCalendarUserDeletionModule;
 import com.linagora.calendar.saas.drive.configuration.TDriveModule;
@@ -275,7 +276,7 @@ public class TwakeCalendarMain {
 
     public static Module chooseTDrive(boolean enabled) {
         if (enabled) {
-            return new TDriveModule();
+            return Modules.combine(new TDriveModule(), new TDriveRestApiModule());
         }
         return Modules.EMPTY_MODULE;
     }

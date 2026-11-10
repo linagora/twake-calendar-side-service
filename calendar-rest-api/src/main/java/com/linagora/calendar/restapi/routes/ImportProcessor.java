@@ -121,9 +121,11 @@ public class ImportProcessor {
 
     static class ImportICSToDavHandler implements ImportToDavHandler {
         private final CalDavClient calDavClient;
+        private final ImportIcsRewriter icsRewriter;
 
-        ImportICSToDavHandler(CalDavClient calDavClient) {
+        ImportICSToDavHandler(CalDavClient calDavClient, ImportIcsRewriter icsRewriter) {
             this.calDavClient = calDavClient;
+            this.icsRewriter = icsRewriter;
         }
 
         @Override
@@ -133,7 +135,8 @@ public class ImportProcessor {
             return Mono.fromCallable(() -> EventToImport.parse(importCommand.uploadData()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(Flux::fromIterable)
-                .flatMap(event -> Mono.defer(() -> calDavClient.importCalendar(calendarURL, event.resourceName(), username, event.ics()))
+                .flatMap(event -> Mono.defer(() -> icsRewriter.rewrite(event, username))
+                    .flatMap(ics -> calDavClient.importCalendar(calendarURL, event.resourceName(), username, ics))
                     .thenReturn(ImportResult.succeed())
                     .onErrorResume(error -> {
                         LOGGER.error("Error importing event with UID {}: {}", event.uid(), error.getMessage());
@@ -255,8 +258,9 @@ public class ImportProcessor {
     @Inject
     public ImportProcessor(CardDavClient cardDavClient,
                            CalDavClient calDavClient,
+                           ImportIcsRewriter icsRewriter,
                            Set<ImportResultNotifier> importResultNotifiers) {
-        this.importICSHandler = new ImportICSToDavHandler(calDavClient);
+        this.importICSHandler = new ImportICSToDavHandler(calDavClient, icsRewriter);
         this.importVCardHandler = new ImportVCardToDavHandler(cardDavClient);
         this.importResultNotifiers = importResultNotifiers;
     }
