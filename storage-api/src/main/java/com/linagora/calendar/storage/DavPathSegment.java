@@ -37,7 +37,9 @@ import com.google.common.base.Preconditions;
  * and the fragment, so they stay literal characters of a single segment.
  */
 public final class DavPathSegment {
-    private static final Pattern PCHARS = Pattern.compile("(?:[A-Za-z0-9\\-._~!$&'()*+,;=:@]|%[0-9A-Fa-f]{2})+");
+    // possessive: the alternatives start with distinct characters, so it matches the same language without
+    // the recursion per repetition that overflows the stack on a long segment
+    private static final Pattern PCHARS = Pattern.compile("(?:[A-Za-z0-9\\-._~!$&'()*+,;=:@]|%[0-9A-Fa-f]{2})++");
     private static final Pattern DECODING_UNIT = Pattern.compile("%([0-9A-Fa-f]{2})|[^%]");
     private static final Set<String> DOT_SEGMENTS = Set.of(".", "..");
     private static final String FORBIDDEN_DECODED_CHARS = "/\\";
