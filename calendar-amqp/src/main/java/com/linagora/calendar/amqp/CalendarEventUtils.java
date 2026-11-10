@@ -70,6 +70,12 @@ public class CalendarEventUtils {
     private static final ZonedDateTime LAST_EXPANDED_DATE = ZonedDateTime.of(9999, 12, 31, 23, 59, 59, 0, ZoneOffset.UTC);
     @VisibleForTesting
     static final long MAX_WALKED_PERIODS = Long.getLong("tcalendar.itip.max.walked.periods", 50_000L);
+    /**
+     * The candidates the walk may visit, counted as the walked periods times the product of the BY* list sizes. Every
+     * real world rule stays far below it: a weekly rule on three days walked from 1900 counts 20,000 of them.
+     */
+    @VisibleForTesting
+    static final long MAX_WALKED_CANDIDATES = Long.getLong("tcalendar.itip.max.walked.candidates", 1_000_000L);
     private static final Duration RELEVANT_LOOK_AHEAD = Duration.ofDays(200L * 366);
     private static final long SECONDS_PER_YEAR = Duration.ofDays(365).getSeconds();
     // Recur#getMaxIncrementCount is not public, and defaults to 1000
@@ -169,13 +175,23 @@ public class CalendarEventUtils {
      *     against its candidates, and BYWEEKNO or an ordinal BYDAY map them back, to the first week of the year or the
      *     first Monday of the month, hence before the seed: {@code FREQ=SECONDLY;BYWEEKNO=1} rejects a year of seconds
      *     whatever the end. RFC 5545 does not allow either on such frequencies.</li>
+     *     <li>the work ical4j does in each period grows with the BY* lists. Their repeated values, which change no
+     *     occurrence, are dropped before walking, and a rule whose lists still hold too many candidates for the periods to
+     *     walk is not walked: see {@link #MAX_WALKED_CANDIDATES}.</li>
      * </ul>
      */
     private static boolean hasUpcomingExpandedOccurrence(ZonedDateTime startDateTime,
-                                                         Recur<Temporal> recur,
+                                                         Recur<Temporal> givenRecur,
                                                          Set<Instant> excludedDates,
                                                          Instant now) {
-        if (rejectsTooManyCandidates(recur)) {
+        Recur<Temporal> recur;
+        try {
+            recur = withDistinctLists(givenRecur);
+        } catch (RuntimeException e) {
+            LOGGER.info("Cannot rebuild {}: considering the event as not expired", givenRecur, e);
+            return true;
+        }
+        if (rejectsTooManyCandidates(recur) || walksTooManyCandidates(startDateTime, recur)) {
             LOGGER.info("Not walking {}: considering the event as not expired", recur);
             return true;
         }
@@ -218,6 +234,40 @@ public class CalendarEventUtils {
         boolean mapsCandidatesBack = !recur.getWeekNoList().isEmpty()
             || recur.getDayList().stream().anyMatch(day -> day.getOffset() != 0);
         return mapsCandidatesBack && SECONDS_PER_YEAR / periodSeconds(recur) > MAX_WALKED_PERIODS;
+    }
+
+    @VisibleForTesting
+    static Recur<Temporal> withDistinctLists(Recur<Temporal> recur) {
+        return new Recur.Builder<>(recur)
+            .secondList(distinct(recur.getSecondList()))
+            .minuteList(distinct(recur.getMinuteList()))
+            .hourList(distinct(recur.getHourList()))
+            .dayList(distinct(recur.getDayList()))
+            .monthDayList(distinct(recur.getMonthDayList()))
+            .yearDayList(distinct(recur.getYearDayList()))
+            .weekNoList(distinct(recur.getWeekNoList()))
+            .monthList(distinct(recur.getMonthList()))
+            .setPosList(distinct(recur.getSetPosList()))
+            .build();
+    }
+
+    private static <T> List<T> distinct(List<T> values) {
+        return values.stream().distinct().toList();
+    }
+
+    /**
+     * Bounds the candidates the walk may visit: each walked period combines the values of the BY* lists of the rule, so
+     * their sizes multiply the cost of a period.
+     */
+    private static boolean walksTooManyCandidates(ZonedDateTime startDateTime, Recur<Temporal> recur) {
+        long candidatesPerPeriod = Stream.of(recur.getSecondList(), recur.getMinuteList(), recur.getHourList(),
+                recur.getDayList(), recur.getMonthDayList(), recur.getYearDayList(), recur.getWeekNoList(),
+                recur.getMonthList(), recur.getSetPosList())
+            .mapToLong(List::size)
+            .filter(size -> size > 0)
+            .reduce(1L, (a, b) -> Math.min(a * b, MAX_WALKED_CANDIDATES + 1));
+        long walkedPeriods = Math.max(1, Duration.between(startDateTime, walkEnd(startDateTime, recur)).getSeconds() / periodSeconds(recur));
+        return candidatesPerPeriod > MAX_WALKED_CANDIDATES / walkedPeriods;
     }
 
     private static ZonedDateTime walkEnd(ZonedDateTime startDateTime, Recur<Temporal> recur) {

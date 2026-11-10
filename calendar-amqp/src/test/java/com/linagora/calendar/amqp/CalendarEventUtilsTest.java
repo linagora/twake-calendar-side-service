@@ -25,6 +25,10 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Collections;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -533,6 +537,59 @@ class CalendarEventUtilsTest {
         boolean expired = assertTimeoutPreemptively(Duration.ofSeconds(1),
             () -> CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK));
         assertThat(expired).isFalse();
+    }
+
+    @Test
+    void expiryCheckShouldStayFastWhenByDayRepeatsTheSameDay() {
+        String byDay = String.join(",", Collections.nCopies(100, "MO"));
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:repeated-byday@test
+            DTSTART:19230108T211200Z
+            DURATION:PT1H
+            RRULE:FREQ=WEEKLY;UNTIL=20461119T220000Z;BYDAY=%s
+            END:VEVENT
+            """.formatted(byDay));
+
+        boolean expired = assertTimeoutPreemptively(Duration.ofSeconds(1),
+            () -> CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK));
+
+        assertThat(expired).isFalse();
+    }
+
+    @Test
+    void expiryCheckShouldStayFastWhenByDayHoldsManyDistinctOrdinalDays() {
+        String byDay = IntStream.rangeClosed(1, 53)
+            .mapToObj(offset -> Stream.of("MO", "TU", "WE", "TH", "FR", "SA", "SU").map(day -> offset + day + ",-" + offset + day))
+            .flatMap(days -> days)
+            .collect(Collectors.joining(","));
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:many-byday@test
+            DTSTART:19230108T211200Z
+            DURATION:PT1H
+            RRULE:FREQ=WEEKLY;UNTIL=20461119T220000Z;BYDAY=%s
+            END:VEVENT
+            """.formatted(byDay));
+
+        boolean expired = assertTimeoutPreemptively(Duration.ofSeconds(1),
+            () -> CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK));
+
+        assertThat(expired).isFalse();
+    }
+
+    @Test
+    void expiryCheckShouldStillExpireAPastRuleWhoseByDayRepeatsTheSameDay() {
+        VEvent vEvent = parseSingleVEvent("""
+            BEGIN:VEVENT
+            UID:repeated-byday-past@test
+            DTSTART:20200106T100000Z
+            DURATION:PT1H
+            RRULE:FREQ=WEEKLY;COUNT=10;BYDAY=MO,MO,WE,MO,WE
+            END:VEVENT
+            """);
+
+        assertThat(CalendarEventUtils.vEventExpired(vEvent, TEST_CLOCK)).isTrue();
     }
 
     private VEvent eventOf(String startAndRule) {
