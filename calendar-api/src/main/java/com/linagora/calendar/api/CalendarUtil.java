@@ -28,6 +28,8 @@ package com.linagora.calendar.api;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.time.DateTimeException;
 import java.time.Year;
@@ -38,7 +40,10 @@ import java.time.temporal.Temporal;
 import java.time.zone.ZoneRules;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -46,14 +51,17 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
 
-import net.fortuna.ical4j.data.CalendarBuilder;
 import net.fortuna.ical4j.data.CalendarParserFactory;
+import net.fortuna.ical4j.data.ContentHandler;
 import net.fortuna.ical4j.data.ContentHandlerContext;
 import net.fortuna.ical4j.data.DefaultComponentFactorySupplier;
+import net.fortuna.ical4j.data.DefaultContentHandler;
 import net.fortuna.ical4j.data.DefaultPropertyFactorySupplier;
 import net.fortuna.ical4j.data.ParserException;
+import net.fortuna.ical4j.data.UnfoldingReader;
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.ComponentBuilder;
 import net.fortuna.ical4j.model.ComponentContainer;
 import net.fortuna.ical4j.model.ComponentFactory;
 import net.fortuna.ical4j.model.ComponentList;
@@ -72,6 +80,7 @@ import net.fortuna.ical4j.model.component.XComponent;
 import net.fortuna.ical4j.model.property.DtStart;
 import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.model.property.RRule;
+import net.fortuna.ical4j.model.property.TzId;
 import net.fortuna.ical4j.model.property.Version;
 import net.fortuna.ical4j.model.property.XProperty;
 import net.fortuna.ical4j.transform.recurrence.Frequency;
@@ -92,7 +101,9 @@ public class CalendarUtil {
      * zone names...), are not registered: they resolve to the JVM zone. Only custom TZIDs are registered and resolved
      * from their own definition.
      *
-     * <p>Registering a VTIMEZONE makes ical4j expand every observance RRULE from its DTSTART up to now. An instance serves
+     * <p>Registering a VTIMEZONE makes ical4j expand every observance RRULE from its DTSTART up to now, and building its
+     * {@link TimeZone} does so up to ten years from now when it has several STANDARD (or DAYLIGHT) observances to choose
+     * from. {@link #register(VTimeZone)} thus runs every check on the definition, before the zone is built. An instance serves
      * one parsed calendar, and {@link #MAX_EXPANSION_COST} bounds the expansion it accepts in total, whatever the number
      * of zones. Custom zones that would exceed what is left of it (sub-daily rules, decades of monthly ones...) are not
      * registered either: their TZID is then handled like any unknown TZID. So are the custom zones beyond the first
@@ -110,6 +121,8 @@ public class CalendarUtil {
         @VisibleForTesting
         static final int MAX_CUSTOM_TIMEZONES = Integer.getInteger("tcalendar.tz.max.custom.tz", 1000);
         private static final int MIN_EXPANDED_YEARS = 5;
+        // Building a zone with several STANDARD observances expands each of them up to ten years from now
+        private static final int FUTURE_EXPANDED_YEARS = 10;
         private static final long OBSERVANCE_COST = 6;
         private static final int MAX_WEEKDAYS_PER_MONTH = 5;
         private static final int MONTHS_PER_YEAR = 12;
@@ -118,17 +131,33 @@ public class CalendarUtil {
         private int registeredCount = 0;
         private long remainingExpansionCost = MAX_EXPANSION_COST;
 
+        /**
+         * Registers the zone a VTIMEZONE defines, unless it is skipped. Unlike {@link #register(TimeZone)}, the
+         * {@link TimeZone} is only built once the definition passed the checks, its construction expanding observances.
+         */
+        public void register(VTimeZone vTimeZone) {
+            Optional<String> tzId = vTimeZone.<TzId>getProperty(Property.TZID).map(TzId::getValue);
+            if (tzId.isEmpty()) {
+                // Fails like ical4j does on a VTIMEZONE without TZID
+                register(new TimeZone(vTimeZone));
+                return;
+            }
+            if (shouldRegister(tzId.get(), vTimeZone)) {
+                registerLeniently(tzId.get(), () -> delegate.register(new TimeZone(vTimeZone)));
+            }
+        }
+
         @Override
         public void register(TimeZone timezone) {
-            if (shouldRegister(timezone)) {
-                registerLeniently(timezone, () -> delegate.register(timezone));
+            if (shouldRegister(timezone.getID(), timezone.getVTimeZone())) {
+                registerLeniently(timezone.getID(), () -> delegate.register(timezone));
             }
         }
 
         @Override
         public void register(TimeZone timezone, boolean update) {
-            if (shouldRegister(timezone)) {
-                registerLeniently(timezone, () -> delegate.register(timezone, update));
+            if (shouldRegister(timezone.getID(), timezone.getVTimeZone())) {
+                registerLeniently(timezone.getID(), () -> delegate.register(timezone, update));
             }
         }
 
@@ -136,25 +165,25 @@ public class CalendarUtil {
          * ical4j throws while building the zone rules of some observances (e.g. a negative BYMONTHDAY beyond -28), which
          * would fail the whole calendar: such a zone is handled like an unknown TZID instead.
          */
-        private void registerLeniently(TimeZone timezone, Runnable registration) {
+        private void registerLeniently(String tzId, Runnable registration) {
             try {
                 registration.run();
             } catch (RuntimeException e) {
-                LOGGER.info("Ignoring VTIMEZONE {}: ical4j cannot build its rules", timezone.getID(), e);
+                LOGGER.info("Ignoring VTIMEZONE {}: ical4j cannot build its rules", tzId, e);
             }
         }
 
-        private boolean shouldRegister(TimeZone timezone) {
-            if (isGloballyKnown(timezone.getID())) {
+        private boolean shouldRegister(String tzId, VTimeZone vTimeZone) {
+            if (isGloballyKnown(tzId)) {
                 return false;
             }
             if (registeredCount >= MAX_CUSTOM_TIMEZONES) {
-                LOGGER.info("Ignoring VTIMEZONE {}: more than {} custom timezones in the calendar", timezone.getID(), MAX_CUSTOM_TIMEZONES);
+                LOGGER.info("Ignoring VTIMEZONE {}: more than {} custom timezones in the calendar", tzId, MAX_CUSTOM_TIMEZONES);
                 return false;
             }
-            OptionalLong expansionCost = estimatedExpansionCost(timezone.getVTimeZone());
+            OptionalLong expansionCost = estimatedExpansionCost(vTimeZone);
             if (expansionCost.isEmpty() || expansionCost.getAsLong() > remainingExpansionCost) {
-                LOGGER.info("Ignoring VTIMEZONE {}: its observances recur too often to be expanded", timezone.getID());
+                LOGGER.info("Ignoring VTIMEZONE {}: its observances recur too often to be expanded", tzId);
                 return false;
             }
             remainingExpansionCost -= expansionCost.getAsLong();
@@ -218,7 +247,7 @@ public class CalendarUtil {
                 .filter(date -> date.isSupported(ChronoField.YEAR))
                 .map(date -> (long) currentYear - date.get(ChronoField.YEAR) + 1)
                 .map(years -> Math.max(years, MIN_EXPANDED_YEARS))
-                .orElse((long) MIN_EXPANDED_YEARS);
+                .orElse((long) MIN_EXPANDED_YEARS) + FUTURE_EXPANDED_YEARS;
         }
 
         private boolean isGloballyKnown(String tzId) {
@@ -280,16 +309,45 @@ public class CalendarUtil {
         return parseIcs(icsContent.getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * The ical4j content handler, except for VTIMEZONEs: ical4j builds their {@link TimeZone} before handing it to the
+     * registry, and that construction may expand observances without bound. They are handed over as definitions to
+     * {@link CustomizedTimeZoneRegistry#register(VTimeZone)}, which checks them first.
+     */
+    private static class TimeZoneCheckingContentHandler extends DefaultContentHandler {
+        private final CustomizedTimeZoneRegistry tzRegistry;
+
+        TimeZoneCheckingContentHandler(Consumer<Calendar> consumer, CustomizedTimeZoneRegistry tzRegistry, ContentHandlerContext context) {
+            super(consumer, tzRegistry, context);
+            this.tzRegistry = tzRegistry;
+        }
+
+        @Override
+        public void endComponent(String name) {
+            ComponentBuilder<Component> componentBuilder = getComponentBuilder();
+            if (componentBuilder == null || components.size() != 1 || !componentBuilder.hasName(Component.VTIMEZONE)) {
+                super.endComponent(name);
+                return;
+            }
+            endComponent();
+            CalendarComponent component = (CalendarComponent) componentBuilder.build();
+            calendarComponents.add(component);
+            if (component instanceof VTimeZone vTimeZone) {
+                tzRegistry.register(vTimeZone);
+            }
+        }
+    }
+
     public static Calendar parseIcs(byte[] icsContent) {
-        CalendarBuilder builder = new CalendarBuilder(
-            CalendarParserFactory.getInstance().get(),
+        AtomicReference<Calendar> calendar = new AtomicReference<>();
+        ContentHandler contentHandler = new TimeZoneCheckingContentHandler(calendar::set, new CustomizedTimeZoneRegistry(),
             new ContentHandlerContext()
                 .withSuppressInvalidProperties(true)
-                .withPropertyFactorySupplier(CalendarUtil::propertyFactories),
-            new CustomizedTimeZoneRegistry());
+                .withPropertyFactorySupplier(CalendarUtil::propertyFactories));
         try {
-            ByteArrayInputStream inputStream = new ByteArrayInputStream(icsContent);
-            return builder.build(inputStream);
+            Reader reader = new UnfoldingReader(new InputStreamReader(new ByteArrayInputStream(icsContent), StandardCharsets.UTF_8));
+            CalendarParserFactory.getInstance().get().parse(reader, contentHandler);
+            return calendar.get();
         } catch (IOException e) {
             throw new RuntimeException("Error while reading calendar input", e);
         } catch (ParserException e) {
