@@ -35,6 +35,8 @@ import com.google.inject.Injector;
 import com.google.inject.Key;
 import com.google.inject.Stage;
 import com.google.inject.util.Modules;
+import com.linagora.calendar.restapi.routes.ImportAttachmentOffloader;
+import com.linagora.calendar.restapi.routes.ImportIcsRewriter;
 import com.linagora.calendar.saas.drive.api.AttachmentStore;
 import com.linagora.calendar.saas.drive.configuration.TDriveConfiguration;
 import com.linagora.calendar.saas.drive.configuration.TDriveModule;
@@ -81,6 +83,7 @@ class TDriveConfigurationWiringTest {
         assertThat(injector.getExistingBinding(Key.get(AttachmentStore.class))).isNull();
         assertThat(injector.getExistingBinding(Key.get(TDriveConfiguration.class))).isNull();
         assertThat(injector.getExistingBinding(Key.get(TDriveAttachmentStore.class))).isNull();
+        assertThat(injector.getExistingBinding(Key.get(ImportIcsRewriter.class))).isNull();
     }
 
     @Test
@@ -98,6 +101,7 @@ class TDriveConfigurationWiringTest {
         AttachmentStore client = injector.getInstance(AttachmentStore.class);
 
         assertThat(application.tdriveEnabled()).isTrue();
+        assertThat(injector.getInstance(ImportIcsRewriter.class)).isInstanceOf(ImportAttachmentOffloader.class);
         assertThat(driveConfiguration.instanceDomain()).hasToString("example.com");
         assertThat(injector.getInstance(TDriveInstanceResolver.class)).isInstanceOf(LocalPartTDriveInstanceResolver.class);
         assertThat(client)

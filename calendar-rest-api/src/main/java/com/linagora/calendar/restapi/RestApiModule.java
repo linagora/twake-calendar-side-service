@@ -95,6 +95,7 @@ import com.linagora.calendar.restapi.routes.DownloadCalendarRoute;
 import com.linagora.calendar.restapi.routes.EntityRoute;
 import com.linagora.calendar.restapi.routes.EventParticipationRoute;
 import com.linagora.calendar.restapi.routes.FileUploadRoute;
+import com.linagora.calendar.restapi.routes.ImportIcsRewriter;
 import com.linagora.calendar.restapi.routes.ImportResultNotifier;
 import com.linagora.calendar.restapi.routes.ImportResultNotifier.ImportWebSocketNotifier;
 import com.linagora.calendar.restapi.routes.ImportResultNotifier.SendMailNotifier;
@@ -164,6 +165,8 @@ public class RestApiModule extends AbstractModule {
         OptionalBinder.newOptionalBinder(binder(), MeetingConferenceLinkGenerator.class)
             .setDefault().to(MeetingConferenceLinkGenerator.Visio.class);
         OptionalBinder.newOptionalBinder(binder(), AttachmentStore.class);
+        OptionalBinder.newOptionalBinder(binder(), ImportIcsRewriter.class)
+            .setDefault().toInstance(ImportIcsRewriter.UNCHANGED);
 
         Multibinder<JMAPRoutes> routes = Multibinder.newSetBinder(binder(), JMAPRoutes.class);
         routes.addBinding().to(AvatarRoute.class);
