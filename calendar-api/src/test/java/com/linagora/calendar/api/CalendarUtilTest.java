@@ -281,6 +281,67 @@ class CalendarUtilTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {"Europe/Paris", "Custom/Zone"})
+    @Timeout(value = 2, unit = TimeUnit.SECONDS)
+    void parseIcsShouldNotExpandSubDailyObservancesOfAZoneWithSeveralStandardTimes(String tzId) {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VTIMEZONE
+            TZID:%s
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0200
+            TZOFFSETTO:+0100
+            DTSTART:19701025T030000
+            RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+            END:STANDARD
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0200
+            TZOFFSETTO:+0100
+            DTSTART:20250101T000000
+            RRULE:FREQ=MINUTELY
+            END:STANDARD
+            END:VTIMEZONE
+            END:VCALENDAR
+            """.formatted(tzId);
+
+        assertThatCode(() -> CalendarUtil.parseIcs(ics)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void parseIcsShouldStillResolveACustomZoneWithSeveralStandardTimes() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VTIMEZONE
+            TZID:Custom/Zone
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0200
+            TZOFFSETTO:+0100
+            DTSTART:19701025T030000
+            RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+            END:STANDARD
+            BEGIN:STANDARD
+            TZOFFSETFROM:+0300
+            TZOFFSETTO:+0300
+            DTSTART:20000101T000000
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:tz-1
+            DTSTAMP:20250101T000000Z
+            DTSTART;TZID=Custom/Zone:20250320T100000
+            DURATION:PT1H
+            END:VEVENT
+            END:VCALENDAR
+            """);
+
+        VEvent vEvent = calendar.<VEvent>getComponent(Component.VEVENT).orElseThrow();
+        assertThat(((ZonedDateTime) vEvent.getDateTimeStart().getDate()).toInstant())
+            .isEqualTo(Instant.parse("2025-03-20T09:00:00Z"));
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {
         "FREQ=SECONDLY",
         "FREQ=MINUTELY",
