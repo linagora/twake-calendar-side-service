@@ -33,11 +33,14 @@ import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
 
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
 public record CalendarReportXmlResponse(byte[] xml) {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(CalendarReportXmlResponse.class);
     private static final XMLInputFactory XML_INPUT_FACTORY;
 
     static {
@@ -102,13 +105,20 @@ public record CalendarReportXmlResponse(byte[] xml) {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to parse CalDAV multistatus XML", e);
         } finally {
-            if (reader != null) {
-                try {
-                    reader.close();
-                } catch (XMLStreamException xmlStreamException) {
-                    throw new IllegalStateException("Failed to parse CalDAV multistatus XML", xmlStreamException);
-                }
-            }
+            close(reader);
+        }
+    }
+
+    // a reader over a byte array holds nothing to release: a close failure must neither mask the parse error
+    // nor fail a successful parse
+    static void close(XMLStreamReader reader) {
+        if (reader == null) {
+            return;
+        }
+        try {
+            reader.close();
+        } catch (XMLStreamException e) {
+            LOGGER.warn("Failed to close the CalDAV multistatus XML reader", e);
         }
     }
 
