@@ -28,6 +28,12 @@ See [the mail page](mail.md) for the exhaustive list of emails the calendar send
 
 The side service also enables synchronizing domain members into ESN-Sabre DAV server.
 
+## Calendar attachments on Twake Drive
+
+When Drive attachment storage is enabled, the side service can upload calendar attachments to the authenticated user's Drive and return a public, read-only URI.
+
+See [Twake Drive configuration](../saas/twake-drive/README.md) for settings and instance resolution. If ESN-Sabre filters attachment URLs, configure it to trust the generated Drive URLs.
+
 ## Automatic user provisioning
 
 If enabled, users are automatically registered upon their first OpenID connect interaction.
