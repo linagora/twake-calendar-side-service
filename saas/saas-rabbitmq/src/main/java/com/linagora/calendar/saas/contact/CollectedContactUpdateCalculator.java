@@ -51,7 +51,7 @@ public class CollectedContactUpdateCalculator {
         boolean incomingHasMatrixId = incomingContact.hasMatrixId();
 
         boolean shouldMergeMatrixIdIntoExistingEmail = existingHasEmail && incomingHasMatrixId && !incomingHasEmail;
-        boolean shouldMergeEmailIntoExistingMatrixId = existingHasMatrixId && !existingHasEmail && incomingHasEmail && !incomingHasMatrixId;
+        boolean shouldMergeEmailIntoExistingMatrixId = existingHasMatrixId && incomingHasEmail && !incomingHasMatrixId;
 
         return shouldMergeMatrixIdIntoExistingEmail || shouldMergeEmailIntoExistingMatrixId;
     }
