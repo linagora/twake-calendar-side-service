@@ -229,6 +229,10 @@ final class CollectedContact {
         }
     }
 
+    /**
+     * The converter stops at the first error, and a card may need both recoveries: either recognised error applies both
+     * before the single retry.
+     */
     private static Card readVCard(List<VCard> vCards) throws CardException {
         try {
             return VCARD_TO_JSCONTACT.convert(vCards.toArray(VCard[]::new)).getFirst();
@@ -236,16 +240,15 @@ final class CollectedContact {
             if (!isUnreadableJSProp(e)) {
                 throw e;
             }
-            // Written from a field holding only what JSContact does not define: it has nothing to attach to on reading
-            vCards.forEach(vCard -> vCard.removeExtendedProperty(JSPROP));
-            return VCARD_TO_JSCONTACT.convert(vCards.toArray(VCard[]::new)).getFirst();
         } catch (RuntimeException e) {
             if (!isUnreadableExtensionParameter(e)) {
                 throw e;
             }
-            vCards.forEach(CollectedContact::dropUnreadableExtensionParameters);
-            return VCARD_TO_JSCONTACT.convert(vCards.toArray(VCard[]::new)).getFirst();
         }
+        // A JSPROP written from a field holding only what JSContact does not define has nothing to attach to on reading
+        vCards.forEach(vCard -> vCard.removeExtendedProperty(JSPROP));
+        vCards.forEach(CollectedContact::dropUnreadableExtensionParameters);
+        return VCARD_TO_JSCONTACT.convert(vCards.toArray(VCard[]::new)).getFirst();
     }
 
     /**

@@ -677,6 +677,23 @@ class CollectedContactTest {
             .isEqualTo(CollectedContact.parse(contact(json)).resourceName());
     }
 
+    @Test
+    void parseShouldReadBackACardWithANameOnlyExtensionAndATextExtensionParameter() throws Exception {
+        CollectedContact contact = CollectedContact.parse(contact("""
+            {
+              "@type": "Card",
+              "version": "2.0",
+              "name": { "foo": "bar" },
+              "phones": { "p": { "@type": "Phone", "number": "+33 1 23 45 67 89" } },
+              "vCardProps": [["x-test", { "x-label": "L" }, "text", "value"]]
+            }
+            """));
+
+        assertThatCode(() -> CollectedContact.parse(contact.toVCardAsBytes()))
+            .doesNotThrowAnyException();
+        assertThat(CollectedContact.parse(contact.toVCardAsBytes()).uid()).isEqualTo(contact.uid());
+    }
+
     private ObjectNode contact(String value) throws Exception {
         return (ObjectNode) OBJECT_MAPPER.readTree(value);
     }
