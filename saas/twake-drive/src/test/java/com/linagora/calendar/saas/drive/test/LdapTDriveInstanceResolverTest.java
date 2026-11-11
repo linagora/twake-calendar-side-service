@@ -54,6 +54,7 @@ import com.linagora.calendar.saas.drive.configuration.TDriveConfiguration;
 import com.linagora.calendar.saas.drive.configuration.TDriveConfiguration.InstanceResolver;
 import com.linagora.calendar.saas.drive.configuration.TDriveModule;
 import com.linagora.calendar.saas.drive.tdrive.LdapTDriveInstanceResolver;
+import com.linagora.calendar.saas.drive.tdrive.TDriveAttachmentStore;
 import com.linagora.calendar.saas.drive.tdrive.TDriveInstanceResolver;
 import com.unboundid.ldap.listener.InMemoryDirectoryServer;
 import com.unboundid.ldap.listener.InMemoryDirectoryServerConfig;
@@ -64,7 +65,7 @@ class LdapTDriveInstanceResolverTest {
     private static final String BASE_DN = "dc=example,dc=com";
     private static final String USER_BASE = "ou=people," + BASE_DN;
     private static final Username USER = Username.of("alice.smith@example.com");
-    private static final String FQDN = "assigned-instance.example.com";
+    private static final String FQDN = "assigned-instance.staging.example.net";
     private static final Attachment ATTACHMENT = new Attachment("test.txt", ContentType.of("text/plain"), new byte[] {97});
 
     @RegisterExtension
@@ -134,17 +135,18 @@ class LdapTDriveInstanceResolverTest {
     }
 
     private AttachmentStore client() {
-        TDriveConfiguration configuration = new TDriveConfiguration(true, "example.com",
-            drive.baseUrl() + "/instances/{fqdn}/token", drive.baseUrl() + "/{fqdn}", "public-token",
-            "Calendar attachments", "https://{driveFqdn}/public?sharecode={sharecode}#/", Duration.ofSeconds(3), false,
+        TDriveConfiguration configuration = new TDriveConfiguration(true, Optional.empty(),
+            drive.baseUrl() + "/instances/{fqdn}/token", "public-token",
+            "Calendar attachments", "https://{instanceLabel}-drive.{instanceSuffix}/public?sharecode={sharecode}#/", Duration.ofSeconds(3), false,
             Optional.empty(), InstanceResolver.LDAP);
         var injector = Guice.createInjector(Modules.override(new TDriveModule()).with(binder -> {
             binder.bind(TDriveConfiguration.class).toInstance(configuration);
             binder.bind(LdapRepositoryConfiguration.class).toInstance(ldapConfiguration);
             binder.bind(LDAPConnectionPool.class).toInstance(pool);
         }));
-        assertThat(injector.getInstance(TDriveInstanceResolver.class)).isInstanceOf(LdapTDriveInstanceResolver.class);
-        return injector.getInstance(AttachmentStore.class);
+        TDriveInstanceResolver resolver = injector.getInstance(TDriveInstanceResolver.class);
+        assertThat(resolver).isInstanceOf(LdapTDriveInstanceResolver.class);
+        return new TDriveAttachmentStore(configuration, resolver, uri -> URI.create(drive.baseUrl() + "/" + uri.getHost()));
     }
 
     @Test
@@ -153,7 +155,7 @@ class LdapTDriveInstanceResolverTest {
 
         URI uri = client().upload(ATTACHMENT, USER).block().value();
 
-        assertThat(uri).hasToString("https://assigned-instance-drive.example.com/public?sharecode=public-code#/");
+        assertThat(uri).hasToString("https://assigned-instance-drive.staging.example.net/public?sharecode=public-code#/");
         drive.verify(postRequestedFor(urlPathEqualTo("/instances/" + FQDN + "/token"))
             .withHeader("Authorization", equalTo("Bearer public-token")));
         assertThat(drive.getAllServeEvents()).hasSize(4);
@@ -210,8 +212,8 @@ class LdapTDriveInstanceResolverTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"", " ", "https://assigned-instance.example.com", "victim.example.org", "example.com", "assigned-instance.example.com/evil"})
-    void shouldRejectInvalidOrExternalHostnameBeforeTokenIssuance(String hostname) throws Exception {
+    @ValueSource(strings = {"", " ", "https://assigned-instance.example.com", "localhost", "127.0.0.1", "assigned-instance.example.com/invalid"})
+    void shouldRejectInvalidHostnameBeforeTokenIssuance(String hostname) throws Exception {
         addUser("alice", USER.asString(), hostname);
         assertInvalidUpload(USER);
     }

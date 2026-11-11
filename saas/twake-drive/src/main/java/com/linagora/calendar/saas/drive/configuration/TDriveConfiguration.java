@@ -32,16 +32,15 @@ import org.apache.james.util.DurationParser;
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Preconditions;
 
-public record TDriveConfiguration(boolean enabled, String instanceDomain, String tokenUrlTemplate,
-                                  String driveUrlTemplate, String partnerToken, String folderName,
+public record TDriveConfiguration(boolean enabled, Optional<String> localPartDomain, String tokenUrlTemplate,
+                                  String issuerToken, String folderName,
                                   String publicUrlTemplate, Duration timeout, boolean trustAllSslCerts,
                                   Optional<ClouderyLookup> clouderyLookup, InstanceResolver instanceResolver) {
     public static final String ENABLED_PROPERTY = "twp.drive.enabled";
-    private static final String INSTANCE_DOMAIN_PROPERTY = "twp.drive.instance.domain";
+    private static final String LOCAL_PART_DOMAIN_PROPERTY = "twp.drive.local-part.domain";
     private static final String INSTANCE_RESOLVER_PROPERTY = "twp.drive.instance.resolver";
     private static final String TOKEN_URL_TEMPLATE_PROPERTY = "twp.drive.token.url.template";
-    private static final String DRIVE_URL_TEMPLATE_PROPERTY = "twp.drive.drive.url.template";
-    private static final String PARTNER_TOKEN_PROPERTY = "twp.drive.partner.token";
+    private static final String ISSUER_TOKEN_PROPERTY = "twp.drive.issuer.token";
     private static final String FOLDER_NAME_PROPERTY = "twp.drive.folder.name";
     private static final String PUBLIC_URL_TEMPLATE_PROPERTY = "twp.drive.public.url.template";
     private static final String TIMEOUT_PROPERTY = "twp.drive.timeout";
@@ -49,8 +48,8 @@ public record TDriveConfiguration(boolean enabled, String instanceDomain, String
     public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(10);
     public static final String DEFAULT_FOLDER = "Calendar attachments";
 
-    private static final TDriveConfiguration DISABLED = new TDriveConfiguration(false, null, null, null, null,
-        DEFAULT_FOLDER, null, DEFAULT_TIMEOUT, false, Optional.empty(), InstanceResolver.LOCAL_PART);
+    private static final TDriveConfiguration DISABLED = new TDriveConfiguration(false, Optional.empty(), null, null,
+        DEFAULT_FOLDER, null, DEFAULT_TIMEOUT, false, Optional.empty(), InstanceResolver.CLOUDERY);
     private static final CharMatcher INVALID_NAME_CHARACTERS = CharMatcher.javaIsoControl().or(CharMatcher.anyOf("/\\"));
     private static final String HOSTNAME_LABEL = "[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?";
     private static final Pattern HOSTNAME = Pattern.compile(HOSTNAME_LABEL + "(?:\\." + HOSTNAME_LABEL + ")*");
@@ -61,13 +60,17 @@ public record TDriveConfiguration(boolean enabled, String instanceDomain, String
     }
 
     public TDriveConfiguration {
+        if (enabled && instanceResolver == InstanceResolver.LOCAL_PART) {
+            localPartDomain.ifPresent(domain -> Preconditions.checkArgument(validHostname(domain),
+                "%s must be a hostname without scheme, port or path", LOCAL_PART_DOMAIN_PROPERTY));
+        } else {
+            localPartDomain = Optional.empty();
+        }
         if (enabled) {
-            Preconditions.checkArgument(validHostname(instanceDomain), "twp.drive.instance.domain must be a hostname without scheme, port or path");
             TDriveEndpointValidation.validateServiceUrlTemplate(tokenUrlTemplate, TOKEN_URL_TEMPLATE_PROPERTY);
-            TDriveEndpointValidation.validateServiceUrlTemplate(driveUrlTemplate, DRIVE_URL_TEMPLATE_PROPERTY);
             TDriveEndpointValidation.validatePublicUrlTemplate(publicUrlTemplate, PUBLIC_URL_TEMPLATE_PROPERTY);
-            Preconditions.checkArgument(TDriveEndpointValidation.validBearerToken(partnerToken),
-                "twp.drive.partner.token must be a non-blank bearer credential");
+            Preconditions.checkArgument(TDriveEndpointValidation.validBearerToken(issuerToken),
+                "%s must be a non-blank bearer token", ISSUER_TOKEN_PROPERTY);
             Preconditions.checkArgument(validName(folderName), "twp.drive.folder.name must be a single directory name");
             Preconditions.checkArgument(timeout != null && timeout.isPositive() && timeout.toMillis() > 0 && timeout.toMillis() <= Integer.MAX_VALUE,
                 "twp.drive.timeout must be positive and fit in milliseconds");
@@ -84,17 +87,18 @@ public record TDriveConfiguration(boolean enabled, String instanceDomain, String
 
     // Installing TDriveModule explicitly (including a builder override) enables the integration.
     static TDriveConfiguration enabled(Configuration properties) {
-        InstanceResolver resolver = switch (properties.getString(INSTANCE_RESOLVER_PROPERTY, "local-part")) {
+        InstanceResolver resolver = switch (properties.getString(INSTANCE_RESOLVER_PROPERTY, "cloudery")) {
             case "local-part" -> InstanceResolver.LOCAL_PART;
             case "cloudery" -> InstanceResolver.CLOUDERY;
             case "ldap" -> InstanceResolver.LDAP;
             default -> throw new IllegalArgumentException("twp.drive.instance.resolver must be local-part, cloudery or ldap");
         };
         return new TDriveConfiguration(true,
-            required(properties, INSTANCE_DOMAIN_PROPERTY),
+            resolver == InstanceResolver.LOCAL_PART
+                ? Optional.ofNullable(properties.getString(LOCAL_PART_DOMAIN_PROPERTY)).filter(StringUtils::isNotBlank)
+                : Optional.empty(),
             required(properties, TOKEN_URL_TEMPLATE_PROPERTY),
-            properties.getString(DRIVE_URL_TEMPLATE_PROPERTY, "https://{fqdn}"),
-            required(properties, PARTNER_TOKEN_PROPERTY),
+            required(properties, ISSUER_TOKEN_PROPERTY),
             properties.getString(FOLDER_NAME_PROPERTY, DEFAULT_FOLDER),
             required(properties, PUBLIC_URL_TEMPLATE_PROPERTY),
             Optional.ofNullable(properties.getString(TIMEOUT_PROPERTY, null))
@@ -106,7 +110,7 @@ public record TDriveConfiguration(boolean enabled, String instanceDomain, String
     private static Optional<ClouderyLookup> lookupConfiguration(Configuration properties, InstanceResolver resolver) {
         if (resolver == InstanceResolver.CLOUDERY) {
             return Optional.of(new ClouderyLookup(URI.create(required(properties, ClouderyLookup.URL_PROPERTY)),
-                required(properties, ClouderyLookup.PARTNER_TOKEN_PROPERTY)));
+                required(properties, ClouderyLookup.TOKEN_PROPERTY)));
         }
         return Optional.empty();
     }
@@ -128,6 +132,6 @@ public record TDriveConfiguration(boolean enabled, String instanceDomain, String
 
     @Override
     public String toString() {
-        return "TDriveConfiguration[enabled=" + enabled + ", partnerToken=REDACTED]";
+        return "TDriveConfiguration[enabled=" + enabled + ", issuerToken=REDACTED]";
     }
 }

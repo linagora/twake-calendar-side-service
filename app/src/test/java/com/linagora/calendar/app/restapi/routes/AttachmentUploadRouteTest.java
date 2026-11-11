@@ -58,6 +58,8 @@ import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.saas.drive.configuration.TDriveConfiguration;
 import com.linagora.calendar.saas.drive.configuration.TDriveConfiguration.InstanceResolver;
+import com.linagora.calendar.saas.drive.tdrive.LocalPartTDriveInstanceResolver;
+import com.linagora.calendar.saas.drive.tdrive.TDriveAttachmentStore;
 import com.linagora.calendar.storage.FileUploadConfiguration;
 
 import io.restassured.RestAssured;
@@ -74,6 +76,7 @@ class AttachmentUploadRouteTest {
     private static final int MAX_FILE_SIZE = 12;
     private static final byte[] CONTENT = new byte[] {0, 1, 2, 10, 13, 127, (byte) 128, (byte) 255, 3, 4, 5, 6};
     private static final String UPLOAD_PATH = "/api/attachments";
+    private static final String DRIVE_DOMAIN = "drive.example.com";
     private static final String TOKEN_PATH = "/instances/alicesmith.drive.example.com/token";
     private static final String FILE_PATH = "/alicesmith.drive.example.com/files/folder-id";
     private static final String PERMISSION_PATH = "/alicesmith.drive.example.com/permissions";
@@ -107,13 +110,15 @@ class AttachmentUploadRouteTest {
             binder -> {
                 if (enabled) {
                     String baseUrl = "http://localhost:" + drive.getLocalPort();
-                    binder.bind(TDriveConfiguration.class).toInstance(new TDriveConfiguration(true, "drive.example.com",
+                    TDriveConfiguration configuration = new TDriveConfiguration(true, Optional.of(DRIVE_DOMAIN),
                         baseUrl + "/instances/{fqdn}/token",
-                        baseUrl + "/{fqdn}",
                         "partner-secret",
                         "Calendar attachments",
-                        "https://{driveFqdn}/public?sharecode={sharecode}#/",
-                        Duration.ofSeconds(2), false, Optional.empty(), InstanceResolver.LOCAL_PART));
+                        "https://{instanceLabel}-drive.{instanceSuffix}/public?sharecode={sharecode}#/",
+                        Duration.ofSeconds(2), false, Optional.empty(), InstanceResolver.LOCAL_PART);
+                    binder.bind(TDriveConfiguration.class).toInstance(configuration);
+                    binder.bind(TDriveAttachmentStore.class).toInstance(new TDriveAttachmentStore(configuration,
+                        new LocalPartTDriveInstanceResolver(configuration.localPartDomain()), uri -> URI.create(baseUrl + "/" + uri.getHost())));
                 }
             });
     }

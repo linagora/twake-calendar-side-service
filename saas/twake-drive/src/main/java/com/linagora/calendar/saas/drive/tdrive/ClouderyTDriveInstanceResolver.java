@@ -64,7 +64,7 @@ public final class ClouderyTDriveInstanceResolver implements TDriveInstanceResol
         }
         String email = username.asString();
         URI url = URI.create(lookup.url() + "?email=" + URLEncoder.encode(email, StandardCharsets.UTF_8) + "&limit=" + LOOKUP_RESULT_LIMIT);
-        return http.request(new Request(HttpMethod.GET, url, lookup.partnerToken(), HttpHeaderValues.APPLICATION_JSON.toString()),
+        return http.request(new Request(HttpMethod.GET, url, lookup.token(), HttpHeaderValues.APPLICATION_JSON.toString()),
                 Instances.class, "Cloudery instance lookup")
             .map(result -> resolvedHostname(result, email));
     }

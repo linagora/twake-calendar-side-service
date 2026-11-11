@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -32,6 +33,8 @@ import org.apache.james.mailbox.model.ContentType;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Preconditions;
+import com.google.common.net.InternetDomainName;
 import com.linagora.calendar.saas.drive.api.Attachment;
 import com.linagora.calendar.saas.drive.api.AttachmentStorageException;
 import com.linagora.calendar.saas.drive.api.AttachmentStorageException.Reason;
@@ -50,10 +53,12 @@ import reactor.core.publisher.Mono;
 
 final class TDriveApiClient {
     record PlatformFqdn(String value) {
-        static PlatformFqdn withinDomain(String hostname, String domain) {
-            if (!TDriveConfiguration.validHostname(hostname) || !Strings.CI.endsWith(hostname, "." + domain)) {
+        static PlatformFqdn from(String hostname, Optional<String> localPartDomain) {
+            if (!TDriveConfiguration.validHostname(hostname)
+                    || !localPartDomain.map(domain -> Strings.CI.endsWith(hostname, "." + domain))
+                        .orElseGet(() -> hostname.contains(".") && InternetDomainName.isValid(hostname))) {
                 throw new AttachmentStorageException(Reason.INVALID_ATTACHMENT,
-                    "Resolved Drive instance must be a hostname within the configured domain");
+                    "Resolved Drive instance must be a valid hostname and match the configured domain when present");
             }
             return new PlatformFqdn(hostname);
         }
@@ -90,6 +95,7 @@ final class TDriveApiClient {
         }
     }
 
+    private static final String DRIVE_API_SCHEME_PROPERTY = "twp.drive.api.scheme";
     private static final String JSON_API = "application/vnd.api+json";
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final byte[] TOKEN_REQUEST = """
@@ -97,21 +103,27 @@ final class TDriveApiClient {
         """.getBytes(StandardCharsets.UTF_8);
     private final TDriveConfiguration configuration;
     private final TDriveHttpClient http;
+    private final UnaryOperator<URI> driveEndpoint;
+    private final String driveUrlPrefix;
 
-    TDriveApiClient(TDriveConfiguration configuration) {
+    TDriveApiClient(TDriveConfiguration configuration, UnaryOperator<URI> driveEndpoint) {
         this.configuration = configuration;
         this.http = new TDriveHttpClient(configuration.timeout(), configuration.trustAllSslCerts());
+        this.driveEndpoint = driveEndpoint;
+        String scheme = System.getProperty(DRIVE_API_SCHEME_PROPERTY, "https");
+        Preconditions.checkArgument(Strings.CS.equalsAny(scheme, "http", "https"),
+            "%s must be http or https", DRIVE_API_SCHEME_PROPERTY);
+        this.driveUrlPrefix = scheme + "://";
     }
 
     Mono<TDriveAccess> access(PlatformFqdn fqdn) {
         return serviceToken(fqdn)
-            .map(token -> new TDriveAccess(URI.create(StringUtils.stripEnd(
-                configuration.driveUrlTemplate().replace("{fqdn}", fqdn.value()), "/")), token));
+            .map(token -> new TDriveAccess(driveEndpoint.apply(URI.create(driveUrlPrefix + fqdn.value())), token));
     }
 
     private Mono<String> serviceToken(PlatformFqdn fqdn) {
         return http.request(new Request(HttpMethod.POST, URI.create(configuration.tokenUrlTemplate().replace("{fqdn}", fqdn.value())),
-                configuration.partnerToken(), HttpHeaderValues.APPLICATION_JSON.toString()), RequestBody.json(TOKEN_REQUEST),
+                configuration.issuerToken(), HttpHeaderValues.APPLICATION_JSON.toString()), RequestBody.json(TOKEN_REQUEST),
                 Token.class, "TDrive service token")
             .map(result -> {
                 if (!TDriveEndpointValidation.validBearerToken(result.token())) {

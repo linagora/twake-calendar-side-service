@@ -19,12 +19,17 @@
 package com.linagora.calendar.saas.drive.tdrive;
 
 import java.util.Locale;
+import java.util.Optional;
 
+import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
+
+import com.linagora.calendar.saas.drive.api.AttachmentStorageException;
+import com.linagora.calendar.saas.drive.api.AttachmentStorageException.Reason;
 
 import reactor.core.publisher.Mono;
 
-public record LocalPartTDriveInstanceResolver(String instanceDomain) implements TDriveInstanceResolver {
+public record LocalPartTDriveInstanceResolver(Optional<String> domainOverride) implements TDriveInstanceResolver {
     @Override
     public Mono<String> resolve(Username username) {
         return Mono.fromSupplier(() -> {
@@ -33,7 +38,10 @@ public record LocalPartTDriveInstanceResolver(String instanceDomain) implements 
             String slug = username.getLocalPart().toLowerCase(Locale.ROOT)
                 .replaceAll("[^a-z0-9-]", "")
                 .replaceAll("^-+|-+$", "");
-            return slug + "." + instanceDomain.toLowerCase(Locale.ROOT);
+            String domain = domainOverride.or(() -> username.getDomainPart().map(Domain::asString))
+                .orElseThrow(() -> new AttachmentStorageException(Reason.INVALID_ATTACHMENT,
+                    "Local-part Drive resolution requires an email domain or twp.drive.local-part.domain"));
+            return slug + "." + domain.toLowerCase(Locale.ROOT);
         });
     }
 }
