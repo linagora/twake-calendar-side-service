@@ -26,6 +26,7 @@ import java.nio.CharBuffer;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 import jakarta.inject.Inject;
 
@@ -60,9 +61,14 @@ public final class TDriveAttachmentStore implements AttachmentStore {
 
     @Inject
     public TDriveAttachmentStore(TDriveConfiguration configuration, TDriveInstanceResolver instanceResolver) {
+        this(configuration, instanceResolver, UnaryOperator.identity());
+    }
+
+    /** Allows tests to route Drive requests to a local server. */
+    public TDriveAttachmentStore(TDriveConfiguration configuration, TDriveInstanceResolver instanceResolver, UnaryOperator<URI> driveEndpoint) {
         Preconditions.checkArgument(configuration.enabled(), "TDrive integration is disabled");
         this.configuration = configuration;
-        this.driveClient = new TDriveApiClient(configuration);
+        this.driveClient = new TDriveApiClient(configuration, driveEndpoint);
         this.instanceResolver = instanceResolver;
     }
 
@@ -71,7 +77,7 @@ public final class TDriveAttachmentStore implements AttachmentStore {
         return Mono.defer(() -> {
             validate(attachment, username);
             return instanceResolver.resolve(username)
-                .map(hostname -> PlatformFqdn.withinDomain(hostname, configuration.instanceDomain()))
+                .map(hostname -> PlatformFqdn.from(hostname, configuration.localPartDomain()))
                 .flatMap(fqdn -> uploadToInstance(fqdn, attachment))
                 .onErrorMap(AttachmentStorageException.class, error -> new AttachmentStorageException(error.reason(), error.status(),
                     error.getMessage() + " for user " + username.asString(), error));
@@ -154,9 +160,13 @@ public final class TDriveAttachmentStore implements AttachmentStore {
     }
 
     private AttachmentUri publicUri(PlatformFqdn fqdn, ShareCode code) {
-        String localPart = fqdn.value().substring(0, fqdn.value().length() - configuration.instanceDomain().length() - 1);
-        String driveFqdn = localPart + "-drive." + configuration.instanceDomain();
-        return new AttachmentUri(URI.create(configuration.publicUrlTemplate().replace("{fqdn}", fqdn.value())
-            .replace("{driveFqdn}", driveFqdn).replace("{sharecode}", encode(code.value()))));
+        String suffix = configuration.localPartDomain()
+            .orElseGet(() -> StringUtils.substringAfter(fqdn.value(), '.'));
+        String label = fqdn.value().substring(0, fqdn.value().length() - suffix.length() - 1);
+        return new AttachmentUri(URI.create(configuration.publicUrlTemplate()
+            .replace("{fqdn}", fqdn.value())
+            .replace("{instanceLabel}", label)
+            .replace("{instanceSuffix}", suffix)
+            .replace("{sharecode}", encode(code.value()))));
     }
 }

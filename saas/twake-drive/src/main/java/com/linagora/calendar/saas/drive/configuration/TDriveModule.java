@@ -63,7 +63,7 @@ public final class TDriveModule extends AbstractModule {
                                                  Optional<LdapRepositoryConfiguration> ldapConfiguration,
                                                  Optional<LDAPConnectionPool> ldapConnectionPool) {
         return switch (configuration.instanceResolver()) {
-            case LOCAL_PART -> new LocalPartTDriveInstanceResolver(configuration.instanceDomain());
+            case LOCAL_PART -> new LocalPartTDriveInstanceResolver(configuration.localPartDomain());
             case CLOUDERY -> new ClouderyTDriveInstanceResolver(
                 configuration.clouderyLookup().orElseThrow(() -> new IllegalArgumentException("Cloudery lookup configuration is required")),
                 configuration.timeout(), configuration.trustAllSslCerts());

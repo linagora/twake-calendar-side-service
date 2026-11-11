@@ -64,6 +64,7 @@ import com.linagora.calendar.saas.drive.configuration.TDriveConfiguration.Instan
 import com.linagora.calendar.saas.drive.configuration.TDriveModule;
 import com.linagora.calendar.saas.drive.tdrive.LocalPartTDriveInstanceResolver;
 import com.linagora.calendar.saas.drive.tdrive.TDriveAttachmentStore;
+import com.linagora.calendar.saas.drive.tdrive.TDriveInstanceResolver;
 
 import io.netty.handler.codec.http.HttpResponseStatus;
 import reactor.core.publisher.Mono;
@@ -141,16 +142,21 @@ class TDriveAttachmentStoreTest implements AttachmentStoreContract {
     }
 
     private TDriveAttachmentStore localPartClient(TDriveConfiguration configuration) {
-        return new TDriveAttachmentStore(configuration, new LocalPartTDriveInstanceResolver(configuration.instanceDomain()));
+        return store(configuration, new LocalPartTDriveInstanceResolver(configuration.localPartDomain()));
     }
 
     private AttachmentStore clouderyClient() {
         URI brokerUrl = URI.create(broker.getRuntimeInfo().getHttpBaseUrl());
         var lookup = new ClouderyLookup(URI.create(brokerUrl + LOOKUP_PATH), LOOKUP_TOKEN);
         TDriveConfiguration configuration = configuration(brokerUrl, Duration.ofSeconds(3), TlsMode.VERIFY_CERTIFICATE, Optional.of(lookup));
-        return Guice.createInjector(Modules.override(new TDriveModule())
+        TDriveInstanceResolver resolver = Guice.createInjector(Modules.override(new TDriveModule())
                 .with(binder -> binder.bind(TDriveConfiguration.class).toInstance(configuration)))
-            .getInstance(AttachmentStore.class);
+            .getInstance(TDriveInstanceResolver.class);
+        return store(configuration, resolver);
+    }
+
+    private TDriveAttachmentStore store(TDriveConfiguration configuration, TDriveInstanceResolver resolver) {
+        return new TDriveAttachmentStore(configuration, resolver, uri -> URI.create(drive.baseUrl() + "/" + uri.getHost()));
     }
 
     private TDriveConfiguration configuration(URI brokerUrl, Duration timeout, TlsMode tls) {
@@ -158,12 +164,11 @@ class TDriveAttachmentStoreTest implements AttachmentStoreContract {
     }
 
     private TDriveConfiguration configuration(URI brokerUrl, Duration timeout, TlsMode tls, Optional<ClouderyLookup> lookup) {
-        return new TDriveConfiguration(true, "example.com",
+        return new TDriveConfiguration(true, lookup.isPresent() ? Optional.empty() : Optional.of("example.com"),
             brokerUrl + "/api/public/instances/{fqdn}/token",
-            drive.baseUrl() + "/{fqdn}",
             PARTNER_TOKEN,
             "Calendar attachments",
-            "https://{driveFqdn}/public?sharecode={sharecode}#/",
+            "https://{instanceLabel}-drive.{instanceSuffix}/public?sharecode={sharecode}#/",
             timeout, tls == TlsMode.TRUST_SELF_SIGNED, lookup, lookup.isPresent() ? InstanceResolver.CLOUDERY : InstanceResolver.LOCAL_PART);
     }
 
@@ -266,8 +271,8 @@ class TDriveAttachmentStoreTest implements AttachmentStoreContract {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"alice.example.com.attacker.example", "example.com"})
-    void shouldRejectLookupOutsideConfiguredDomainBeforeMintingToken(String fqdn) {
+    @ValueSource(strings = {"https://alice.example.com", "alice.example.com/path", "localhost", "127.0.0.1"})
+    void shouldRejectInvalidLookupHostnameBeforeMintingToken(String fqdn) {
         broker.stubFor(get(urlPathEqualTo(LOOKUP_PATH))
             .willReturn(aResponse().withBody("""
                 {"count": 1, "items": [{"fqdn": "<fqdn>", "internal_email": "alice@example.com"}]}
@@ -302,12 +307,11 @@ class TDriveAttachmentStoreTest implements AttachmentStoreContract {
             .willReturn(aResponse().withStatus(201).withBody(FILE_JSON)));
         drive.stubFor(post(urlPathEqualTo("/" + fqdn + "/permissions"))
             .willReturn(aResponse().withBody(PERMISSION_JSON)));
-        TDriveConfiguration configuration = new TDriveConfiguration(true, "Stg.Example.Org",
+        TDriveConfiguration configuration = new TDriveConfiguration(true, Optional.of("Stg.Example.Org"),
             broker.getRuntimeInfo().getHttpBaseUrl() + "/api/public/instances/{fqdn}/token",
-            drive.baseUrl() + "/{fqdn}",
             PARTNER_TOKEN,
             "Calendar attachments",
-            "https://{driveFqdn}/public?sharecode={sharecode}#/",
+            "https://{instanceLabel}-drive.{instanceSuffix}/public?sharecode={sharecode}#/",
             Duration.ofSeconds(3), false, Optional.empty(), InstanceResolver.LOCAL_PART);
 
         AttachmentUri uri = localPartClient(configuration)

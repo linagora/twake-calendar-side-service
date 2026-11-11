@@ -24,7 +24,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
+import org.apache.james.core.Username;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.utils.PropertiesProvider;
 import org.junit.jupiter.api.Test;
@@ -90,10 +92,11 @@ class TDriveConfigurationWiringTest {
     void shouldReadDriveConfigurationInTheEnabledModuleAndBindSingleton() throws IOException {
         TwakeCalendarConfiguration application = configuration("""
             twp.drive.enabled=true
-            twp.drive.instance.domain=example.com
+            twp.drive.instance.resolver=local-part
+            twp.drive.local-part.domain=example.com
             twp.drive.token.url.template=https://manager.example.com/api/public/instances/{fqdn}/token
-            twp.drive.partner.token=example-partner-token
-            twp.drive.public.url.template=https://{driveFqdn}/public?sharecode={sharecode}#/
+            twp.drive.issuer.token=example-partner-token
+            twp.drive.public.url.template=https://{instanceLabel}-drive.{instanceSuffix}/public?sharecode={sharecode}#/
             """);
 
         Injector injector = injector(application);
@@ -102,24 +105,40 @@ class TDriveConfigurationWiringTest {
 
         assertThat(application.tdriveEnabled()).isTrue();
         assertThat(injector.getInstance(ImportIcsRewriter.class)).isInstanceOf(ImportAttachmentOffloader.class);
-        assertThat(driveConfiguration.instanceDomain()).hasToString("example.com");
-        assertThat(injector.getInstance(TDriveInstanceResolver.class)).isInstanceOf(LocalPartTDriveInstanceResolver.class);
+        assertThat(driveConfiguration.localPartDomain()).contains("example.com");
+        TDriveInstanceResolver resolver = injector.getInstance(TDriveInstanceResolver.class);
+        assertThat(resolver).isInstanceOf(LocalPartTDriveInstanceResolver.class);
+        assertThat(resolver.resolve(Username.of("Alice.Smith@mail.example.net")).block()).isEqualTo("alicesmith.example.com");
         assertThat(client)
             .isInstanceOf(TDriveAttachmentStore.class)
             .isSameAs(injector.getInstance(AttachmentStore.class));
     }
 
     @Test
-    void shouldSelectClouderyResolverFromConfiguration() throws IOException {
+    void shouldResolveFromEmailWhenLocalPartDomainIsNotConfigured() throws IOException {
         TwakeCalendarConfiguration application = configuration("""
             twp.drive.enabled=true
-            twp.drive.instance.domain=example.com
+            twp.drive.instance.resolver=local-part
             twp.drive.token.url.template=https://manager.example.com/api/public/instances/{fqdn}/token
-            twp.drive.partner.token=example-public-token
-            twp.drive.public.url.template=https://{driveFqdn}/public?sharecode={sharecode}#/
-            twp.drive.instance.resolver=cloudery
+            twp.drive.issuer.token=example-issuer-token
+            twp.drive.public.url.template=https://{instanceLabel}-drive.{instanceSuffix}/public?sharecode={sharecode}#/
+            """);
+
+        Injector injector = injector(application);
+        assertThat(injector.getInstance(TDriveConfiguration.class).localPartDomain()).isEmpty();
+        assertThat(injector.getInstance(TDriveInstanceResolver.class).resolve(Username.of("Alice.Smith@mail.example.net")).block())
+            .isEqualTo("alicesmith.mail.example.net");
+    }
+
+    @Test
+    void shouldSelectClouderyResolverByDefault() throws IOException {
+        TwakeCalendarConfiguration application = configuration("""
+            twp.drive.enabled=true
+            twp.drive.token.url.template=https://manager.example.com/api/public/instances/{fqdn}/token
+            twp.drive.issuer.token=example-public-token
+            twp.drive.public.url.template=https://{instanceLabel}-drive.{instanceSuffix}/public?sharecode={sharecode}#/
             twp.drive.lookup.url=https://manager.example.com/api/v2/instances
-            twp.drive.lookup.partner.token=example-lookup-token
+            twp.drive.lookup.token=example-lookup-token
             """);
 
         Injector injector = injector(application);
@@ -134,16 +153,15 @@ class TDriveConfigurationWiringTest {
     void shouldAllowGuiceBindingToOverrideResolver() throws IOException {
         TwakeCalendarConfiguration application = configuration("""
             twp.drive.enabled=true
-            twp.drive.instance.domain=example.com
             twp.drive.token.url.template=https://manager.example.com/api/public/instances/{fqdn}/token
-            twp.drive.partner.token=example-public-token
-            twp.drive.public.url.template=https://{driveFqdn}/public?sharecode={sharecode}#/
+            twp.drive.issuer.token=example-public-token
+            twp.drive.public.url.template=https://{instanceLabel}-drive.{instanceSuffix}/public?sharecode={sharecode}#/
             twp.drive.instance.resolver=cloudery
             twp.drive.lookup.url=https://manager.example.com/api/v2/instances
-            twp.drive.lookup.partner.token=example-lookup-token
+            twp.drive.lookup.token=example-lookup-token
             """);
         TDriveConfiguration drive = injector(application).getInstance(TDriveConfiguration.class);
-        TDriveInstanceResolver override = new LocalPartTDriveInstanceResolver(drive.instanceDomain());
+        TDriveInstanceResolver override = new LocalPartTDriveInstanceResolver(Optional.of("example.com"));
 
         Injector injector = Guice.createInjector(Stage.PRODUCTION, Modules.override(new TDriveModule())
             .with(binder -> {
@@ -159,10 +177,9 @@ class TDriveConfigurationWiringTest {
     void shouldRejectLdapResolverWithoutLdapUserBackend() throws IOException {
         TwakeCalendarConfiguration application = configuration("""
             twp.drive.enabled=true
-            twp.drive.instance.domain=example.com
             twp.drive.token.url.template=https://manager.example.com/api/public/instances/{fqdn}/token
-            twp.drive.partner.token=example-public-token
-            twp.drive.public.url.template=https://{driveFqdn}/public?sharecode={sharecode}#/
+            twp.drive.issuer.token=example-public-token
+            twp.drive.public.url.template=https://{instanceLabel}-drive.{instanceSuffix}/public?sharecode={sharecode}#/
             twp.drive.instance.resolver=ldap
             """);
 
@@ -174,7 +191,7 @@ class TDriveConfigurationWiringTest {
     void shouldIgnoreInvalidDrivePropertiesWhenDisabled() throws IOException {
         TwakeCalendarConfiguration application = configuration("""
             twp.drive.enabled=false
-            twp.drive.instance.domain=invalid
+            twp.drive.local-part.domain=invalid
             twp.drive.timeout=invalid
             """);
 
@@ -190,6 +207,6 @@ class TDriveConfigurationWiringTest {
             """);
 
         assertThatThrownBy(() -> injector(application))
-            .hasMessageContaining("twp.drive.instance.domain");
+            .hasMessageContaining("twp.drive.token.url.template");
     }
 }

@@ -22,20 +22,20 @@ import java.net.URI;
 
 import com.google.common.base.Preconditions;
 
-public record ClouderyLookup(URI url, String partnerToken) {
+public record ClouderyLookup(URI url, String token) {
     static final String URL_PROPERTY = "twp.drive.lookup.url";
-    static final String PARTNER_TOKEN_PROPERTY = "twp.drive.lookup.partner.token";
+    static final String TOKEN_PROPERTY = "twp.drive.lookup.token";
 
     public ClouderyLookup {
         TDriveEndpointValidation.validateHttpUrl(url, URL_PROPERTY);
         Preconditions.checkArgument(url.getFragment() == null, "%s must not contain a fragment", URL_PROPERTY);
         Preconditions.checkArgument(url.getRawQuery() == null, "%s must not contain a query", URL_PROPERTY);
-        Preconditions.checkArgument(TDriveEndpointValidation.validBearerToken(partnerToken),
-            "%s must be a non-blank bearer credential", PARTNER_TOKEN_PROPERTY);
+        Preconditions.checkArgument(TDriveEndpointValidation.validBearerToken(token),
+            "%s must be a non-blank bearer token", TOKEN_PROPERTY);
     }
 
     @Override
     public String toString() {
-        return "ClouderyLookup[partnerToken=REDACTED]";
+        return "ClouderyLookup[token=REDACTED]";
     }
 }

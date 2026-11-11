@@ -30,22 +30,25 @@ public final class TDriveEndpointValidation {
     }
 
     static void validateServiceUrlTemplate(String template, String key) {
-        URI uri = validateTemplate(template, key, "{fqdn}");
+        requirePlaceholder(template, key, "{fqdn}");
+        URI uri = URI.create(template.replace("{fqdn}", "user.example.com"));
+        validateHttpUrl(uri, key);
         Preconditions.checkArgument(uri.getRawFragment() == null, "%s must not contain a fragment", key);
         Preconditions.checkArgument(uri.getRawQuery() == null, "%s must not contain query or fragment", key);
     }
 
     static void validatePublicUrlTemplate(String template, String key) {
-        validateTemplate(template, key, "{sharecode}");
-    }
-
-    private static URI validateTemplate(String template, String key, String placeholder) {
-        Preconditions.checkArgument(StringUtils.isNotBlank(template), "%s is required", key);
-        Preconditions.checkArgument(template.contains(placeholder), "%s must contain %s", key, placeholder);
-        URI uri = URI.create(template.replace("{fqdn}", "user.example.com").replace("{driveFqdn}", "user-drive.example.com")
+        requirePlaceholder(template, key, "{sharecode}");
+        URI uri = URI.create(template.replace("{fqdn}", "user.example.com")
+            .replace("{instanceLabel}", "user")
+            .replace("{instanceSuffix}", "example.com")
             .replace("{sharecode}", "share-code"));
         validateHttpUrl(uri, key);
-        return uri;
+    }
+
+    private static void requirePlaceholder(String template, String key, String placeholder) {
+        Preconditions.checkArgument(StringUtils.isNotBlank(template), "%s is required", key);
+        Preconditions.checkArgument(template.contains(placeholder), "%s must contain %s", key, placeholder);
     }
 
     public static void validateHttpUrl(URI uri, String key) {
