@@ -58,7 +58,8 @@ Sample payload:
 
 - Event fields:
   - `audience`: an object containing `user`, `domain`, or neither.
-  - `action`: `ADD`, `UPDATE`, or `DELETE`, derived from the source exchange.
+  - `action`: `ADD`, `UPDATE`, or `DELETE`, derived from the source exchange. `SYNC_START` or `SYNC_END` for a
+    [republication](#republication-of-an-address-book).
   - `path`: the contact resource path supplied by Sabre, in the address book holding the contact.
   - `uid`: the vCard UID.
   - `revision`: the sync token of the address book holding the contact, after the change. It grows with every change
@@ -88,6 +89,61 @@ from the Sabre `owner`, and its `path` identifies the address book. The event om
 
 Applications must remove every contact under that address book path. Sabre does not emit individual
 contact deletion notifications when deleting the address book.
+
+### Republication of an address book
+
+A [republication](../apis/webadmin.md#republish-all-contacts) sends each address book as a sync: a `SYNC_START`
+event, one `ADD` event per contact, then a `SYNC_END` event. The events of a sync share a `syncId`,
+`<task id>:<address book path>`. Events forwarded from Sabre carry no `syncId`.
+
+```json
+{
+  "audience": { "domain": "example.com" },
+  "action": "SYNC_START",
+  "path": "addressbooks/64d2a99f1d4ddc4e88e4e001/domain-members",
+  "syncId": "05641376-02ed-47bd-bcc7-76ff6262d92a:addressbooks/64d2a99f1d4ddc4e88e4e001/domain-members",
+  "revision": 1234
+}
+```
+
+```json
+{
+  "audience": { "domain": "example.com" },
+  "action": "ADD",
+  "path": "addressbooks/64d2a99f1d4ddc4e88e4e001/domain-members/contact-uid.vcf",
+  "uid": "contact-uid",
+  "revision": 1234,
+  "etag": "\"5d41402abc4b2a76b9719d911017c592\"",
+  "syncId": "05641376-02ed-47bd-bcc7-76ff6262d92a:addressbooks/64d2a99f1d4ddc4e88e4e001/domain-members",
+  "payload": { "@type": "Card", "version": "2.0", "uid": "contact-uid" }
+}
+```
+
+```json
+{
+  "audience": { "domain": "example.com" },
+  "action": "SYNC_END",
+  "path": "addressbooks/64d2a99f1d4ddc4e88e4e001/domain-members",
+  "syncId": "05641376-02ed-47bd-bcc7-76ff6262d92a:addressbooks/64d2a99f1d4ddc4e88e4e001/domain-members",
+  "revision": 1234,
+  "complete": true,
+  "count": 1
+}
+```
+
+- `path`: the address book, for `SYNC_START` and `SYNC_END`.
+- `revision`: the sync token of the address book, read right before fetching its contacts. The same in every event of the sync.
+- `complete`: whether every contact of the address book was sent.
+- `count`: the number of `ADD` events of the sync.
+
+A contact failing to be sent does not stop the sync: the other contacts are sent and `complete` is `false`. An address
+book that cannot be read is not sent at all. A `SYNC_END` failing to be published is lost.
+
+Address books are sent one at a time, but events forwarded from Sabre can come in between. On a `SYNC_END` with
+`complete` set, once it received `count` distinct contacts carrying its `syncId`, an application can remove the
+contacts of that address book that the sync did not send and whose revision it holds is not higher than the `revision`
+of the sync: a higher one comes from a change made after the address book was read. After such a sync, an event of
+that address book whose `revision` is not higher than the one of the sync is stale.
 
 ## Inbound: Twake Workplace -> Calendar
 

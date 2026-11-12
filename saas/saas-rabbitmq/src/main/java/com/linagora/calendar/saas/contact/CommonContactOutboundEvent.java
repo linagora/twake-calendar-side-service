@@ -20,7 +20,9 @@ package com.linagora.calendar.saas.contact;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.Optional;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Username;
 
 import com.fasterxml.jackson.annotation.JsonGetter;
@@ -34,11 +36,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.ContactUid;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.AddressBookDeletedEvent;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.AddressBookSyncEndEvent;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.AddressBookSyncStartEvent;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.ContactChangedEvent;
 
-public sealed interface CommonContactOutboundEvent permits ContactChangedEvent, AddressBookDeletedEvent {
+public sealed interface CommonContactOutboundEvent permits ContactChangedEvent, AddressBookDeletedEvent,
+    AddressBookSyncStartEvent, AddressBookSyncEndEvent {
     ObjectWriter JSON_WRITER = new ObjectMapper().writer();
 
     Audience audience();
@@ -57,10 +63,85 @@ public sealed interface CommonContactOutboundEvent permits ContactChangedEvent, 
                                @JsonIgnore ContactUid uid,
                                long revision,
                                String etag,
-                               @JsonInclude(JsonInclude.Include.NON_NULL) JsonNode payload) implements CommonContactOutboundEvent {
+                               @JsonInclude(JsonInclude.Include.NON_NULL) JsonNode payload,
+                               @JsonIgnore Optional<String> syncId) implements CommonContactOutboundEvent {
+        public static class Builder {
+            private Audience audience;
+            private Action action;
+            private URI path;
+            private ContactUid uid;
+            private Long revision;
+            private String etag;
+            private JsonNode payload;
+            private Optional<String> syncId = Optional.empty();
+
+            public Builder audience(Audience audience) {
+                this.audience = audience;
+                return this;
+            }
+
+            public Builder action(Action action) {
+                this.action = action;
+                return this;
+            }
+
+            public Builder path(URI path) {
+                this.path = path;
+                return this;
+            }
+
+            public Builder uid(ContactUid uid) {
+                this.uid = uid;
+                return this;
+            }
+
+            public Builder revision(long revision) {
+                this.revision = revision;
+                return this;
+            }
+
+            public Builder etag(String etag) {
+                this.etag = etag;
+                return this;
+            }
+
+            public Builder payload(JsonNode payload) {
+                this.payload = payload;
+                return this;
+            }
+
+            public Builder syncId(String syncId) {
+                this.syncId = Optional.of(syncId);
+                return this;
+            }
+
+            public ContactChangedEvent build() {
+                Preconditions.checkNotNull(revision, "'revision' must not be null");
+                return new ContactChangedEvent(audience, action, path, uid, revision, etag, payload, syncId);
+            }
+        }
+
+        public static Builder builder() {
+            return new Builder();
+        }
+
+        public ContactChangedEvent {
+            Preconditions.checkNotNull(syncId, "'syncId' must not be null");
+        }
+
+        public ContactChangedEvent withSyncId(String syncId) {
+            return new ContactChangedEvent(audience, action, path, uid, revision, etag, payload, Optional.of(syncId));
+        }
+
         @JsonGetter("uid")
         public String uidAsString() {
             return uid.value();
+        }
+
+        @JsonGetter("syncId")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public String syncIdAsString() {
+            return syncId.orElse(null);
         }
     }
 
@@ -72,8 +153,95 @@ public sealed interface CommonContactOutboundEvent permits ContactChangedEvent, 
         }
     }
 
+    /**
+     * Opens the republication of an address book: the {@code ADD} events carrying the same {@code syncId} follow.
+     */
+    record AddressBookSyncStartEvent(Audience audience, URI path, String syncId, long revision) implements CommonContactOutboundEvent {
+        public AddressBookSyncStartEvent {
+            Preconditions.checkNotNull(audience, "'audience' must not be null");
+            Preconditions.checkNotNull(path, "'path' must not be null");
+            Preconditions.checkArgument(StringUtils.isNotBlank(syncId), "'syncId' must not be blank");
+        }
+
+        @Override
+        @JsonGetter("action")
+        public Action action() {
+            return Action.SYNC_START;
+        }
+    }
+
+    /**
+     * Closes the republication of an address book. {@code complete} tells whether every contact of the address book was
+     * republished, {@code count} how many {@code ADD} events were sent.
+     */
+    record AddressBookSyncEndEvent(Audience audience, URI path, String syncId, long revision, boolean complete,
+                                   long count) implements CommonContactOutboundEvent {
+        public static class Builder {
+            private Audience audience;
+            private URI path;
+            private String syncId;
+            private Long revision;
+            private Boolean complete;
+            private Long count;
+
+            public Builder audience(Audience audience) {
+                this.audience = audience;
+                return this;
+            }
+
+            public Builder path(URI path) {
+                this.path = path;
+                return this;
+            }
+
+            public Builder syncId(String syncId) {
+                this.syncId = syncId;
+                return this;
+            }
+
+            public Builder revision(long revision) {
+                this.revision = revision;
+                return this;
+            }
+
+            public Builder complete(boolean complete) {
+                this.complete = complete;
+                return this;
+            }
+
+            public Builder count(long count) {
+                this.count = count;
+                return this;
+            }
+
+            public AddressBookSyncEndEvent build() {
+                Preconditions.checkNotNull(revision, "'revision' must not be null");
+                Preconditions.checkNotNull(complete, "'complete' must not be null");
+                Preconditions.checkNotNull(count, "'count' must not be null");
+                return new AddressBookSyncEndEvent(audience, path, syncId, revision, complete, count);
+            }
+        }
+
+        public static Builder builder() {
+            return new Builder();
+        }
+
+        public AddressBookSyncEndEvent {
+            Preconditions.checkNotNull(audience, "'audience' must not be null");
+            Preconditions.checkNotNull(path, "'path' must not be null");
+            Preconditions.checkArgument(StringUtils.isNotBlank(syncId), "'syncId' must not be blank");
+            Preconditions.checkArgument(count >= 0, "'count' must not be negative");
+        }
+
+        @Override
+        @JsonGetter("action")
+        public Action action() {
+            return Action.SYNC_END;
+        }
+    }
+
     enum Action {
-        ADD, UPDATE, DELETE
+        ADD, UPDATE, DELETE, SYNC_START, SYNC_END
     }
 
     @JsonSerialize(using = AudienceSerializer.class)

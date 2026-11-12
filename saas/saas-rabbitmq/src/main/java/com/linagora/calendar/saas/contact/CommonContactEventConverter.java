@@ -74,7 +74,15 @@ public class CommonContactEventConverter {
     public ContactChangedEvent convert(Action action, Audience audience, String path, String cardData, long revision, String etag) {
         try {
             ConvertedContact convertedContact = convertVCard(cardData);
-            return new ContactChangedEvent(audience, action, URI.create(path), convertedContact.uid(), revision, etag, convertedContact.payload());
+            return ContactChangedEvent.builder()
+                .audience(audience)
+                .action(action)
+                .path(URI.create(path))
+                .uid(convertedContact.uid())
+                .revision(revision)
+                .etag(etag)
+                .payload(convertedContact.payload())
+                .build();
         } catch (CommonContactEventConversionException e) {
             throw e;
         } catch (Exception | LinkageError e) {

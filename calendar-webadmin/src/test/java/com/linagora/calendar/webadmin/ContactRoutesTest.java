@@ -30,8 +30,11 @@ import static org.mockito.Mockito.when;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Collectors;
 
 import javax.net.ssl.SSLException;
 
@@ -60,6 +63,7 @@ import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.dto.AddressBookReportXmlResponse;
 import com.linagora.calendar.saas.contact.CommonContactEventConverter;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.ContactChangedEvent;
 import com.linagora.calendar.saas.contact.CommonContactPublisher;
 import com.linagora.calendar.storage.AddressBookURL;
@@ -91,7 +95,8 @@ public class ContactRoutesTest {
     private MongoDBOpenPaaSDomainDAO domainDAO;
     private OpenPaaSUserDAO userDAO;
     private OpenPaaSUser user;
-    private List<ContactChangedEvent> publishedEvents;
+    private List<CommonContactOutboundEvent> publishedMessages;
+    private Set<String> failingContactUids;
 
     @BeforeEach
     void setUp() throws SSLException {
@@ -101,10 +106,15 @@ public class ContactRoutesTest {
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
 
-        publishedEvents = new CopyOnWriteArrayList<>();
+        publishedMessages = new CopyOnWriteArrayList<>();
+        failingContactUids = ConcurrentHashMap.newKeySet();
         CommonContactPublisher publisher = mock(CommonContactPublisher.class);
         when(publisher.publish(any())).thenAnswer(invocation -> {
-            publishedEvents.add(invocation.getArgument(0));
+            CommonContactOutboundEvent event = invocation.getArgument(0);
+            if (event instanceof ContactChangedEvent contactEvent && failingContactUids.contains(contactEvent.uid().value())) {
+                return Mono.error(new RuntimeException("Simulated publication failure"));
+            }
+            publishedMessages.add(event);
             return Mono.empty();
         });
 
@@ -150,6 +160,7 @@ public class ContactRoutesTest {
                   "uid": "%s",
                   "revision": %d,
                   "etag": %s,
+                  "syncId": "${json-unit.any-string}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -174,7 +185,7 @@ public class ContactRoutesTest {
 
         awaitRepublishTask();
 
-        assertThat(publishedEvents).hasSize(2);
+        assertThat(publishedContactEvents()).hasSize(2);
 
         assertThatJson(publishedEvent(uid))
             .isEqualTo("""
@@ -185,6 +196,7 @@ public class ContactRoutesTest {
                   "uid": "%s",
                   "revision": "${json-unit.ignore}",
                   "etag": "${json-unit.ignore}",
+                  "syncId": "${json-unit.any-string}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -207,6 +219,7 @@ public class ContactRoutesTest {
                   "uid": "%s",
                   "revision": "${json-unit.ignore}",
                   "etag": "${json-unit.ignore}",
+                  "syncId": "${json-unit.any-string}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -239,6 +252,7 @@ public class ContactRoutesTest {
                   "uid": "%s",
                   "revision": "${json-unit.ignore}",
                   "etag": "${json-unit.ignore}",
+                  "syncId": "${json-unit.any-string}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -263,11 +277,131 @@ public class ContactRoutesTest {
 
         awaitRepublishTask();
 
-        assertThat(publishedEvents)
+        assertThat(publishedContactEvents())
             .filteredOn(event -> event.uid().value().equals(uid))
             .singleElement()
             .satisfies(event -> assertThat(event.path().toASCIIString())
                 .isEqualTo("addressbooks/%s/%s/%s.vcf".formatted(user.id().value(), COLLECTED_ADDRESS_BOOK, uid)));
+    }
+
+    @Test
+    void republishShouldBracketTheContactsOfAnAddressBookWithTheStartAndTheEndOfItsSync() {
+        // Given a user address book holding one contact
+        String uid = UUID.randomUUID().toString();
+        upsertUserContact(COLLECTED_ADDRESS_BOOK, uid, "John Doe");
+        AddressBookURL addressBookURL = new AddressBookURL(user.id(), COLLECTED_ADDRESS_BOOK);
+        long revision = Long.parseLong(cardDavClient.retrieveSyncToken(user.username(), addressBookURL).block().value());
+        String addressBookPath = "addressbooks/%s/%s".formatted(user.id().value(), COLLECTED_ADDRESS_BOOK);
+
+        // When the contacts are republished
+        String taskId = republishTaskId();
+        awaitTask(taskId);
+
+        // Then the contact is sent between the start and the complete end of the sync of its address book,
+        // all carrying the same sync ID and the revision of the address book
+        String syncId = taskId + ":" + addressBookPath;
+        assertThatJson(publishedMessagesOf(addressBookPath))
+            .isEqualTo("""
+                [
+                  {
+                    "audience": { "user": "%1$s" },
+                    "action": "SYNC_START",
+                    "path": "%2$s",
+                    "syncId": "%3$s",
+                    "revision": %4$d
+                  },
+                  {
+                    "audience": { "user": "%1$s" },
+                    "action": "ADD",
+                    "path": "%2$s/%5$s.vcf",
+                    "uid": "%5$s",
+                    "revision": %4$d,
+                    "etag": "${json-unit.any-string}",
+                    "syncId": "%3$s",
+                    "payload": "${json-unit.ignore}"
+                  },
+                  {
+                    "audience": { "user": "%1$s" },
+                    "action": "SYNC_END",
+                    "path": "%2$s",
+                    "syncId": "%3$s",
+                    "revision": %4$d,
+                    "complete": true,
+                    "count": 1
+                  }
+                ]""".formatted(user.username().asString(), addressBookPath, syncId, revision, uid));
+    }
+
+    @Test
+    void republishShouldCompleteTheSyncOfAnEmptyAddressBook() {
+        // Given the default address book of the user, which holds no contact
+        String addressBookPath = "addressbooks/%s/contacts".formatted(user.id().value());
+
+        // When the contacts are republished
+        String taskId = republishTaskId();
+        awaitTask(taskId);
+
+        // Then the sync of the address book starts and completes without any contact
+        assertThatJson(publishedMessagesOf(addressBookPath))
+            .isEqualTo("""
+                [
+                  {
+                    "audience": { "user": "%1$s" },
+                    "action": "SYNC_START",
+                    "path": "%2$s",
+                    "syncId": "%3$s:%2$s",
+                    "revision": "${json-unit.any-number}"
+                  },
+                  {
+                    "audience": { "user": "%1$s" },
+                    "action": "SYNC_END",
+                    "path": "%2$s",
+                    "syncId": "%3$s:%2$s",
+                    "revision": "${json-unit.any-number}",
+                    "complete": true,
+                    "count": 0
+                  }
+                ]""".formatted(user.username().asString(), addressBookPath, taskId));
+    }
+
+    @Test
+    void republishShouldEndTheSyncAsIncompleteWhenAContactFailsToBePublished() {
+        // Given an address book holding two contacts, one of which fails to be published
+        String failingUid = UUID.randomUUID().toString();
+        String uid = UUID.randomUUID().toString();
+        upsertUserContact(COLLECTED_ADDRESS_BOOK, failingUid, "Failing contact");
+        upsertUserContact(COLLECTED_ADDRESS_BOOK, uid, "John Doe");
+        failingContactUids.add(failingUid);
+        String addressBookPath = "addressbooks/%s/%s".formatted(user.id().value(), COLLECTED_ADDRESS_BOOK);
+
+        // When the contacts of the user are republished
+        String taskResponse = awaitRepublishTask(userPath(user), Map.of(), "failed");
+
+        // Then the other contact is still sent, the end of the sync tells it is incomplete,
+        // and the task reports the failed contact
+        assertThat(publishedContactEvents())
+            .extracting(event -> event.uid().value())
+            .containsExactly(uid);
+        assertThatJson(publishedMessagesOf(addressBookPath))
+            .inPath("[2]")
+            .isEqualTo("""
+                {
+                  "audience": { "user": "%s" },
+                  "action": "SYNC_END",
+                  "path": "%s",
+                  "syncId": "${json-unit.any-string}",
+                  "revision": "${json-unit.any-number}",
+                  "complete": false,
+                  "count": 1
+                }""".formatted(user.username().asString(), addressBookPath));
+        assertThatJson(taskResponse)
+            .withOptions(Option.IGNORING_EXTRA_FIELDS)
+            .inPath("additionalInformation")
+            .isEqualTo("""
+                {
+                    "processedContactCount": 1,
+                    "failedContactCount": 1
+                }""");
     }
 
     @Test
@@ -291,6 +425,7 @@ public class ContactRoutesTest {
                   "uid": "%s",
                   "revision": %d,
                   "etag": %s,
+                  "syncId": "${json-unit.any-string}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -327,6 +462,7 @@ public class ContactRoutesTest {
                   "uid": "%s",
                   "revision": %d,
                   "etag": %s,
+                  "syncId": "${json-unit.any-string}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -386,6 +522,7 @@ public class ContactRoutesTest {
                   "uid": "%s",
                   "revision": "${json-unit.ignore}",
                   "etag": "${json-unit.ignore}",
+                  "syncId": "${json-unit.any-string}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -408,7 +545,7 @@ public class ContactRoutesTest {
 
         awaitRepublishTask(userPath(user), Map.of());
 
-        assertThat(publishedEvents)
+        assertThat(publishedContactEvents())
             .noneSatisfy(event -> assertThat(event.uid().value()).isEqualTo(otherUid));
     }
 
@@ -459,6 +596,7 @@ public class ContactRoutesTest {
                   "uid": "%s",
                   "revision": "${json-unit.ignore}",
                   "etag": "${json-unit.ignore}",
+                  "syncId": "${json-unit.any-string}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -491,6 +629,7 @@ public class ContactRoutesTest {
                   "uid": "%s",
                   "revision": "${json-unit.ignore}",
                   "etag": "${json-unit.ignore}",
+                  "syncId": "${json-unit.any-string}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -515,7 +654,7 @@ public class ContactRoutesTest {
 
         awaitRepublishTask(domainPath(domain), Map.of());
 
-        assertThat(publishedEvents)
+        assertThat(publishedContactEvents())
             .noneSatisfy(event -> assertThat(event.uid().value()).isEqualTo(otherUid));
     }
 
@@ -537,6 +676,7 @@ public class ContactRoutesTest {
                   "uid": "%s",
                   "revision": "${json-unit.ignore}",
                   "etag": "${json-unit.ignore}",
+                  "syncId": "${json-unit.any-string}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -560,7 +700,7 @@ public class ContactRoutesTest {
 
         awaitRepublishTask(domainPath(domain), Map.of("scope", "domain"));
 
-        assertThat(publishedEvents)
+        assertThat(publishedContactEvents())
             .noneSatisfy(event -> assertThat(event.uid().value()).isEqualTo(uid));
     }
 
@@ -582,6 +722,7 @@ public class ContactRoutesTest {
                   "uid": "%s",
                   "revision": "${json-unit.ignore}",
                   "etag": "${json-unit.ignore}",
+                  "syncId": "${json-unit.any-string}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -605,7 +746,7 @@ public class ContactRoutesTest {
 
         awaitRepublishTask(domainPath(domain), Map.of("scope", "user"));
 
-        assertThat(publishedEvents)
+        assertThat(publishedContactEvents())
             .noneSatisfy(event -> assertThat(event.uid().value()).isEqualTo(uid));
     }
 
@@ -692,6 +833,7 @@ public class ContactRoutesTest {
                   "uid": "%s",
                   "revision": "${json-unit.ignore}",
                   "etag": "${json-unit.ignore}",
+                  "syncId": "${json-unit.any-string}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -715,7 +857,7 @@ public class ContactRoutesTest {
 
         awaitRepublishTask(ContactRoutes.BASE_PATH, Map.of("scope", "user"));
 
-        assertThat(publishedEvents)
+        assertThat(publishedContactEvents())
             .noneSatisfy(event -> assertThat(event.uid().value()).isEqualTo(uid));
     }
 
@@ -737,6 +879,7 @@ public class ContactRoutesTest {
                   "uid": "%s",
                   "revision": "${json-unit.ignore}",
                   "etag": "${json-unit.ignore}",
+                  "syncId": "${json-unit.any-string}",
                   "payload": {
                     "@type": "Card",
                     "version": "2.0",
@@ -758,7 +901,7 @@ public class ContactRoutesTest {
 
         awaitRepublishTask(ContactRoutes.BASE_PATH, Map.of("scope", "domain"));
 
-        assertThat(publishedEvents)
+        assertThat(publishedContactEvents())
             .noneSatisfy(event -> assertThat(event.uid().value()).isEqualTo(uid));
     }
 
@@ -852,6 +995,10 @@ public class ContactRoutesTest {
     }
 
     private String awaitRepublishTask(String path, Map<String, String> queryParams) {
+        return awaitRepublishTask(path, queryParams, "completed");
+    }
+
+    private String awaitRepublishTask(String path, Map<String, String> queryParams, String expectedStatus) {
         String taskId = given()
             .queryParam("action", "republish")
             .queryParams(queryParams)
@@ -861,11 +1008,11 @@ public class ContactRoutesTest {
             .extract()
             .jsonPath()
             .get("taskId");
-        return awaitTask(taskId);
+        return awaitTask(taskId, expectedStatus);
     }
 
     private String publishedEvent(String uid) {
-        List<ContactChangedEvent> events = publishedEvents.stream()
+        List<ContactChangedEvent> events = publishedContactEvents().stream()
             .filter(event -> event.uid().value().equals(uid))
             .toList();
 
@@ -909,15 +1056,37 @@ public class ContactRoutesTest {
     }
 
     private String awaitTask(String taskId) {
+        return awaitTask(taskId, "completed");
+    }
+
+    private String awaitTask(String taskId, String expectedStatus) {
         return given()
             .basePath(TasksRoutes.BASE)
         .when()
             .get(taskId + "/await")
         .then()
             .statusCode(200)
-            .body("status", is("completed"))
+            .body("status", is(expectedStatus))
             .extract()
             .body()
             .asString();
+    }
+
+    private List<ContactChangedEvent> publishedContactEvents() {
+        return publishedMessages.stream()
+            .filter(ContactChangedEvent.class::isInstance)
+            .map(ContactChangedEvent.class::cast)
+            .toList();
+    }
+
+    /**
+     * The messages published for an address book and its contacts, in their order of publication.
+     */
+    private String publishedMessagesOf(String addressBookPath) {
+        return publishedMessages.stream()
+            .filter(message -> message.path().toASCIIString().equals(addressBookPath)
+                || message.path().toASCIIString().startsWith(addressBookPath + "/"))
+            .map(message -> Throwing.supplier(() -> new String(message.serialize(), StandardCharsets.UTF_8)).get())
+            .collect(Collectors.joining(",", "[", "]"));
     }
 }

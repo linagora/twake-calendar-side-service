@@ -296,6 +296,10 @@ Iterates all registered users and all domains, lists the contacts of their CardD
 exchange. The `revision` of these events is the sync token of the address book, read before its contacts, see
 [Common Contacts](../features/common-contacts.md#common-contacts-event).
 
+The contacts of each address book are sent between a `SYNC_START` and a `SYNC_END` event, see
+[Republication of an address book](../features/common-contacts.md#republication-of-an-address-book). Address books are
+sent one at a time.
+
 Address books shared with, or delegated to, a user are listed under that user as mirrors of the owner's address book
 (`openpaas:source`): they are skipped, so each contact is published once, with its owner as audience.
 
