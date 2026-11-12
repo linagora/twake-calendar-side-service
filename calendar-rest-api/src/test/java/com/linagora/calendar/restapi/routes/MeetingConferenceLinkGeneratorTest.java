@@ -50,7 +50,7 @@ public class MeetingConferenceLinkGeneratorTest {
             .adminPassword(Optional.of("admin"))
             .build();
 
-        URL resolved = new MeetingConferenceLinkGenerator.Visio(configuration, () -> "vep-txbc-trh").generate(ORGANIZER).block();
+        URL resolved = new VisioMeetLinkGenerator(configuration, () -> "vep-txbc-trh").generate(ORGANIZER).block();
 
         assertThat(resolved.toString())
             .isEqualTo("https://meet.linagora.com/vep-txbc-trh");
@@ -63,7 +63,7 @@ public class MeetingConferenceLinkGeneratorTest {
             .adminPassword(Optional.of("admin"))
             .build();
 
-        URL resolved = new MeetingConferenceLinkGenerator.Visio(configuration).generate(ORGANIZER).block();
+        URL resolved = new VisioMeetLinkGenerator(configuration).generate(ORGANIZER).block();
 
         assertThat(resolved.toString())
             .matches("https://meet\\.linagora\\.com/[a-z]{3}-[a-z]{4}-[a-z]{3}");
@@ -90,7 +90,7 @@ public class MeetingConferenceLinkGeneratorTest {
             }
         };
 
-        URL generated = new MeetingConferenceLinkGenerator.Meet(client).generate(ORGANIZER).block();
+        URL generated = new TwakeMeetLinkGenerator(client).generate(ORGANIZER).block();
 
         assertThat(generated.toString()).isEqualTo("https://meet.example.com/vep-txbc-trh");
         assertThat(scopedTo).containsExactly(ORGANIZER);

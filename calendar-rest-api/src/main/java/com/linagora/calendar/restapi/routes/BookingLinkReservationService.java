@@ -35,6 +35,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.BookedEventTokenSigner.BookedEvent;
+import com.linagora.calendar.api.MeetingConferenceLinkGenerator;
 import com.linagora.calendar.api.booking.AvailableSlotsCalculator.AvailabilitySlot;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavClient.CalendarAccess;

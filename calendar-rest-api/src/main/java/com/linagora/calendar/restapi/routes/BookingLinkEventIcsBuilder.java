@@ -37,6 +37,7 @@ import com.google.common.base.CharMatcher;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.linagora.calendar.api.MeetingConferenceLinkGenerator;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
 import com.linagora.calendar.storage.booking.BookingLinkAlarm;

@@ -25,7 +25,7 @@ import jakarta.inject.Inject;
 import org.apache.james.core.MailAddress;
 import org.apache.james.utils.GuiceProbe;
 
-import com.linagora.calendar.restapi.routes.MeetingConferenceLinkGenerator;
+import com.linagora.calendar.api.MeetingConferenceLinkGenerator;
 
 public class MeetingConferenceLinkGeneratorProbe implements GuiceProbe {
     private final MeetingConferenceLinkGenerator generator;

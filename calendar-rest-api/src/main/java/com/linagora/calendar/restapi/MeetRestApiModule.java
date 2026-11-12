@@ -23,7 +23,8 @@ import org.apache.james.jmap.JMAPRoutes;
 import com.google.inject.AbstractModule;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.OptionalBinder;
-import com.linagora.calendar.restapi.routes.MeetingConferenceLinkGenerator;
+import com.linagora.calendar.api.MeetingConferenceLinkGenerator;
+import com.linagora.calendar.restapi.routes.TwakeMeetLinkGenerator;
 import com.linagora.calendar.restapi.routes.VideoConferenceRoute;
 
 public class MeetRestApiModule extends AbstractModule {
@@ -34,6 +35,6 @@ public class MeetRestApiModule extends AbstractModule {
             .addBinding().to(VideoConferenceRoute.class);
 
         OptionalBinder.newOptionalBinder(binder(), MeetingConferenceLinkGenerator.class)
-            .setBinding().to(MeetingConferenceLinkGenerator.Meet.class);
+            .setBinding().to(TwakeMeetLinkGenerator.class);
     }
 }
