@@ -158,6 +158,45 @@ class CollectedContactTest {
             .contains("UID:a460e37bf4d8e893f8fd39536997d5da8d21eebe");
     }
 
+    @Test
+    void contactWithoutNameShouldNotGetItsUidAsFormattedName() throws Exception {
+        CollectedContact result = CollectedContact.parse(contact("""
+            {"@type": "Card", "version": "2.0",
+             "emails": {"main": {"@type": "EmailAddress", "address": "someone@example.com"}}}
+            """));
+
+        VCard vCard = Ezvcard.parse(new String(result.toVCardAsBytes(), StandardCharsets.UTF_8)).first();
+
+        assertThat(vCard.getFormattedName().getValue()).isEmpty();
+        assertThat(vCard.getFormattedName().getParameter("DERIVED")).isNull();
+        assertThat(new String(result.toVCardAsBytes(), StandardCharsets.UTF_8)).doesNotContain("FN;DERIVED=true:" + result.uid().value());
+    }
+
+    @Test
+    void contactWithoutNameShouldBeReadableBackWithoutUpdate() throws Exception {
+        CollectedContact incoming = CollectedContact.parse(contact("""
+            {"@type": "Card", "version": "2.0",
+             "emails": {"main": {"@type": "EmailAddress", "address": "someone@example.com"}}}
+            """));
+
+        CollectedContact stored = CollectedContact.parse(incoming.toVCardAsBytes());
+
+        assertThat(stored.uid()).isEqualTo(incoming.uid());
+        assertThat(stored.hasEmailAddress()).isTrue();
+        assertThat(new CollectedContactUpdateCalculator().calculate(stored, incoming)).isEmpty();
+    }
+
+    @Test
+    void contactNamedLikeItsUidShouldKeepItsName() throws Exception {
+        CollectedContact result = CollectedContact.parse(contact("""
+            {"@type": "Card", "version": "2.0", "uid": "bob",
+             "name": {"@type": "Name", "full": "bob"}}
+            """));
+
+        assertThat(Ezvcard.parse(new String(result.toVCardAsBytes(), StandardCharsets.UTF_8)).first().getFormattedName().getValue())
+            .isEqualTo("bob");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {".", ".."})
     void collectedContactShouldMapADotSegmentUidToAResourceNameThatMakesAUri(String uid) throws Exception {

@@ -64,6 +64,7 @@ final class CollectedContact {
     private static final String PREF = "pref";
     private static final String JSPROP = "JSPROP";
     private static final String UID = "uid";
+    private static final String DERIVED = "DERIVED";
     private static final int MIN_PREF = 1;
     private static final int MAX_PREF = 100;
 
@@ -140,13 +141,30 @@ final class CollectedContact {
     }
 
     private static byte[] writeVCard(Card card) throws CardException {
-        return Ezvcard.write(JSCONTACT_TO_VCARD.convert(card))
+        List<VCard> vCards = JSCONTACT_TO_VCARD.convert(card);
+        vCards.forEach(CollectedContact::clearUidDerivedFormattedName);
+        return Ezvcard.write(vCards)
             .prodId(false)
             .caretEncoding(true)
             .register(new ExtendedAddressScribe())
             .register(new ExtendedStructuredNameScribe())
             .go()
             .getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * jscontact-tools 2.1.0 writes the UID as the formatted name of a card without name, marking it DERIVED: the people
+     * search would then suggest that UID as the name of the contact. The FN property, mandatory in vCard 4.0, is kept
+     * but left empty, so that the contact is suggested by its email address.
+     */
+    private static void clearUidDerivedFormattedName(VCard vCard) {
+        Optional.ofNullable(vCard.getFormattedName())
+            .filter(formattedName -> Strings.CI.equals(formattedName.getParameter(DERIVED), Boolean.TRUE.toString()))
+            .filter(formattedName -> vCard.getUid() != null && Strings.CS.equals(formattedName.getValue(), vCard.getUid().getValue()))
+            .ifPresent(formattedName -> {
+                formattedName.removeParameter(DERIVED);
+                formattedName.setValue(StringUtils.EMPTY);
+            });
     }
 
     // An invalid JSContact is refused as a whole: only what is lost through the vCard gets dropped
