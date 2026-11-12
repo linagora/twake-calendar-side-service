@@ -118,7 +118,7 @@ class TDriveConfigurationWiringTest {
         assertThat(driveConfiguration.localPartDomain()).contains("example.com");
         TDriveInstanceResolver resolver = injector.getInstance(TDriveInstanceResolver.class);
         assertThat(resolver).isInstanceOf(LocalPartTDriveInstanceResolver.class);
-        assertThat(resolver.resolve(Username.of("Alice.Smith@mail.example.net")).block()).isEqualTo("alicesmith.example.com");
+        assertThat(resolver.resolve(Username.of("AliceSmith@mail.example.net")).block()).isEqualTo("alicesmith.example.com");
         assertThat(client)
             .isInstanceOf(TDriveAttachmentStore.class)
             .isSameAs(injector.getInstance(AttachmentStore.class));
@@ -136,7 +136,7 @@ class TDriveConfigurationWiringTest {
 
         Injector injector = injector(application);
         assertThat(injector.getInstance(TDriveConfiguration.class).localPartDomain()).isEmpty();
-        assertThat(injector.getInstance(TDriveInstanceResolver.class).resolve(Username.of("Alice.Smith@mail.example.net")).block())
+        assertThat(injector.getInstance(TDriveInstanceResolver.class).resolve(Username.of("AliceSmith@mail.example.net")).block())
             .isEqualTo("alicesmith.mail.example.net");
     }
 

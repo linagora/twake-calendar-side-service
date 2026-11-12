@@ -284,7 +284,20 @@ class TDriveAttachmentStoreTest implements AttachmentStoreContract {
     }
 
     static Stream<Username> normalizableUsernames() {
-        return Stream.of("ALICE@OTHER.COM", "alice", "A.L_I+C!E-@other.com").map(Username::of);
+        return Stream.of("ALICE@OTHER.COM", "alice", "Alice@other.com").map(Username::of);
+    }
+
+    static Stream<Username> localPartsSharingASlug() {
+        return Stream.of("a.lice@example.com", "a_lice@example.com", "alice+calendar@example.com",
+            "alice-@example.com", "A.L_I+C!E-@other.com").map(Username::of);
+    }
+
+    @ParameterizedTest
+    @MethodSource("localPartsSharingASlug")
+    void shouldRejectLocalPartThatTheSlugRuleWouldChange(Username username) {
+        assertThatThrownBy(() -> client().upload(ATTACHMENT, username).block())
+            .isInstanceOfSatisfying(AttachmentStorageException.class, error -> assertThat(error.reason()).isEqualTo(Reason.INVALID_ATTACHMENT));
+        assertThat(requestCount()).isZero();
     }
 
     @ParameterizedTest
@@ -297,7 +310,7 @@ class TDriveAttachmentStoreTest implements AttachmentStoreContract {
 
     @Test
     void shouldNormalizeSlugWithCustomInstanceDomain() {
-        String fqdn = "alicesmith-2.stg.example.org";
+        String fqdn = "alice-smith-2.stg.example.org";
         String tokenPath = "/api/public/instances/" + fqdn + "/token";
         broker.stubFor(post(urlPathEqualTo(tokenPath))
             .willReturn(aResponse().withBody(TOKEN_JSON)));
@@ -315,11 +328,11 @@ class TDriveAttachmentStoreTest implements AttachmentStoreContract {
             Duration.ofSeconds(3), false, Optional.empty(), InstanceResolver.LOCAL_PART);
 
         AttachmentUri uri = localPartClient(configuration)
-            .upload(ATTACHMENT, Username.of("Alice.Smith-2@company.com"))
+            .upload(ATTACHMENT, Username.of("Alice-Smith-2@company.com"))
             .block();
 
         assertThat(uri.value())
-            .isEqualTo(URI.create("https://alicesmith-2-drive.stg.example.org/public?sharecode=a%2Bb%2Fc%3F%26%3D%23#/"));
+            .isEqualTo(URI.create("https://alice-smith-2-drive.stg.example.org/public?sharecode=a%2Bb%2Fc%3F%26%3D%23#/"));
         broker.verify(postRequestedFor(urlPathEqualTo(tokenPath)));
         assertThat(requestCount()).isEqualTo(4);
     }

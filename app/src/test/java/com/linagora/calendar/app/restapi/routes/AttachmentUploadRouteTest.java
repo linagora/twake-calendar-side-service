@@ -71,7 +71,7 @@ import io.restassured.response.Response;
 
 class AttachmentUploadRouteTest {
     private static final String DOMAIN = "example.com";
-    private static final Username USERNAME = Username.of("alice.smith@" + DOMAIN);
+    private static final Username USERNAME = Username.of("alicesmith@" + DOMAIN);
     private static final String PASSWORD = "secret";
     private static final int MAX_FILE_SIZE = 12;
     private static final byte[] CONTENT = new byte[] {0, 1, 2, 10, 13, 127, (byte) 128, (byte) 255, 3, 4, 5, 6};
