@@ -26,12 +26,16 @@ import java.util.stream.Stream;
 
 import org.apache.james.task.Task;
 import org.apache.james.task.TaskExecutionDetails;
+import org.apache.james.task.TaskId;
 import org.apache.james.task.TaskType;
 
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.webadmin.service.CommonContactRepublishService;
+
+import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 
 public class CommonContactRepublishTask implements Task {
     public record Details(Instant instant, Optional<String> username, Optional<String> domain, Optional<String> scope,
@@ -102,17 +106,33 @@ public class CommonContactRepublishTask implements Task {
     private final RunningOptions runningOptions;
     private final Scope scope;
     private final CommonContactRepublishService.Context context;
+    private final Sinks.One<TaskId> taskId;
 
     public CommonContactRepublishTask(CommonContactRepublishService republishService, RunningOptions runningOptions, Scope scope) {
         this.republishService = republishService;
         this.runningOptions = runningOptions;
         this.scope = scope;
         this.context = new CommonContactRepublishService.Context();
+        this.taskId = Sinks.one();
+    }
+
+    /**
+     * The task ID identifies the republication in the {@code syncId} of its events. The task manager may start the
+     * task before the ID it generated is handed over: the task waits for it.
+     */
+    @Override
+    public Mono<Result> runAsync() {
+        return taskId.asMono()
+            .flatMap(id -> republishService.republish(id, context, runningOptions, scope));
     }
 
     @Override
     public Result run() {
-        return republishService.republish(context, runningOptions, scope).block();
+        return runAsync().block();
+    }
+
+    public void assignTaskId(TaskId id) {
+        taskId.emitValue(id, Sinks.EmitFailureHandler.FAIL_FAST);
     }
 
     @Override

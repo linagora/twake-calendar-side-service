@@ -30,6 +30,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linagora.calendar.dav.ContactUid;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.AddressBookDeletedEvent;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.AddressBookSyncEndEvent;
+import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.AddressBookSyncStartEvent;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.Audience.Domain;
 import com.linagora.calendar.saas.contact.CommonContactOutboundEvent.ContactChangedEvent;
 
@@ -55,9 +57,15 @@ class CommonContactOutboundEventSerializeTest {
         ObjectNode jsContact = OBJECT_MAPPER.readValue("""
             { "version": "1.0", "uid": "contact-uid", "name": { "full": "Alice" } }
             """, ObjectNode.class);
-        CommonContactOutboundEvent event = new ContactChangedEvent(new CommonContactOutboundEvent.Audience.User(Username.of("alice@linagora.com")), CommonContactOutboundEvent.Action.ADD,
-            URI.create("addressbooks/alice/collected"), new ContactUid("contact-uid"),
-            42L, "\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\"", jsContact);
+        CommonContactOutboundEvent event = ContactChangedEvent.builder()
+            .audience(new CommonContactOutboundEvent.Audience.User(Username.of("alice@linagora.com")))
+            .action(CommonContactOutboundEvent.Action.ADD)
+            .path(URI.create("addressbooks/alice/collected"))
+            .uid(new ContactUid("contact-uid"))
+            .revision(42L)
+            .etag("\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\"")
+            .payload(jsContact)
+            .build();
 
         String actual = new String(event.serialize(), StandardCharsets.UTF_8);
 
@@ -80,9 +88,14 @@ class CommonContactOutboundEventSerializeTest {
 
     @Test
     void shouldOmitContactDataAndKeepEmptyAudience() throws Exception {
-        CommonContactOutboundEvent event = new ContactChangedEvent(new CommonContactOutboundEvent.Audience.Unknown(), CommonContactOutboundEvent.Action.DELETE,
-            URI.create("addressbooks/alice/collected"), new ContactUid("contact-uid"),
-            42L, "\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\"", null);
+        CommonContactOutboundEvent event = ContactChangedEvent.builder()
+            .audience(new CommonContactOutboundEvent.Audience.Unknown())
+            .action(CommonContactOutboundEvent.Action.DELETE)
+            .path(URI.create("addressbooks/alice/collected"))
+            .uid(new ContactUid("contact-uid"))
+            .revision(42L)
+            .etag("\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\"")
+            .build();
 
         String actual = new String(event.serialize(), StandardCharsets.UTF_8);
 
@@ -100,9 +113,14 @@ class CommonContactOutboundEventSerializeTest {
 
     @Test
     void shouldSerializeDomainAudience() throws Exception {
-        CommonContactOutboundEvent event = new ContactChangedEvent(new Domain(org.apache.james.core.Domain.of("linagora.com")), CommonContactOutboundEvent.Action.ADD,
-            URI.create("addressbooks/domain/domain-members/contact-uid.vcf"), new ContactUid("contact-uid"),
-            42L, "\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\"", null);
+        CommonContactOutboundEvent event = ContactChangedEvent.builder()
+            .audience(new Domain(org.apache.james.core.Domain.of("linagora.com")))
+            .action(CommonContactOutboundEvent.Action.ADD)
+            .path(URI.create("addressbooks/domain/domain-members/contact-uid.vcf"))
+            .uid(new ContactUid("contact-uid"))
+            .revision(42L)
+            .etag("\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\"")
+            .build();
 
         assertThatJson(new String(event.serialize(), StandardCharsets.UTF_8)).isEqualTo("""
             {
@@ -112,6 +130,86 @@ class CommonContactOutboundEventSerializeTest {
               "uid": "contact-uid",
               "revision": 42,
               "etag": "\\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\\""
+            }
+            """);
+    }
+
+    @Test
+    void shouldSerializeSyncIdOfRepublishedContact() throws Exception {
+        // Given a contact republished by the sync of its address book
+        CommonContactOutboundEvent event = ContactChangedEvent.builder()
+            .audience(new Domain(org.apache.james.core.Domain.of("linagora.com")))
+            .action(CommonContactOutboundEvent.Action.ADD)
+            .path(URI.create("addressbooks/domain/domain-members/contact-uid.vcf"))
+            .uid(new ContactUid("contact-uid"))
+            .revision(42L)
+            .etag("\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\"")
+            .syncId("task-id:addressbooks/domain/domain-members")
+            .build();
+
+        // When the event is serialized
+        String actual = new String(event.serialize(), StandardCharsets.UTF_8);
+
+        // Then it carries the sync ID next to the contact data
+        assertThatJson(actual).isEqualTo("""
+            {
+              "audience": { "domain": "linagora.com" },
+              "action": "ADD",
+              "path": "addressbooks/domain/domain-members/contact-uid.vcf",
+              "uid": "contact-uid",
+              "revision": 42,
+              "etag": "\\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\\"",
+              "syncId": "task-id:addressbooks/domain/domain-members"
+            }
+            """);
+    }
+
+    @Test
+    void shouldSerializeSyncStartWithoutUidOrPayload() throws Exception {
+        // Given the start of the sync of a domain address book
+        CommonContactOutboundEvent event = new AddressBookSyncStartEvent(new Domain(org.apache.james.core.Domain.of("linagora.com")),
+            URI.create("addressbooks/domain/domain-members"), "task-id:addressbooks/domain/domain-members", 42L);
+
+        // When the event is serialized
+        String actual = new String(event.serialize(), StandardCharsets.UTF_8);
+
+        // Then it identifies the address book and the sync, without any contact data
+        assertThatJson(actual).isEqualTo("""
+            {
+              "audience": { "domain": "linagora.com" },
+              "action": "SYNC_START",
+              "path": "addressbooks/domain/domain-members",
+              "syncId": "task-id:addressbooks/domain/domain-members",
+              "revision": 42
+            }
+            """);
+    }
+
+    @Test
+    void shouldSerializeSyncEndWithCompletenessAndCount() throws Exception {
+        // Given the end of an incomplete sync of a user address book
+        CommonContactOutboundEvent event = AddressBookSyncEndEvent.builder()
+            .audience(new CommonContactOutboundEvent.Audience.User(Username.of("alice@linagora.com")))
+            .path(URI.create("addressbooks/alice/contacts"))
+            .syncId("task-id:addressbooks/alice/contacts")
+            .revision(42L)
+            .complete(false)
+            .count(3)
+            .build();
+
+        // When the event is serialized
+        String actual = new String(event.serialize(), StandardCharsets.UTF_8);
+
+        // Then it tells whether the sync is complete and how many contacts it sent
+        assertThatJson(actual).isEqualTo("""
+            {
+              "audience": { "user": "alice@linagora.com" },
+              "action": "SYNC_END",
+              "path": "addressbooks/alice/contacts",
+              "syncId": "task-id:addressbooks/alice/contacts",
+              "revision": 42,
+              "complete": false,
+              "count": 3
             }
             """);
     }
