@@ -61,8 +61,8 @@ A booking link creates the event with nobody around to call that route: the book
 visitor and the organizer is not in the request at all. So the room is created where the ICS is built,
 before the property quotes it.
 
-Both paths go through `MeetingConferenceLinkGenerator`, bound to the implementation that creates a
-Meet room where Meet is configured and to the one that invents a code where it is not. The room is
+The videoconference route, booking links and TwakeSpace scheduling use `MeetingConferenceLinkGenerator`.
+With Meet disabled, booking links get a Visio code. A Meet room is
 created in the organizer's name — the booking link's owner, not the booker — so the organizer ends up
 its `OWNER`.
 

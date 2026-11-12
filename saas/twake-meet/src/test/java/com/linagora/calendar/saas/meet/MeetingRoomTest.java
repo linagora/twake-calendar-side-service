@@ -16,27 +16,33 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.twakespace.model;
+package com.linagora.calendar.saas.meet;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.Optional;
 
-import org.apache.commons.lang3.StringUtils;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
-// A card names the room, not the link: the feed builds the link from its own Meet URL.
-public final class MeetingRoom {
-    private MeetingRoom() {
+class MeetingRoomTest {
+    private static final MeetConfiguration CONFIGURATION = new MeetConfiguration("client", "secret",
+        URI.create("https://meet.space.tld"), false, Duration.ofSeconds(5), Optional.empty());
+
+    private final TwakeMeetLinkGenerator generator = new TwakeMeetLinkGenerator(new MeetApplicationClient(CONFIGURATION), CONFIGURATION);
+
+    @ParameterizedTest
+    @ValueSource(strings = {"https://meet.space.tld/abc-defg-hij", "https://MEET.space.tld/abc-defg-hij/", " https://meet.space.tld/abc-defg-hij "})
+    void roomNameShouldReadTheRoomOfALinkToTheConfiguredMeet(String link) {
+        assertThat(generator.roomName(link)).contains("abc-defg-hij");
     }
 
-    public static Optional<String> of(URI meet, String videoconference) {
-        try {
-            URI link = URI.create(videoconference.trim());
-            return Optional.ofNullable(link.getPath())
-                .filter(path -> StringUtils.equalsIgnoreCase(link.getHost(), meet.getHost()))
-                .map(path -> StringUtils.strip(path, "/"))
-                .filter(room -> !room.isEmpty() && !room.contains("/"));
-        } catch (IllegalArgumentException e) {
-            return Optional.empty();
-        }
+    @ParameterizedTest
+    @ValueSource(strings = {"https://visio.other.tld/abc-defg-hij", "https://meet.space.tld/", "https://meet.space.tld/api/abc-defg-hij",
+        "not a link", ""})
+    void roomNameShouldBeEmptyForAnyOtherLink(String link) {
+        assertThat(generator.roomName(link)).isEmpty();
     }
 }
