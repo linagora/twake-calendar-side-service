@@ -29,10 +29,10 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.linagora.calendar.amqp.meet.MeetApplicationClient;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavClient.CalendarAccess;
 import com.linagora.calendar.dav.dto.CalendarMirrorSource;
+import com.linagora.calendar.saas.meet.MeetApplicationClient;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;

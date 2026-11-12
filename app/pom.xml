@@ -127,6 +127,10 @@
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
+            <artifactId>twake-meet-extension</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
             <artifactId>twake-space-extension</artifactId>
         </dependency>
         <dependency>

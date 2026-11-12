@@ -16,32 +16,36 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.restapi.routes;
+package com.linagora.calendar.saas.meet;
 
-import java.net.URL;
+import java.io.FileNotFoundException;
 
-import jakarta.inject.Inject;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.james.utils.PropertiesProvider;
 
-import org.apache.james.core.MailAddress;
-
-import com.linagora.calendar.amqp.meet.MeetApplicationClient;
+import com.google.inject.AbstractModule;
+import com.google.inject.Provides;
+import com.google.inject.Scopes;
+import com.google.inject.Singleton;
+import com.google.inject.multibindings.OptionalBinder;
 import com.linagora.calendar.api.MeetingConferenceLinkGenerator;
 
-import reactor.core.publisher.Mono;
-
-/** Creates the room in the organizer's name and returns the URL Meet answers with. */
-public class TwakeMeetLinkGenerator implements MeetingConferenceLinkGenerator {
-    private final MeetApplicationClient client;
-
-    @Inject
-    public TwakeMeetLinkGenerator(MeetApplicationClient client) {
-        this.client = client;
-    }
+public class MeetIntegrationModule extends AbstractModule {
 
     @Override
-    public Mono<URL> generate(MailAddress organizer) {
-        return client.fetchToken(organizer)
-            .flatMap(client::createRoom)
-            .map(MeetApplicationClient.Room::url);
+    protected void configure() {
+        bind(MeetApplicationClient.class).in(Scopes.SINGLETON);
+        OptionalBinder.newOptionalBinder(binder(), MeetingConferenceLinkGenerator.class)
+            .setBinding().to(TwakeMeetLinkGenerator.class);
+    }
+
+    @Provides
+    @Singleton
+    public MeetConfiguration provideMeetConfiguration(PropertiesProvider propertiesProvider) throws ConfigurationException {
+        try {
+            return MeetConfiguration.from(propertiesProvider.getConfiguration("configuration"));
+        } catch (FileNotFoundException e) {
+            throw new ConfigurationException("configuration.properties is required to configure the Meet integration", e);
+        }
     }
 }

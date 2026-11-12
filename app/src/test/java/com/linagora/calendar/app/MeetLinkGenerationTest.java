@@ -39,8 +39,8 @@ import org.mockserver.model.MediaType;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.inject.multibindings.Multibinder;
-import com.linagora.calendar.amqp.meet.MeetConfiguration;
 import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.saas.meet.MeetConfiguration;
 
 class MeetLinkGenerationTest {
     private static final MailAddress ORGANIZER = Throwing.supplier(() -> new MailAddress("alice@example.com")).get();

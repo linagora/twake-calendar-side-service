@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.amqp.meet;
+package com.linagora.calendar.saas.meet;
 
 import java.net.MalformedURLException;
 import java.net.URI;
