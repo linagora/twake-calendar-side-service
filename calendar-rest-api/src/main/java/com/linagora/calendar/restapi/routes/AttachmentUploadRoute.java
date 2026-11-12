@@ -21,7 +21,6 @@ package com.linagora.calendar.restapi.routes;
 import java.io.ByteArrayOutputStream;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Optional;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
@@ -62,17 +61,17 @@ public final class AttachmentUploadRoute implements JMAPRoutes {
     private final ObjectMapper mapper;
     private final Authenticator authenticator;
     private final MetricFactory metricFactory;
-    private final Optional<AttachmentStore> client;
+    private final AttachmentStore storage;
     private final long maxFileSize;
 
     public record UploadResponse(String uri) { }
 
     @Inject
     public AttachmentUploadRoute(Authenticator authenticator, MetricFactory metricFactory,
-                                 Optional<AttachmentStore> client, FileUploadConfiguration configuration) {
+                                 AttachmentStore storage, FileUploadConfiguration configuration) {
         this.authenticator = authenticator;
         this.metricFactory = metricFactory;
-        this.client = client;
+        this.storage = storage;
         this.maxFileSize = configuration.userTotalLimit();
         Preconditions.checkArgument(maxFileSize > 0, "Upload size limit must be positive");
         this.mapper = new ObjectMapper();
@@ -89,10 +88,6 @@ public final class AttachmentUploadRoute implements JMAPRoutes {
     }
 
     private Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
-        if (client.isEmpty()) {
-            return response.status(HttpResponseStatus.SERVICE_UNAVAILABLE).send();
-        }
-        AttachmentStore storage = client.orElseThrow();
         return readAttachment(request)
             .flatMap(attachment -> storage.upload(attachment, session.getUser()))
             .map(AttachmentUploadRoute::toResponse)

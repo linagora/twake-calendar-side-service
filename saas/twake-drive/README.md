@@ -54,7 +54,8 @@ into `alice-drive.staging.example.com`.
 ## Enable CalDAV attachment uploads
 
 Use a Sabre version that supports `CALDAV_BINARY_ATTACHMENT_MODE=offload` and set it.
-Sabre sends inline attachments to the side service at `/api/attachments`.
+Sabre sends inline attachments to the side service through the
+[attachment upload API](../../docs/apis/tdrive-attachment-upload.md).
 
 - If set, `TRUSTED_ATTACH_URL_BASE` must match the generated public links.
 - Sabre's bundled Nginx uses `NGINX_CLIENT_MAX_BODY_SIZE` to cap the full request, including Base64.
