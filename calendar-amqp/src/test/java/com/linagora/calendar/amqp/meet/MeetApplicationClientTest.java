@@ -43,6 +43,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.github.tomakehurst.wiremock.stubbing.Scenario;
+import com.linagora.calendar.api.MeetApiException;
 
 class MeetApplicationClientTest {
     private static final String ROOMS_PATH = "/external-api/v1.0/rooms/";
@@ -163,7 +164,7 @@ class MeetApplicationClientTest {
         stubCreateRoom(400, "{\"slug\":[\"Room with this Slug already exists.\"]}");
 
         assertThatThrownBy(() -> client().createRoom(TOKEN).block())
-            .isInstanceOf(MeetApplicationClient.MeetApiException.class)
+            .isInstanceOf(MeetApiException.class)
             .hasMessageContaining("Slug already exists");
     }
 
@@ -172,7 +173,7 @@ class MeetApplicationClientTest {
         stubCreateRoom(400, "{\"access_level\":[\"Public rooms are disabled for the external API.\"]}");
 
         assertThatThrownBy(() -> client().createRoom(TOKEN).block())
-            .isInstanceOf(MeetApplicationClient.MeetApiException.class)
+            .isInstanceOf(MeetApiException.class)
             .hasMessageContaining("Public rooms are disabled");
 
         verify(1, postRequestedFor(urlEqualTo(ROOMS_PATH)));
@@ -183,7 +184,7 @@ class MeetApplicationClientTest {
         stubCreateRoom(403, "{\"detail\":\"missing rooms:create scope\"}");
 
         assertThatThrownBy(() -> client().createRoom(TOKEN).block())
-            .isInstanceOf(MeetApplicationClient.MeetApiException.class)
+            .isInstanceOf(MeetApiException.class)
             .hasMessageContaining("403")
             .hasMessageContaining("rooms:create");
     }
@@ -193,7 +194,7 @@ class MeetApplicationClientTest {
         stubCreateRoom(201, "{\"id\":\"" + ROOM_UUID + "\",\"slug\":\"mjj-beyv-zai\"}");
 
         assertThatThrownBy(() -> client().createRoom(TOKEN).block())
-            .isInstanceOf(MeetApplicationClient.MeetApiException.class)
+            .isInstanceOf(MeetApiException.class)
             .hasMessageContaining("APPLICATION_BASE_URL");
     }
 
@@ -222,7 +223,7 @@ class MeetApplicationClientTest {
         stubToken(403, "{\"detail\":\"invalid client\"}");
 
         assertThatThrownBy(() -> client().fetchToken(USER_EMAIL).block())
-            .isInstanceOf(MeetApplicationClient.MeetApiException.class)
+            .isInstanceOf(MeetApiException.class)
             .hasMessageContaining("403");
     }
 
@@ -231,7 +232,7 @@ class MeetApplicationClientTest {
         stubToken(200, "{}");
 
         assertThatThrownBy(() -> client().fetchToken(USER_EMAIL).block())
-            .isInstanceOf(MeetApplicationClient.MeetApiException.class)
+            .isInstanceOf(MeetApiException.class)
             .hasMessageContaining("access_token");
     }
 
@@ -240,7 +241,7 @@ class MeetApplicationClientTest {
         stubCreateRoom(500, "x".repeat(10_000));
 
         assertThatThrownBy(() -> client().createRoom(TOKEN).block())
-            .isInstanceOf(MeetApplicationClient.MeetApiException.class)
+            .isInstanceOf(MeetApiException.class)
             .satisfies(error -> assertThat(error.getMessage().length()).isLessThan(512));
     }
 

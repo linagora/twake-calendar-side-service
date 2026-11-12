@@ -34,6 +34,7 @@ import org.apache.james.core.MailAddress;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linagora.calendar.api.MeetApiException;
 
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -75,25 +76,6 @@ public class MeetApplicationClient {
 
     /** A room as Meet's external API describes it. */
     public record Room(RoomId id, RoomSlug slug, URL url) {
-    }
-
-    /** A Meet response this service could not use, carrying the status so callers can branch on it. */
-    public static class MeetApiException extends RuntimeException {
-        private final int status;
-
-        public MeetApiException(int status, String message) {
-            super(message);
-            this.status = status;
-        }
-
-        public MeetApiException(String message, Throwable cause) {
-            super(message, cause);
-            this.status = -1;
-        }
-
-        public int status() {
-            return status;
-        }
     }
 
     private final HttpClient httpClient;
@@ -144,7 +126,7 @@ public class MeetApplicationClient {
             .flatMap(node -> {
                 JsonNode token = node.get(ACCESS_TOKEN_FIELD);
                 if (token == null || !token.isTextual()) {
-                    return Mono.error(new MeetApiException(-1, "Meet token response missing access_token: " + abbreviate(node.toString())));
+                    return Mono.error(new MeetApiException("Meet token response missing access_token: " + abbreviate(node.toString())));
                 }
                 return Mono.just(new MeetToken(token.asText()));
             });
@@ -202,7 +184,7 @@ public class MeetApplicationClient {
     private Mono<Room> toRoom(JsonNode node) {
         JsonNode urlNode = node.get("url");
         if (urlNode == null || !urlNode.isTextual()) {
-            return Mono.error(new MeetApiException(-1,
+            return Mono.error(new MeetApiException(
                 "Meet room response carries no url — is APPLICATION_BASE_URL set on Meet? " + abbreviate(node.toString())));
         }
         try {

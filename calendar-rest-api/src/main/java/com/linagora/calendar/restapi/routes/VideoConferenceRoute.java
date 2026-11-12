@@ -21,6 +21,7 @@ package com.linagora.calendar.restapi.routes;
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
 
+import java.net.URL;
 import java.util.Map;
 
 import jakarta.inject.Inject;
@@ -33,7 +34,8 @@ import org.apache.james.metrics.api.MetricFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.linagora.calendar.amqp.meet.MeetApplicationClient;
+import com.linagora.calendar.api.MeetApiException;
+import com.linagora.calendar.api.MeetingConferenceLinkGenerator;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -49,14 +51,14 @@ public class VideoConferenceRoute extends CalendarRoute {
     private static final Logger LOGGER = LoggerFactory.getLogger(VideoConferenceRoute.class);
     private static final String URL_FIELD = "url";
 
-    private final MeetApplicationClient meetClient;
+    private final MeetingConferenceLinkGenerator meetingLinkGenerator;
 
     @Inject
     public VideoConferenceRoute(Authenticator authenticator,
                                 MetricFactory metricFactory,
-                                MeetApplicationClient meetClient) {
+                                MeetingConferenceLinkGenerator meetingLinkGenerator) {
         super(authenticator, metricFactory);
-        this.meetClient = meetClient;
+        this.meetingLinkGenerator = meetingLinkGenerator;
     }
 
     @Override
@@ -69,16 +71,15 @@ public class VideoConferenceRoute extends CalendarRoute {
         Username organizer = session.getUser();
 
         return Mono.fromCallable(organizer::asMailAddress)
-            .flatMap(meetClient::fetchToken)
-            .flatMap(meetClient::createRoom)
-            .map(room -> room.url().toString())
+            .flatMap(meetingLinkGenerator::generate)
+            .map(URL::toString)
             .flatMap(url -> response.status(HttpResponseStatus.CREATED)
                 .headers(JSON_HEADER)
                 .sendByteArray(Mono.fromCallable(() -> OBJECT_MAPPER_DEFAULT.writeValueAsBytes(Map.of(URL_FIELD, url))))
                 .then())
             // Meet being down is not the caller's fault, and it is not this
             // service failing either: 502 says which side to look at.
-            .onErrorResume(MeetApplicationClient.MeetApiException.class, error -> {
+            .onErrorResume(MeetApiException.class, error -> {
                 LOGGER.warn("Meet refused to create a room for {}", organizer, error);
                 return response.status(HttpResponseStatus.BAD_GATEWAY).send().then();
             });

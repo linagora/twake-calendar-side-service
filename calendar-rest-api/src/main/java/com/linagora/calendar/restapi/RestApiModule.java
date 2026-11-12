@@ -62,6 +62,7 @@ import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.api.BookedEventTokenSigner;
 import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.api.JwtVerifier;
+import com.linagora.calendar.api.MeetingConferenceLinkGenerator;
 import com.linagora.calendar.api.ParticipationTokenSigner;
 import com.linagora.calendar.restapi.auth.BasicAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.JwtAuthenticationStrategy;
@@ -102,7 +103,6 @@ import com.linagora.calendar.restapi.routes.ImportRoute;
 import com.linagora.calendar.restapi.routes.JwtRoutes;
 import com.linagora.calendar.restapi.routes.LegacyRoutes;
 import com.linagora.calendar.restapi.routes.LogoRoute;
-import com.linagora.calendar.restapi.routes.MeetingConferenceLinkGenerator;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.ProfileAvatarRoute;
 import com.linagora.calendar.restapi.routes.ProfileUpdateRoute;
@@ -119,6 +119,7 @@ import com.linagora.calendar.restapi.routes.UserConfigurationsRoute;
 import com.linagora.calendar.restapi.routes.UserProfileRoute;
 import com.linagora.calendar.restapi.routes.UserRoute;
 import com.linagora.calendar.restapi.routes.UsersRoute;
+import com.linagora.calendar.restapi.routes.VisioMeetLinkGenerator;
 import com.linagora.calendar.restapi.routes.WebsocketRoute;
 import com.linagora.calendar.restapi.routes.configuration.FileConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.OpenpaasConfigurationEntryResolver;
@@ -161,7 +162,7 @@ public class RestApiModule extends AbstractModule {
         bind(CalendarRestApiServer.class).in(Scopes.SINGLETON);
 
         OptionalBinder.newOptionalBinder(binder(), MeetingConferenceLinkGenerator.class)
-            .setDefault().to(MeetingConferenceLinkGenerator.Visio.class);
+            .setDefault().to(VisioMeetLinkGenerator.class);
         OptionalBinder.newOptionalBinder(binder(), ImportIcsRewriter.class)
             .setDefault().toInstance(ImportIcsRewriter.UNCHANGED);
 
