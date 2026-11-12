@@ -39,7 +39,7 @@
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
-            <artifactId>twake-meet-extension</artifactId>
+            <artifactId>calendar-api</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>

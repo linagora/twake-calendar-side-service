@@ -19,6 +19,7 @@
 package com.linagora.calendar.api;
 
 import java.net.URL;
+import java.util.Optional;
 
 import org.apache.james.core.MailAddress;
 
@@ -26,8 +27,13 @@ import reactor.core.publisher.Mono;
 
 /**
  * Where the meeting link written into {@code X-OPENPAAS-VIDEOCONFERENCE} comes from — the
- * videoconference route for clients that ask, booking links for events nobody is around to ask for.
+ * videoconference route, booking links and TwakeSpace scheduling.
  */
 public interface MeetingConferenceLinkGenerator {
     Mono<URL> generate(MailAddress organizer);
+
+    /** Room name used in activity feeds, when the provider recognizes the link. */
+    default Optional<String> roomName(String videoconference) {
+        return Optional.empty();
+    }
 }

@@ -29,10 +29,10 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.linagora.calendar.api.MeetingConferenceLinkGenerator;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavClient.CalendarAccess;
 import com.linagora.calendar.dav.dto.CalendarMirrorSource;
-import com.linagora.calendar.saas.meet.MeetApplicationClient;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -48,14 +48,14 @@ public class SpaceMeetings {
 
     private final OpenPaaSUserDAO userDAO;
     private final CalDavClient calDavClient;
-    private final MeetApplicationClient meetClient;
+    private final MeetingConferenceLinkGenerator meetingLinkGenerator;
     private final Clock clock;
 
     @Inject
-    public SpaceMeetings(OpenPaaSUserDAO userDAO, CalDavClient calDavClient, MeetApplicationClient meetClient, Clock clock) {
+    public SpaceMeetings(OpenPaaSUserDAO userDAO, CalDavClient calDavClient, MeetingConferenceLinkGenerator meetingLinkGenerator, Clock clock) {
         this.userDAO = userDAO;
         this.calDavClient = calDavClient;
-        this.meetClient = meetClient;
+        this.meetingLinkGenerator = meetingLinkGenerator;
         this.clock = clock;
     }
 
@@ -79,9 +79,8 @@ public class SpaceMeetings {
                             request.uid(), request.id(), organizer.asString(), teamCalendar.calendarId().value());
                     }
                 }))
-            .flatMap(instance -> meetClient.fetchToken(request.organizer())
-                .flatMap(meetClient::createRoom)
-                .map(room -> request.asCalendar(URI.create(room.url().toString()), clock.instant()).toString().getBytes(StandardCharsets.UTF_8))
+            .flatMap(instance -> meetingLinkGenerator.generate(request.organizer())
+                .map(link -> request.asCalendar(URI.create(link.toString()), clock.instant()).toString().getBytes(StandardCharsets.UTF_8))
                 .flatMap(calendar -> calDavClient.createCalendarEvent(organizer, instance, request.uid(), calendar))
                 .doOnNext(created -> {
                     if (!created) {

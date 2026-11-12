@@ -91,7 +91,7 @@ public class MeetingConferenceLinkGeneratorTest {
             }
         };
 
-        URL generated = new TwakeMeetLinkGenerator(client).generate(ORGANIZER).block();
+        URL generated = new TwakeMeetLinkGenerator(client, configuration).generate(ORGANIZER).block();
 
         assertThat(generated.toString()).isEqualTo("https://meet.example.com/vep-txbc-trh");
         assertThat(scopedTo).containsExactly(ORGANIZER);

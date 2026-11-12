@@ -18,10 +18,13 @@
 
 package com.linagora.calendar.saas.meet;
 
+import java.net.URI;
 import java.net.URL;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
 
 import com.linagora.calendar.api.MeetingConferenceLinkGenerator;
@@ -31,10 +34,12 @@ import reactor.core.publisher.Mono;
 /** Creates the room in the organizer's name and returns the URL Meet answers with. */
 public class TwakeMeetLinkGenerator implements MeetingConferenceLinkGenerator {
     private final MeetApplicationClient client;
+    private final URI baseUrl;
 
     @Inject
-    public TwakeMeetLinkGenerator(MeetApplicationClient client) {
+    public TwakeMeetLinkGenerator(MeetApplicationClient client, MeetConfiguration configuration) {
         this.client = client;
+        this.baseUrl = configuration.externalApiBaseUrl();
     }
 
     @Override
@@ -42,5 +47,19 @@ public class TwakeMeetLinkGenerator implements MeetingConferenceLinkGenerator {
         return client.fetchToken(organizer)
             .flatMap(client::createRoom)
             .map(MeetApplicationClient.Room::url);
+    }
+
+    // The feed builds the URL from its own Meet configuration, so only a room name is published.
+    @Override
+    public Optional<String> roomName(String videoconference) {
+        try {
+            URI link = URI.create(videoconference.trim());
+            return Optional.ofNullable(link.getPath())
+                .filter(path -> StringUtils.equalsIgnoreCase(link.getHost(), baseUrl.getHost()))
+                .map(path -> StringUtils.strip(path, "/"))
+                .filter(room -> !room.isEmpty() && !room.contains("/"));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
     }
 }
