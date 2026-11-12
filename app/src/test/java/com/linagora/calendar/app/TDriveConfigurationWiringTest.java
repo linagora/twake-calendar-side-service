@@ -20,6 +20,7 @@ package com.linagora.calendar.app;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -27,6 +28,9 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 import org.apache.james.core.Username;
+import org.apache.james.jmap.http.Authenticator;
+import org.apache.james.metrics.api.MetricFactory;
+import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.utils.PropertiesProvider;
 import org.junit.jupiter.api.Test;
@@ -46,6 +50,7 @@ import com.linagora.calendar.saas.drive.tdrive.ClouderyTDriveInstanceResolver;
 import com.linagora.calendar.saas.drive.tdrive.LocalPartTDriveInstanceResolver;
 import com.linagora.calendar.saas.drive.tdrive.TDriveAttachmentStore;
 import com.linagora.calendar.saas.drive.tdrive.TDriveInstanceResolver;
+import com.linagora.calendar.storage.FileUploadConfiguration;
 
 class TDriveConfigurationWiringTest {
     @TempDir
@@ -71,7 +76,12 @@ class TDriveConfigurationWiringTest {
 
         return Guice.createInjector(Stage.PRODUCTION,
             TwakeCalendarMain.chooseTDrive(configuration.tdriveEnabled()),
-            binder -> binder.bind(PropertiesProvider.class).toInstance(propertiesProvider));
+            binder -> {
+                binder.bind(PropertiesProvider.class).toInstance(propertiesProvider);
+                binder.bind(Authenticator.class).toInstance(mock(Authenticator.class));
+                binder.bind(MetricFactory.class).toInstance(new RecordingMetricFactory());
+                binder.bind(FileUploadConfiguration.class).toInstance(FileUploadConfiguration.DEFAULT);
+            });
     }
 
     @Test

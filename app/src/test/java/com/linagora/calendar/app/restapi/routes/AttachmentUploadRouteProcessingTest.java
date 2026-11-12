@@ -175,7 +175,7 @@ class AttachmentUploadRouteProcessingTest {
         when(authenticator.authenticate(any())).thenReturn(Mono.just(session));
 
         AttachmentUploadRoute route = new AttachmentUploadRoute(authenticator, new RecordingMetricFactory(),
-            Optional.of(storage), FileUploadConfiguration.DEFAULT);
+            storage, FileUploadConfiguration.DEFAULT);
         var upload = route.routes()
             .filter(candidate -> candidate.getEndpoint().getMethod().equals(HttpMethod.POST))
             .findFirst()

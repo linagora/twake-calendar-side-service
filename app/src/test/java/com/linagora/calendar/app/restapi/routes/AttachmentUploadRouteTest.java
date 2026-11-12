@@ -355,10 +355,10 @@ class AttachmentUploadRouteTest {
         }
 
         @Test
-        void shouldReturnServiceUnavailable() {
+        void shouldReturnNotFoundWhenTDriveIsDisabled() {
             postAttachment(CONTENT)
             .then()
-                .statusCode(503);
+                .statusCode(404);
 
             assertNoStorageRequests();
         }

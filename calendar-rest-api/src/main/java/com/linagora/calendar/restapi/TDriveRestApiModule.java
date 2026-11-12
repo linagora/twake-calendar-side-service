@@ -18,14 +18,21 @@
 
 package com.linagora.calendar.restapi;
 
+import org.apache.james.jmap.JMAPRoutes;
+
 import com.google.inject.AbstractModule;
+import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.OptionalBinder;
+import com.linagora.calendar.restapi.routes.AttachmentUploadRoute;
 import com.linagora.calendar.restapi.routes.ImportAttachmentOffloader;
 import com.linagora.calendar.restapi.routes.ImportIcsRewriter;
 
 public final class TDriveRestApiModule extends AbstractModule {
     @Override
     protected void configure() {
+        Multibinder.newSetBinder(binder(), JMAPRoutes.class)
+            .addBinding().to(AttachmentUploadRoute.class);
+
         OptionalBinder.newOptionalBinder(binder(), ImportIcsRewriter.class)
             .setBinding().to(ImportAttachmentOffloader.class);
     }
