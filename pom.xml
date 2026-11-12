@@ -48,6 +48,7 @@
         <module>saas/saas-rabbitmq</module>
         <module>saas/twake-space</module>
         <module>saas/twake-drive</module>
+        <module>saas/twake-meet</module>
         <module>storage-api</module>
         <module>storage-ldap</module>
         <module>storage-mongodb</module>
@@ -159,6 +160,11 @@
             <dependency>
                 <groupId>${project.groupId}</groupId>
                 <artifactId>common-contacts-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>twake-meet-extension</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

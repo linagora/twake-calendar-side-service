@@ -39,6 +39,11 @@
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
+            <artifactId>twake-meet-extension</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
             <artifactId>calendar-storage-mongodb</artifactId>
             <scope>provided</scope>
         </dependency>

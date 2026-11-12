@@ -32,9 +32,10 @@ import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.Test;
 
 import com.github.fge.lambdas.Throwing;
-import com.linagora.calendar.amqp.meet.MeetApplicationClient;
-import com.linagora.calendar.amqp.meet.MeetConfiguration;
 import com.linagora.calendar.restapi.RestApiConfiguration;
+import com.linagora.calendar.saas.meet.MeetApplicationClient;
+import com.linagora.calendar.saas.meet.MeetConfiguration;
+import com.linagora.calendar.saas.meet.TwakeMeetLinkGenerator;
 
 import reactor.core.publisher.Mono;
 

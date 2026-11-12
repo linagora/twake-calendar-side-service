@@ -33,8 +33,8 @@ import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.apache.james.utils.PropertiesProvider;
 
 import com.github.fge.lambdas.Throwing;
-import com.linagora.calendar.amqp.meet.MeetConfiguration;
 import com.linagora.calendar.saas.drive.configuration.TDriveConfiguration;
+import com.linagora.calendar.saas.meet.MeetConfiguration;
 import com.linagora.calendar.twakespace.TwakeSpaceConfiguration;
 
 public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, JamesDirectoriesProvider directories,
