@@ -57,8 +57,7 @@ class ConfigurationResolverTest {
         }
     };
 
-    private final ConfigurationResolver testee = new ConfigurationResolver(Set.of(STORED_WITH_NULL_VALUE),
-        new FallbackConfigurationEntryResolver.EmptyFallbackConfigurationEntryResolver());
+    private final ConfigurationResolver testee = new ConfigurationResolver(Set.of(STORED_WITH_NULL_VALUE));
 
     @Test
     void resolveShouldSupportStoredNullValues() {

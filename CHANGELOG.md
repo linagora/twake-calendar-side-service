@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 ### Improvements
 
  - ISSUE-1152 Docker images are based on `eclipse-temurin:27-jre-resolute` (Java 27, Ubuntu 26.04)
+ - ISSUE-1552 Remove the legacy OpenPaaS fallback proxy: unhandled REST API calls now answer `404` and unknown configuration keys are no longer fetched from OpenPaaS. The `openpaas.backend.url` and `openpaas.backend.trust.all.certificates` properties are ignored.
 
 ## [2.1.0] - 2026-05-07
 

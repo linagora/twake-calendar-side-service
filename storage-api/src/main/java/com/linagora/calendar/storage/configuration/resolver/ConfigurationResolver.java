@@ -28,9 +28,7 @@ import org.apache.james.mailbox.MailboxSession;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.NullNode;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableTable;
-import com.google.common.collect.Sets;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
 import com.linagora.calendar.storage.configuration.EntryIdentifier;
@@ -41,30 +39,16 @@ import reactor.core.publisher.Mono;
 
 public class ConfigurationResolver {
     private final Set<ConfigurationEntryResolver> resolvers;
-    private final FallbackConfigurationEntryResolver fallbackConfigurationEntryResolver;
 
     @Inject
-    public ConfigurationResolver(Set<ConfigurationEntryResolver> resolvers, FallbackConfigurationEntryResolver fallbackConfigurationEntryResolver) {
+    public ConfigurationResolver(Set<ConfigurationEntryResolver> resolvers) {
         this.resolvers = resolvers;
-        this.fallbackConfigurationEntryResolver = fallbackConfigurationEntryResolver;
     }
 
     public Mono<ConfigurationDocument> resolve(Set<EntryIdentifier> request, MailboxSession session) {
         return Flux.fromIterable(resolvers)
             .concatMap(resolver -> resolver.resolve(request, session))
             .collect(toConfigurationTable())
-            .flatMap(resolved -> {
-                Set<EntryIdentifier> resolvedIds = resolved.cellSet().stream()
-                    .map(cell -> new EntryIdentifier(cell.getRowKey(), cell.getColumnKey()))
-                    .collect(ImmutableSet.toImmutableSet());
-                Set<EntryIdentifier> toBeResolved = Sets.difference(request, resolvedIds);
-
-                return Flux.fromIterable(toBeResolved)
-                    .flatMap(id -> fallbackConfigurationEntryResolver.resolve(id.moduleName(), id.configurationKey(), session)
-                        .map(json -> new ConfigurationEntry(id.moduleName(), id.configurationKey(), json)), 4)
-                    .collect(toConfigurationTable())
-                    .map(fallback -> ImmutableTable.<ModuleName, ConfigurationKey, JsonNode>builder().putAll(resolved).putAll(fallback).build());
-            })
             .map(ConfigurationDocument::new);
     }
 

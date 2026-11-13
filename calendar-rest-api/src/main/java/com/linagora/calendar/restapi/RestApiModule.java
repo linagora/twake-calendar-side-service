@@ -122,7 +122,6 @@ import com.linagora.calendar.restapi.routes.UsersRoute;
 import com.linagora.calendar.restapi.routes.VisioMeetLinkGenerator;
 import com.linagora.calendar.restapi.routes.WebsocketRoute;
 import com.linagora.calendar.restapi.routes.configuration.FileConfigurationEntryResolver;
-import com.linagora.calendar.restapi.routes.configuration.OpenpaasConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.configuration.StoredConfigurationEntryResolver;
 import com.linagora.calendar.restapi.routes.people.search.ContactSearchProvider;
 import com.linagora.calendar.restapi.routes.people.search.PeopleSearchProvider;
@@ -135,7 +134,6 @@ import com.linagora.calendar.storage.configuration.resolver.BusinessHoursSetting
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationEntryResolver;
 import com.linagora.calendar.storage.configuration.resolver.ConfigurationResolver;
 import com.linagora.calendar.storage.configuration.resolver.ConstantConfigurationEntryResolver;
-import com.linagora.calendar.storage.configuration.resolver.FallbackConfigurationEntryResolver;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.model.Aud;
 import com.linagora.calendar.storage.secretlink.SecretLinkPermissionChecker;
@@ -216,8 +214,6 @@ public class RestApiModule extends AbstractModule {
         configurationEntryResolvers.addBinding().to(FileConfigurationEntryResolver.class);
         configurationEntryResolvers.addBinding().to(ConstantConfigurationEntryResolver.class);
         configurationEntryResolvers.addBinding().to(StoredConfigurationEntryResolver.class);
-
-        bind(FallbackConfigurationEntryResolver.class).to(OpenpaasConfigurationEntryResolver.class);
 
         bind(TokenInfoResolver.class).to(OidcEndpointsInfoResolver.class);
 

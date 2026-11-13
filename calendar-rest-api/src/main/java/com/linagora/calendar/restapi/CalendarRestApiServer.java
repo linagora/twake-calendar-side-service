@@ -50,6 +50,7 @@ import reactor.core.publisher.Mono;
 import reactor.netty.DisposableServer;
 import reactor.netty.http.server.HttpServer;
 import reactor.netty.http.server.HttpServerRequest;
+import reactor.netty.http.server.HttpServerResponse;
 
 public class CalendarRestApiServer implements Startable  {
     public static final boolean REACTOR_NETTY_METRICS_ENABLE = Boolean.parseBoolean(System.getProperty("james.jmap.reactor.netty.metrics.enabled", "false"));
@@ -59,17 +60,15 @@ public class CalendarRestApiServer implements Startable  {
 
     private final List<JMAPRoute> routes;
     private final RestApiConfiguration configuration;
-    private final FallbackProxy fallbackProxy;
     private final DavProxy davProxy;
     private Optional<DisposableServer> server;
 
     @Inject
-    public CalendarRestApiServer(Set<JMAPRoutes> jmapRoutes, FallbackProxy fallbackProxy, RestApiConfiguration configuration, DavProxy davProxy) {
+    public CalendarRestApiServer(Set<JMAPRoutes> jmapRoutes, RestApiConfiguration configuration, DavProxy davProxy) {
         this.routes = jmapRoutes.stream().flatMap(JMAPRoutes::routes).collect(Collectors.toList());
         this.configuration = configuration;
         this.davProxy = davProxy;
         this.server = Optional.empty();
-        this.fallbackProxy = fallbackProxy;
     }
 
     public void start() {
@@ -131,12 +130,17 @@ public class CalendarRestApiServer implements Startable  {
                     if (request.uri().startsWith("/dav/")) {
                         return davProxy::forwardRequest;
                     } else {
-                        return fallbackProxy::forwardRequest;
+                        return CalendarRestApiServer::notFound;
                     }
                 });
         } catch (IllegalArgumentException e) {
             return (req, res) -> res.status(BAD_REQUEST).send();
         }
+    }
+
+    private static Mono<Void> notFound(HttpServerRequest request, HttpServerResponse response) {
+        LOGGER.debug("Not found {} {}", request.method(), request.uri());
+        return response.status(NOT_FOUND).send();
     }
 
     private void configureReactorNettyMetrics() {

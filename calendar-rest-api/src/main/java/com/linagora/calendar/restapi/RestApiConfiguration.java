@@ -62,11 +62,9 @@ public class RestApiConfiguration {
         private Optional<Duration> jwtValidity = Optional.empty();
         private Optional<URL> calendarSpaUrl = Optional.empty();
         private Optional<URL> contactSpaUrl = Optional.empty();
-        private Optional<URL> openpaasBackendURL = Optional.empty();
         private Optional<URL> davdURL = Optional.empty();
         private Optional<URL> selfURL = Optional.empty();
         private Optional<URL> visioURL = Optional.empty();
-        private Optional<Boolean> openpaasBackendTrustAllCerts = Optional.empty();
         private Optional<Boolean> sharingCalendarEnabled = Optional.empty();
         private Optional<Boolean> sharingAddressbookEnabled = Optional.empty();
         private Optional<Boolean> domainMembersAddressbookEnabled = Optional.empty();
@@ -146,18 +144,8 @@ public class RestApiConfiguration {
             return this;
         }
 
-        public Builder openpaasBackendURL(Optional<URL> url) {
-            this.openpaasBackendURL = url;
-            return this;
-        }
-
         public Builder davURL(Optional<URL> url) {
             this.davdURL = url;
-            return this;
-        }
-
-        public Builder openpaasBackendTrustAllCerts(Optional<Boolean> openpaasBackendTrustAllCerts) {
-            this.openpaasBackendTrustAllCerts = openpaasBackendTrustAllCerts;
             return this;
         }
 
@@ -226,10 +214,8 @@ public class RestApiConfiguration {
                     calendarSpaUrl.orElse(URI.create("https://e-calendrier.avocat.fr").toURL()),
                     contactSpaUrl.orElse(URI.create("https://e-contacts.avocat.fr").toURL()),
                     selfURL.orElse(URI.create("https://twcalendar.linagora.com").toURL()),
-                    openpaasBackendURL,
                     davdURL.orElse(URI.create("https://dav.linagora.com").toURL()),
                     visioURL.orElse(URI.create("https://jitsi.linagora.com").toURL()),
-                    openpaasBackendTrustAllCerts.orElse(false),
                     jwtPrivatePath.orElse("classpath://jwt_privatekey"),
                     jwtPublicPath.orElse(ImmutableList.of("classpath://jwt_publickey")),
                     jwtValidity.orElse(Duration.ofHours(12)),
@@ -280,11 +266,9 @@ public class RestApiConfiguration {
             .map(Port::of);
         Optional<URL> calendarSpaUrl = urlParser.apply("spa.calendar.url");
         Optional<URL> contactSpaUrl = urlParser.apply("spa.contacts.url");
-        Optional<URL> openpaasBackendURL = urlParser.apply("openpaas.backend.url");
         Optional<URL> davURL = urlParser.apply("dav.url");
         Optional<URL> selfURL = urlParser.apply("self.url");
         Optional<URL> visioURL = urlParser.apply("visio.url");
-        Optional<Boolean> openpaasBackendTrustAllCerts = Optional.ofNullable(configuration.getBoolean("openpaas.backend.trust.all.certificates", null));
         Optional<String> jwtPrivateKey = Optional.ofNullable(configuration.getString("jwt.key.private", null));
         Optional<List<String>> jwtPublicKey = Optional.ofNullable(configuration.getString("jwt.key.public", null))
             .map(s -> Splitter.on(',').splitToList(s));
@@ -317,11 +301,9 @@ public class RestApiConfiguration {
             .port(port)
             .calendarSpaUrl(calendarSpaUrl)
             .contactSpaUrl(contactSpaUrl)
-            .openpaasBackendURL(openpaasBackendURL)
             .davURL(davURL)
             .selfUrl(selfURL)
             .visioURL(visioURL)
-            .openpaasBackendTrustAllCerts(openpaasBackendTrustAllCerts)
             .jwtPublicPath(jwtPublicKey)
             .jwtPrivatePath(jwtPrivateKey)
             .jwtValidity(jwtValidity)
@@ -369,10 +351,8 @@ public class RestApiConfiguration {
     private final URL calendarSpaUrl;
     private final URL contactSpaUrl;
     private final URL selfUrl;
-    private final Optional<URL> openpaasBackendURL;
     private final URL davURL;
     private final URL visioURL;
-    private final boolean openpaasBackendTrustAllCerts;
     private final String jwtPrivatePath;
     private final List<String> jwtPublicPath;
     private final Duration jwtValidity;
@@ -393,7 +373,7 @@ public class RestApiConfiguration {
 
     @VisibleForTesting
     RestApiConfiguration(Optional<Port> port, URL calendarSpaUrl,
-                         URL contactSpaUrl, URL selfUrl, Optional<URL> openpaasBackendURL, URL davURL, URL visioURL, boolean openpaasBackendTrustAllCerts,
+                         URL contactSpaUrl, URL selfUrl, URL davURL, URL visioURL,
                          String jwtPrivatePath, List<String> jwtPublicPath, Duration jwtValidity, URL oidcUserInfoUrl, IntrospectionEndpoint introspectionEndpoint,
                          String oidcIntrospectionClaim, List<Aud> aud, boolean calendarSharingENabled, boolean sharingCalendarEnabled,
                          boolean domainMembersAddressbookEnabled, String defaultLanguage, String defaultTimezone, boolean defaultUse24hFormat,
@@ -402,10 +382,8 @@ public class RestApiConfiguration {
         this.calendarSpaUrl = calendarSpaUrl;
         this.contactSpaUrl = contactSpaUrl;
         this.selfUrl = selfUrl;
-        this.openpaasBackendURL = openpaasBackendURL;
         this.davURL = davURL;
         this.visioURL = visioURL;
-        this.openpaasBackendTrustAllCerts = openpaasBackendTrustAllCerts;
         this.jwtPrivatePath = jwtPrivatePath;
         this.jwtPublicPath = jwtPublicPath;
         this.jwtValidity = jwtValidity;
@@ -435,14 +413,6 @@ public class RestApiConfiguration {
 
     public URL getContactSpaUrl() {
         return contactSpaUrl;
-    }
-
-    public Optional<URL> getOpenpaasBackendURL() {
-        return openpaasBackendURL;
-    }
-
-    public boolean openpaasBackendTrustAllCerts() {
-        return openpaasBackendTrustAllCerts;
     }
 
     public String getJwtPrivatePath() {
