@@ -36,6 +36,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.apache.http.HttpStatus;
+import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.utils.GuiceProbe;
 import org.awaitility.Awaitility;
@@ -1045,6 +1046,37 @@ class BookingLinkSlotsRouteTest {
             .extract().body().asString();
 
         assertThat(response).doesNotContain("\"extraAttendees\"");
+    }
+
+    @Test
+    void shouldNotExposeExtraAttendeeOfAnotherDomain(TwakeCalendarGuiceServer server) {
+        Domain otherDomain = Domain.of("other-domain.tld");
+        Username otherDomainUser = Username.fromLocalPartWithDomain("bob", otherDomain);
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(otherDomain);
+        OpenPaaSId otherDomainUserId = calendarDataProbe.addUser(otherDomainUser, PASSWORD);
+
+        BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
+            .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+            .eventDuration(DURATION_30_MINUTES)
+            .availabilityRules(AVAILABILITY_RULE)
+            .extraAttendees(ExtraAttendees.of(otherDomainUserId))
+            .build();
+        BookingLink inserted = server.getProbe(BookingLinkProbe.class).insert(openPaaSUser.username(), insertRequest);
+
+        String response = given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .queryParam("from", FROM_20360126)
+            .queryParam("to", TO_20360127)
+        .when()
+            .get("/api/booking-links/{bookingLinkPublicId}/slots")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract().body().asString();
+
+        assertThat(response)
+            .doesNotContain("\"extraAttendees\"")
+            .doesNotContain(otherDomainUser.asString());
     }
 
     @Test

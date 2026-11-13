@@ -36,6 +36,7 @@ class BookingLinkExtraAttendeeResolverTest {
 
     private static final Username OWNER = Username.of("owner@linagora.com");
     private static final Username EXTRA_ATTENDEE = Username.of("extra@linagora.com");
+    private static final Username OTHER_DOMAIN_USER = Username.of("extra@other.com");
     private static final OpenPaaSId UNKNOWN_ID = new OpenPaaSId("659387b9d486dc0046aeffff");
 
     private MemoryOpenPaaSUserDAO userDAO;
@@ -90,7 +91,7 @@ class BookingLinkExtraAttendeeResolverTest {
 
     @Test
     void resolveShouldFailWhenUserDoesNotExist() {
-        assertThatThrownBy(() -> testee.resolve(List.of(UNKNOWN_ID)).collectList().block())
+        assertThatThrownBy(() -> testee.resolve(OWNER, List.of(UNKNOWN_ID)).collectList().block())
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining(UNKNOWN_ID.value());
     }
@@ -99,7 +100,37 @@ class BookingLinkExtraAttendeeResolverTest {
     void resolveExistingShouldSkipUsersThatDoNotExist() {
         OpenPaaSUser extraAttendee = userDAO.add(EXTRA_ATTENDEE).block();
 
-        assertThat(testee.resolveExisting(List.of(UNKNOWN_ID, extraAttendee.id())).collectList().block())
+        assertThat(testee.resolveExisting(OWNER, List.of(UNKNOWN_ID, extraAttendee.id())).collectList().block())
+            .containsExactly(extraAttendee);
+    }
+
+    @Test
+    void validateShouldRejectUserOfAnotherDomainLikeAnUnknownUser() {
+        userDAO.add(OWNER).block();
+        OpenPaaSUser otherDomainUser = userDAO.add(OTHER_DOMAIN_USER).block();
+
+        assertThatThrownBy(() -> testee.validate(OWNER, List.of(otherDomainUser.id())).block())
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("'extraAttendees' references a user that does not exist: " + otherDomainUser.id().value());
+    }
+
+    @Test
+    void validateShouldRejectUserOfAnotherDomainAmongValidOnes() {
+        userDAO.add(OWNER).block();
+        OpenPaaSUser extraAttendee = userDAO.add(EXTRA_ATTENDEE).block();
+        OpenPaaSUser otherDomainUser = userDAO.add(OTHER_DOMAIN_USER).block();
+
+        assertThatThrownBy(() -> testee.validate(OWNER, List.of(extraAttendee.id(), otherDomainUser.id())).block())
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining(otherDomainUser.id().value());
+    }
+
+    @Test
+    void resolveExistingShouldSkipUsersOfAnotherDomain() {
+        OpenPaaSUser extraAttendee = userDAO.add(EXTRA_ATTENDEE).block();
+        OpenPaaSUser otherDomainUser = userDAO.add(OTHER_DOMAIN_USER).block();
+
+        assertThat(testee.resolveExisting(OWNER, List.of(otherDomainUser.id(), extraAttendee.id())).collectList().block())
             .containsExactly(extraAttendee);
     }
 }
