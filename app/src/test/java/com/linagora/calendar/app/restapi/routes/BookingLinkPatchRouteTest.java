@@ -38,6 +38,8 @@ import java.util.UUID;
 import javax.net.ssl.SSLException;
 
 import org.apache.http.HttpStatus;
+import org.apache.james.core.Domain;
+import org.apache.james.core.Username;
 import org.apache.james.utils.GuiceProbe;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -754,6 +756,32 @@ class BookingLinkPatchRouteTest {
 
         BookingLink notUpdated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
         assertThat(notUpdated.extraAttendees()).isEqualTo(ExtraAttendees.of(extraAttendee.id()));
+    }
+
+    @Test
+    void shouldReturn400WhenUpdatedExtraAttendeeBelongsToAnotherDomain(TwakeCalendarGuiceServer server) {
+        Domain otherDomain = Domain.of("other-domain.tld");
+        CalendarDataProbe calendarDataProbe = server.getProbe(CalendarDataProbe.class);
+        calendarDataProbe.addDomain(otherDomain);
+        OpenPaaSId otherDomainUserId = calendarDataProbe.addUser(Username.fromLocalPartWithDomain("bob", otherDomain), PASSWORD);
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            BookingLinkInsertRequest.builder()
+                .calendarUrl(CalendarURL.from(openPaaSUser.id()))
+                .eventDuration(Duration.ofMinutes(30))
+                .build());
+
+        given()
+            .body("""
+                { "extraAttendees": { "and": [ { "participant": "%s" } ] } }
+                """.formatted(otherDomainUserId.value()))
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'extraAttendees' references a user that does not exist: " + otherDomainUserId.value()));
+
+        BookingLink notUpdated = bookingLinkProbe.findBookingLink(openPaaSUser.username(), inserted.publicId());
+        assertThat(notUpdated.extraAttendees()).isEqualTo(ExtraAttendees.NONE);
     }
 
     @Test

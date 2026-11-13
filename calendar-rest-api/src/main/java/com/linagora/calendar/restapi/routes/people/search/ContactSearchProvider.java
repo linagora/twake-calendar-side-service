@@ -35,9 +35,11 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
+import com.linagora.calendar.restapi.routes.CrossDomainAccessControl;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute.ObjectType;
 import com.linagora.calendar.storage.DomainSettingsResolver;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.UserSearchMode;
 import com.linagora.tmail.james.jmap.contact.EmailAddressContact;
@@ -103,16 +105,19 @@ public class ContactSearchProvider implements PeopleSearchProvider {
     private final OpenPaaSUserDAO userDAO;
     private final URL baseAvatarUrl;
     private final DomainSettingsResolver domainSettingsResolver;
+    private final CrossDomainAccessControl crossDomainAccessControl;
 
     @Inject
     public ContactSearchProvider(@Named("selfUrl") URL baseAvatarUrl,
                                  EmailAddressContactSearchEngine contactSearchEngine,
                                  OpenPaaSUserDAO userDAO,
-                                 DomainSettingsResolver domainSettingsResolver) {
+                                 DomainSettingsResolver domainSettingsResolver,
+                                 CrossDomainAccessControl crossDomainAccessControl) {
         this.contactSearchEngine = contactSearchEngine;
         this.userDAO = userDAO;
         this.baseAvatarUrl = baseAvatarUrl;
         this.domainSettingsResolver = domainSettingsResolver;
+        this.crossDomainAccessControl = crossDomainAccessControl;
     }
 
     @Override
@@ -124,7 +129,7 @@ public class ContactSearchProvider implements PeopleSearchProvider {
     public Flux<PeopleSearchRoute.ResponseDTO> search(MailboxSession session, String query, Set<ObjectType> objectTypesFilter, int limit) {
         return userResolutionAllowed(session, objectTypesFilter)
             .flatMapMany(allowed -> Flux.from(contactSearchEngine.autoComplete(AccountId.fromString(session.getUser().asString()), query, limit))
-                .flatMap(contact -> resolveUserOrContactType(contact, allowed)
+                .flatMap(contact -> resolveUserOrContactType(contact, session, allowed)
                     .map(lookupResult -> toResponseDTO(lookupResult, contact))));
     }
 
@@ -138,18 +143,29 @@ public class ContactSearchProvider implements PeopleSearchProvider {
             .orElse(Mono.just(userTypeAllowedByClient));
     }
 
-    private Mono<UserLookupResult> resolveUserOrContactType(EmailAddressContact contact, boolean allowUser) {
+    private Mono<UserLookupResult> resolveUserOrContactType(EmailAddressContact contact, MailboxSession session, boolean allowUser) {
         if (allowUser) {
-            return tryResolveUser(contact)
+            return tryResolveUser(contact, session)
                 .defaultIfEmpty(UserLookupResult.contact(contact.id().toString()));
         }
 
         return Mono.just(UserLookupResult.contact(contact.id().toString()));
     }
 
-    private Mono<UserLookupResult> tryResolveUser(EmailAddressContact contact) {
+    /**
+     * A contact is exposed as a user only when the searcher may see that user's domain: otherwise the OpenPaaS id
+     * of a user of another tenant would leak, and the search would tell whether that account exists.
+     */
+    private Mono<UserLookupResult> tryResolveUser(EmailAddressContact contact, MailboxSession session) {
         return userDAO.retrieve(Username.fromMailAddress(contact.fields().address()))
+            .filter(user -> isVisibleTo(user, session))
             .map(user -> UserLookupResult.user(user.id().value()));
+    }
+
+    private boolean isVisibleTo(OpenPaaSUser user, MailboxSession session) {
+        return user.username().getDomainPart()
+            .map(domain -> !crossDomainAccessControl.denies(session, domain))
+            .orElse(false);
     }
 
     private PeopleSearchRoute.ResponseDTO toResponseDTO(UserLookupResult lookupResult, EmailAddressContact contact) {

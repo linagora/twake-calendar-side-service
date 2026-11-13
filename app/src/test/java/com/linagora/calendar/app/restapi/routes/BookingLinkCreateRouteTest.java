@@ -39,6 +39,7 @@ import java.util.UUID;
 
 import org.apache.http.HttpStatus;
 import org.apache.james.core.Domain;
+import org.apache.james.core.Username;
 import org.apache.james.utils.GuiceProbe;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -836,6 +837,30 @@ class BookingLinkCreateRouteTest {
             .post("/api/booking-links")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
+
+        assertThat(bookingLinkProbe.listBookingLinks(openPaaSUser.username())).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenExtraAttendeeBelongsToAnotherDomain() {
+        Domain otherDomain = Domain.of("other-domain.tld");
+        calendarDataProbe.addDomain(otherDomain);
+        OpenPaaSId otherDomainUserId = calendarDataProbe.addUser(Username.fromLocalPartWithDomain("bob", otherDomain), PASSWORD);
+
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "extraAttendees": { "and": [ { "participant": "%s" } ] }
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString(), otherDomainUserId.value()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'extraAttendees' references a user that does not exist: " + otherDomainUserId.value()));
 
         assertThat(bookingLinkProbe.listBookingLinks(openPaaSUser.username())).isEmpty();
     }

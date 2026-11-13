@@ -55,6 +55,7 @@ import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
 import com.linagora.calendar.storage.TeamCalendarRepository;
@@ -316,6 +317,35 @@ class PeopleSearchRouteTest {
         assertThatJson(response)
             .inPath("[0].objectType")
             .isEqualTo("contact");
+    }
+
+    @Test
+    void shouldReturnContactOfAnotherDomainUserAsContact(TwakeCalendarGuiceServer server) {
+        Domain foreignDomain = Domain.of("foreign-domain.tld");
+        server.getProbe(CalendarDataProbe.class).addDomain(foreignDomain);
+        Username foreignUser = Username.fromLocalPartWithDomain("naruto", foreignDomain);
+        addUser(server, foreignUser, "naruto", "hokage");
+        addContact(server, foreignUser.asString(), "naruto", "hokage");
+        OpenPaaSId foreignUserId = server.getProbe(CalendarDataProbe.class).getUser(foreignUser).id();
+
+        String response = given()
+            .body("""
+                {
+                  "q" : "naruto",
+                  "objectTypes" : [ "user", "contact" ],
+                  "limit" : 10
+                }""")
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+
+        assertThatJson(response).isArray().hasSize(1);
+        assertThatJson(response).node("[0].objectType").isEqualTo("contact");
+        assertThatJson(response).node("[0].id").isString().isNotEqualTo(foreignUserId.value());
     }
 
     @Test

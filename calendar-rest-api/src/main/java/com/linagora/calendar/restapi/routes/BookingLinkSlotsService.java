@@ -114,7 +114,7 @@ public class BookingLinkSlotsService {
     }
 
     private Mono<List<OpenPaaSUser>> resolveExtraAttendees(BookingLink bookingLink) {
-        return extraAttendeeResolver.resolveExisting(bookingLink.extraAttendees().participants())
+        return extraAttendeeResolver.resolveExisting(bookingLink.username(), bookingLink.extraAttendees().participants())
             .collectList();
     }
 
@@ -200,13 +200,13 @@ public class BookingLinkSlotsService {
      * attendee's partial view rather than mixing it in.
      */
     private Flux<BusyInterval> extraAttendeesBusyIntervals(BookingLink bookingLink, Instant from, Instant to) {
-        return Flux.fromIterable(bookingLink.extraAttendees().participants())
-            .concatMap(extraAttendee -> timeZoneOf(extraAttendee)
-                .flatMap(zoneId -> calDavClient.findBusyIntervals(bookingLink.username(), extraAttendee, from, to, zoneId)
+        return extraAttendeeResolver.resolveExisting(bookingLink.username(), bookingLink.extraAttendees().participants())
+            .concatMap(extraAttendee -> timeZoneOf(extraAttendee.username())
+                .flatMap(zoneId -> calDavClient.findBusyIntervals(bookingLink.username(), extraAttendee.id(), from, to, zoneId)
                     .collectList())
                 .onErrorResume(error -> {
                     LOGGER.warn("Booking link {} could not read the calendars of extra attendee {} as {}: treating them as free",
-                        bookingLink.publicId().value(), extraAttendee.value(), bookingLink.username().asString(), error);
+                        bookingLink.publicId().value(), extraAttendee.id().value(), bookingLink.username().asString(), error);
                     return Mono.just(List.of());
                 })
                 .flatMapIterable(busyIntervals -> busyIntervals));
