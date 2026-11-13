@@ -59,6 +59,7 @@ import com.linagora.calendar.smtp.template.TemplateType;
 import com.linagora.calendar.smtp.template.content.model.EventTimeModel;
 import com.linagora.calendar.smtp.template.content.model.LocationModel;
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
+import com.linagora.calendar.smtp.template.content.model.SafeLinks;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
@@ -341,6 +342,7 @@ public class EventResourceHandler {
         EventParseUtils.getLocation(vEvent).ifPresent(location -> eventBuilder.put("location", new LocationModel(location).toPugModel()));
         EventParseUtils.getDescription(vEvent).ifPresent(description -> eventBuilder.put("description", description));
         EventParseUtils.getPropertyValueIgnoreCase(vEvent, "X-OPENPAAS-VIDEOCONFERENCE")
+            .flatMap(SafeLinks::httpUrl)
             .ifPresent(value -> eventBuilder.put("videoConferenceLink", value));
 
         return eventBuilder.build();

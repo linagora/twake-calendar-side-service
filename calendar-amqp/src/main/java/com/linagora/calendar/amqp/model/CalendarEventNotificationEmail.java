@@ -35,6 +35,7 @@ import com.linagora.calendar.amqp.CalendarEventNotificationEmailDTO;
 import com.linagora.calendar.smtp.template.content.model.EventTimeModel;
 import com.linagora.calendar.smtp.template.content.model.LocationModel;
 import com.linagora.calendar.smtp.template.content.model.PersonModel;
+import com.linagora.calendar.smtp.template.content.model.SafeLinks;
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
@@ -81,6 +82,7 @@ public record CalendarEventNotificationEmail(MailAddress senderEmail,
         EventParseUtils.getLocation(vEvent).ifPresent(location -> eventBuilder.put("location", new LocationModel(location).toPugModel()));
         EventParseUtils.getDescription(vEvent).ifPresent(description -> eventBuilder.put("description", description));
         EventParseUtils.getPropertyValueIgnoreCase(vEvent, "X-OPENPAAS-VIDEOCONFERENCE")
+            .flatMap(SafeLinks::httpUrl)
             .ifPresent(value -> eventBuilder.put("videoConferenceLink", value));
 
         return eventBuilder.build();

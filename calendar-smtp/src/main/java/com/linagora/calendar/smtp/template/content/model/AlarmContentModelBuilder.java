@@ -51,7 +51,7 @@ public class AlarmContentModelBuilder {
                 eventBuilder.put("resources", resourceMap);
 
                 description.ifPresent(desc -> eventBuilder.put("description", desc));
-                videoConference.ifPresent(conf -> eventBuilder.put("videoConferenceLink", conf));
+                videoConference.flatMap(SafeLinks::httpUrl).ifPresent(conf -> eventBuilder.put("videoConferenceLink", conf));
 
                 return ImmutableMap.of(
                     "content", ImmutableMap.of(

@@ -42,6 +42,36 @@ class AlarmContentModelBuilderTest {
             .hasSize(2);
     }
 
+    @Test
+    void shouldKeepHttpsVideoConferenceLink() {
+        assertThat(eventOf(Optional.of("https://meet.linagora.com/abc")))
+            .containsEntry("videoConferenceLink", "https://meet.linagora.com/abc");
+    }
+
+    @Test
+    void shouldDropJavascriptVideoConferenceLink() {
+        assertThat(eventOf(Optional.of("javascript:alert(1)")))
+            .doesNotContainKey("videoConferenceLink");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> eventOf(Optional<String> videoConference) {
+        Map<String, Object> model = AlarmContentModelBuilder.builder()
+            .duration(Duration.ofMinutes(10))
+            .summary("Meeting")
+            .location(Optional.empty())
+            .organizer(PersonModel.EMPTY)
+            .attendees(List.of())
+            .resources(List.of())
+            .description(Optional.empty())
+            .videoconference(videoConference)
+            .locale(Locale.ENGLISH)
+            .buildAsMap();
+
+        Map<String, Object> content = (Map<String, Object>) model.get("content");
+        return (Map<String, Object>) content.get("event");
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> resourcesOf(PersonModel... resources) {
         Map<String, Object> model = AlarmContentModelBuilder.builder()
