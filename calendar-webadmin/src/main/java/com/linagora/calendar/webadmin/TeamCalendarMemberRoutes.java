@@ -40,13 +40,14 @@ import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.CalendarSharingUpdate;
 import com.linagora.calendar.dav.CalendarSharingUpdate.AddSharee;
 import com.linagora.calendar.dav.DavClientException;
+import com.linagora.calendar.dav.TeamCalendarMemberService;
+import com.linagora.calendar.dav.TeamCalendarMemberService.TeamCalendarMember;
+import com.linagora.calendar.dav.TeamCalendarService;
 import com.linagora.calendar.storage.MailtoUri;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.TeamCalendarNotFoundException;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
 import com.linagora.calendar.storage.model.TeamCalendarId;
-import com.linagora.calendar.webadmin.service.TeamCalendarMemberService;
-import com.linagora.calendar.webadmin.service.TeamCalendarMemberService.TeamCalendarMember;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;

@@ -62,6 +62,7 @@ import com.linagora.calendar.dav.CalDavClient.CalDavExportException;
 import com.linagora.calendar.dav.DavClientException;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.SabreDavProvisioningService;
+import com.linagora.calendar.dav.TeamCalendarService;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;

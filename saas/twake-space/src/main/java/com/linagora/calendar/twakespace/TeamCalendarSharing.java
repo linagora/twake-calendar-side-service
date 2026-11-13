@@ -32,11 +32,11 @@ import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.dav.CalendarSharingUpdate;
 import com.linagora.calendar.dav.DavRight;
+import com.linagora.calendar.dav.TeamCalendarMemberService;
 import com.linagora.calendar.saas.SaaSUserProvisioner;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.twakespace.model.TwakeSpace;
-import com.linagora.calendar.webadmin.service.TeamCalendarMemberService;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;

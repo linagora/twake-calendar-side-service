@@ -15,7 +15,7 @@
  *  GNU Affero General Public License for more details.             *
  ********************************************************************/
 
-package com.linagora.calendar.webadmin.service;
+package com.linagora.calendar.dav;
 
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,11 +33,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.dav.CalendarSharingUpdate;
-import com.linagora.calendar.dav.DavRight;
-import com.linagora.calendar.dav.SabreDavExtension;
-import com.linagora.calendar.dav.SabreDavProvisioningService;
+import com.linagora.calendar.dav.TeamCalendarMemberService.TeamCalendarMember;
+import com.linagora.calendar.dav.TeamCalendarMemberService.TeamCalendarRole;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse.CalendarInvite;
 import com.linagora.calendar.storage.CalendarURL;
@@ -46,8 +43,6 @@ import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.TeamCalendarInsertRequest;
 import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.mongodb.MongoDBTeamCalendarRepository;
-import com.linagora.calendar.webadmin.service.TeamCalendarMemberService.TeamCalendarMember;
-import com.linagora.calendar.webadmin.service.TeamCalendarMemberService.TeamCalendarRole;
 
 class TeamCalendarMemberServiceTest {
     private static final Map<String, String> WITH_RIGHTS = Map.of("withRights", "true");

@@ -39,6 +39,7 @@ import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.dav.TeamCalendarService;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.TeamCalendarNotFoundException;
 import com.linagora.calendar.storage.exception.DomainNotFoundException;
