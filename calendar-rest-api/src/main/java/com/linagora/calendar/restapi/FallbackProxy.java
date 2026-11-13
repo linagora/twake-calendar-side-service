@@ -45,7 +45,7 @@ import reactor.netty.http.server.HttpServerResponse;
 
 public class FallbackProxy {
     public static final Logger LOGGER = LoggerFactory.getLogger(FallbackProxy.class);
-    private static final Set<String> NON_PROXY_PATHS = Set.of("/api/videoconference");
+    private static final Set<String> NON_PROXY_PATHS = Set.of("/api/videoconference", "/api/attachments");
     private final HttpClient client;
     private final Authenticator authenticator;
     private final RestApiConfiguration configuration;
