@@ -43,6 +43,8 @@ import org.junit.jupiter.params.provider.CsvSource;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.dav.SabreDavProvisioningService;
+import com.linagora.calendar.dav.TeamCalendarMemberService;
+import com.linagora.calendar.dav.TeamCalendarService;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -51,7 +53,6 @@ import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBTeamCalendarRepository;
-import com.linagora.calendar.webadmin.service.TeamCalendarMemberService;
 
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;

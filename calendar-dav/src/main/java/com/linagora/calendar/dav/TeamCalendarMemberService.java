@@ -16,7 +16,7 @@
  *  more details.                                                   *
  ********************************************************************/
 
-package com.linagora.calendar.webadmin.service;
+package com.linagora.calendar.dav;
 
 import java.util.Map;
 import java.util.Optional;
@@ -28,10 +28,6 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.dav.CalendarSharingUpdate;
-import com.linagora.calendar.dav.DavClientException;
-import com.linagora.calendar.dav.DavRight;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse.CalendarInvite;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MailtoUri;

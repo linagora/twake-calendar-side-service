@@ -28,6 +28,7 @@ import org.apache.james.core.Domain;
 
 import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
+import com.linagora.calendar.dav.TeamCalendarService;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.TeamCalendarAlreadyExistsException;
 import com.linagora.calendar.storage.TeamCalendarRepository;
@@ -35,7 +36,6 @@ import com.linagora.calendar.storage.model.TeamCalendar;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 import com.linagora.calendar.twakespace.model.DuplicateSpaceTeamCalendarException;
 import com.linagora.calendar.twakespace.model.SpaceId;
-import com.linagora.calendar.webadmin.TeamCalendarService;
 
 import reactor.core.publisher.Mono;
 
