@@ -1098,6 +1098,36 @@ public class CalDavClient extends DavClient {
                 }));
     }
 
+    public Mono<String> fetchCalendarObjectData(Username username, String path) {
+        return fetchCalendarObjectData(Mono.just(httpClientWithImpersonation(username)), path);
+    }
+
+    public Mono<String> fetchCalendarObjectData(OpenPaaSId domainId, String path) {
+        return fetchCalendarObjectData(httpClientWithTechnicalToken(domainId), path);
+    }
+
+    private Mono<String> fetchCalendarObjectData(Mono<HttpClient> httpClientPublisher, String path) {
+        if (StringUtils.isEmpty(path) || !path.startsWith("/") || path.startsWith("//")) {
+            return Mono.error(new DavClientException("Invalid calendar object path: " + path));
+        }
+
+        return httpClientPublisher.flatMap(client -> client.headers(headers -> headers
+                .add(HttpHeaderNames.ACCEPT, "text/calendar"))
+            .get()
+            .uri(path)
+            .responseSingle((response, body) -> switch (response.status().code()) {
+                case HttpStatus.SC_OK -> body.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.error(() -> new DavClientException("Empty calendar object at " + path)));
+                case HttpStatus.SC_NOT_FOUND -> {
+                    LOGGER.debug("Calendar object {} was not found", path);
+                    yield Mono.empty();
+                }
+                default -> responseBodyAsString(body)
+                    .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
+                        "fetching calendar object '%s'".formatted(path), errorBody)));
+            }));
+    }
+
     /**
      * Busy time ranges of a user, across every calendar of theirs the requester may read the free/busy of.
      * A single request covers them all: the RFC 4791 free-busy-query REPORT would need one request per

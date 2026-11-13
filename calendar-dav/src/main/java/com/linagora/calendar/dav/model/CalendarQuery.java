@@ -38,14 +38,18 @@ import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.parameter.PartStat;
 
-public record CalendarQuery(List<PropFilter> propFilters) {
+public record CalendarQuery(List<PropFilter> propFilters, boolean hrefOnly) {
 
     public static CalendarQuery ofFilters(PropFilter... propFilters) {
         return ofFilters(List.of(propFilters));
     }
 
     public static CalendarQuery ofFilters(List<PropFilter> propFilters) {
-        return new CalendarQuery(propFilters);
+        return new CalendarQuery(propFilters, false);
+    }
+
+    public static CalendarQuery hrefs() {
+        return new CalendarQuery(List.of(), true);
     }
 
     private static final XMLOutputFactory XML_OUTPUT_FACTORY = XMLOutputFactory.newInstance();
@@ -210,7 +214,9 @@ public record CalendarQuery(List<PropFilter> propFilters) {
 
     private void writePropSection(XMLStreamWriter writer) throws Exception {
         writer.writeStartElement(CalDavXml.PREFIX_DAV, CalDavXml.ELEMENT_PROP, CalDavXml.DAV_NS);
-        writer.writeEmptyElement(CalDavXml.PREFIX_CALDAV, CalDavXml.ELEMENT_CALENDAR_DATA, CalDavXml.CALDAV_NS);
+        if (!hrefOnly) {
+            writer.writeEmptyElement(CalDavXml.PREFIX_CALDAV, CalDavXml.ELEMENT_CALENDAR_DATA, CalDavXml.CALDAV_NS);
+        }
         writer.writeEndElement();
     }
 

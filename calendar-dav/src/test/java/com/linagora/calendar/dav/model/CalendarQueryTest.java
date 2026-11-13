@@ -34,6 +34,22 @@ import com.linagora.calendar.dav.model.CalendarQuery.TimeRangePropFilter;
 public class CalendarQueryTest {
 
     @Test
+    void shouldRequestOnlyHrefs() throws Exception {
+        String expected = """
+            <C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:D="DAV:">
+                <D:prop/>
+                <C:filter>
+                    <C:comp-filter name="VCALENDAR">
+                        <C:comp-filter name="VEVENT"/>
+                    </C:comp-filter>
+                </C:filter>
+            </C:calendar-query>
+            """;
+
+        assertXmlSimilar(expected, CalendarQuery.hrefs().toCalendarQueryReport());
+    }
+
+    @Test
     void shouldGenerateCalendarQueryReportWithSingleDtStampBefore() throws Exception {
         Instant end = Instant.parse("2027-01-01T00:00:00Z");
 
