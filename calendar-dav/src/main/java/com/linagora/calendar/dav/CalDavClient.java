@@ -80,6 +80,7 @@ public class CalDavClient extends DavClient {
 
     public enum PublicRight {
         READ("{DAV:}read"),
+        FREE_BUSY("{urn:ietf:params:xml:ns:caldav}read-free-busy"),
         HIDE_ALL_EVENT("");
 
         private final String value;

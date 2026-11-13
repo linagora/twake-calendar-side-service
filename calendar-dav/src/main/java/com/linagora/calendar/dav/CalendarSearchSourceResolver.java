@@ -139,10 +139,12 @@ public class CalendarSearchSourceResolver {
                 entry -> CalendarMirrorSource.parse(entry.getValue()),
                 (first, _) -> first, LinkedHashMap::new));
 
+        // A subscription whose source esn-sabre lists for free/busy only grants no read access to its events.
         Map<CalendarURL, CalendarURL> searchSourceByCalendarListURL = mirrorSourceByCalendarListURL.entrySet()
             .stream()
+            .filter(entry -> entry.getValue().subscribedSource().isEmpty() || entry.getValue().subscribedSourceReadable())
             .collect(Collectors.toMap(Map.Entry::getKey,
-                entry -> entry.getValue().sourceCalendarURL().orElseGet(entry::getKey),
+                entry -> entry.getValue().readableSourceCalendarURL().orElseGet(entry::getKey),
                 (first, _) -> first, LinkedHashMap::new));
 
         // A calendar shared to the requester, as opposed to subscribed to: how team calendar members read it.
