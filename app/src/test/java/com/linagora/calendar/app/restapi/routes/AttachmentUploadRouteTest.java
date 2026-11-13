@@ -26,7 +26,6 @@ import static org.mockserver.model.HttpRequest.request;
 import static org.mockserver.model.HttpResponse.response;
 
 import java.io.ByteArrayInputStream;
-import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -127,21 +126,16 @@ class AttachmentUploadRouteTest {
                     binder.bind(TDriveAttachmentStore.class).toInstance(new TDriveAttachmentStore(configuration,
                         new LocalPartTDriveInstanceResolver(configuration.localPartDomain()), uri -> URI.create(baseUrl + "/" + uri.getHost())));
                 } else {
-                    binder.bind(RestApiConfiguration.class).toInstance(fallbackProxyToDriveMock());
+                    binder.bind(RestApiConfiguration.class).toInstance(basicAuthConfiguration());
                 }
             });
     }
 
-    private static RestApiConfiguration fallbackProxyToDriveMock() {
-        try {
-            return RestApiConfiguration.builder()
-                .enableBasicAuth(Optional.of(true))
-                .adminPassword(Optional.of(PASSWORD))
-                .openpaasBackendURL(Optional.of(URI.create("http://localhost:" + drive.getLocalPort()).toURL()))
-                .build();
-        } catch (MalformedURLException e) {
-            throw new RuntimeException(e);
-        }
+    private static RestApiConfiguration basicAuthConfiguration() {
+        return RestApiConfiguration.builder()
+            .enableBasicAuth(Optional.of(true))
+            .adminPassword(Optional.of(PASSWORD))
+            .build();
     }
 
     private void setUp(TwakeCalendarGuiceServer server) {
