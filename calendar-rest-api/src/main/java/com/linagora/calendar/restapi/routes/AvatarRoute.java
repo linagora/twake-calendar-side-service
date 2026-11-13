@@ -25,6 +25,7 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.util.List;
 import java.util.Locale;
 import java.util.stream.Stream;
 
@@ -64,7 +65,7 @@ public class AvatarRoute implements JMAPRoutes {
         return Stream.of(
             JMAPRoute.builder()
                 .endpoint(endpoint())
-                .action((req, res) -> Mono.from(metricFactory.decoratePublisherWithTimerMetric(this.getClass().getSimpleName(), generateAvatar(req, res))))
+                .action((req, res) -> Mono.from(metricFactory.decoratePublisherWithTimerMetric(this.getClass().getSimpleName(), Mono.defer(() -> generateAvatar(req, res)))))
                 .corsHeaders());
     }
 
@@ -84,7 +85,8 @@ public class AvatarRoute implements JMAPRoutes {
     }
 
     static String extractEmail(HttpServerRequest request) {
-        return new QueryStringDecoder(request.uri()).parameters().get("email")
+        return new QueryStringDecoder(request.uri()).parameters()
+            .getOrDefault("email", List.of())
             .stream()
             .findAny()
             .orElseThrow(() -> new IllegalArgumentException("Request for avatar is missing email query parameter"));

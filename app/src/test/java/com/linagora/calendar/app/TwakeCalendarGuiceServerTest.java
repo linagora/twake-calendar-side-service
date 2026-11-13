@@ -789,6 +789,29 @@ class TwakeCalendarGuiceServerTest  {
     }
 
     @Test
+    void avatarsShouldRejectMissingEmail(TwakeCalendarGuiceServer server) {
+        targetRestAPI(server);
+
+        given()
+        .when()
+            .get("/api/avatars")
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void avatarsShouldRejectEmptyEmail(TwakeCalendarGuiceServer server) {
+        targetRestAPI(server);
+
+        given()
+            .queryParam("email", "")
+        .when()
+            .get("/api/avatars")
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
     void shouldSupportPeopleSearch(TwakeCalendarGuiceServer server) {
         targetRestAPI(server);
 
