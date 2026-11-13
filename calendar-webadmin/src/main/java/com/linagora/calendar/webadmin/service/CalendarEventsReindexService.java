@@ -20,9 +20,11 @@ package com.linagora.calendar.webadmin.service;
 
 import static com.linagora.calendar.webadmin.CalendarRoutes.CalendarEventsReindexRequestToTask.TASK_NAME;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
 
 import jakarta.inject.Inject;
 
@@ -34,8 +36,9 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.MoreObjects;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
-import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
-import com.linagora.calendar.dav.model.CalendarQuery;
+import com.linagora.calendar.dav.DavClientException;
+import com.linagora.calendar.dav.XMLUtil;
+import com.linagora.calendar.dav.dto.CalendarReportXmlResponse.CalendarObject;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -118,6 +121,7 @@ public class CalendarEventsReindexService {
     }
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarEventsReindexService.class);
+    private static final int EVENT_FETCH_CONCURRENCY = 8;
     private static final Map<String, String> PERSONAL_CALENDAR_QUERY = Map.of("personal", "true");
 
     private final OpenPaaSUserDAO userDAO;
@@ -206,9 +210,8 @@ public class CalendarEventsReindexService {
     }
 
     private Flux<IndexItem> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL) {
-        return calDavClient.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.ofFilters())
-            .flatMapMany(response -> Flux.fromIterable(response.extractCalendarObjects())
-                .subscribeOn(Schedulers.boundedElastic()))
+        return fetchCalendarObjects(calendarURL, calDavClient.calendarQueryEtagReport(user.username(), calendarURL),
+            (path, etag) -> calDavClient.fetchCalendarObjectData(user.username(), path, etag))
             .flatMap(calendarObject -> collectEvents(context, user.username().asString(), calendarURL, calendarObject))
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for user {} and calendar url {}", TASK_NAME.asString(), user.username().asString(), calendarURL.serialize(), e);
@@ -218,9 +221,8 @@ public class CalendarEventsReindexService {
     }
 
     private Flux<IndexItem> collectEvents(Context context, Resource resource, CalendarURL calendarURL) {
-        return calDavClient.calendarQueryReportXml(resource.domain(), calendarURL, CalendarQuery.ofFilters())
-            .flatMapMany(response -> Flux.fromIterable(response.extractCalendarObjects())
-                .subscribeOn(Schedulers.boundedElastic()))
+        return fetchCalendarObjects(calendarURL, calDavClient.calendarQueryEtagReport(resource.domain(), calendarURL),
+            (path, etag) -> calDavClient.fetchCalendarObjectData(resource.domain(), path, etag))
             .flatMap(calendarObject -> collectEvents(context, resource.id().value(), calendarURL, calendarObject))
             .onErrorResume(e -> {
                 LOGGER.error("Error while doing task {} for resource {} and calendar url {}", TASK_NAME.asString(), resource.id().value(), calendarURL.serialize(), e);
@@ -229,7 +231,22 @@ public class CalendarEventsReindexService {
             });
     }
 
-    private Mono<IndexItem> collectEvents(Context context, String owner, CalendarURL calendarURL, CalendarReportXmlResponse.CalendarObject calendarObject) {
+    private static Flux<CalendarObject> fetchCalendarObjects(CalendarURL calendarURL, Mono<byte[]> report,
+                                                             BiFunction<String, String, Mono<String>> fetchCalendarObjectData) {
+        URI collection = URI.create(calendarURL.asUri() + "/");
+        return report.flatMap(bytes -> Mono.fromCallable(() -> XMLUtil.extractCalendarObjectReferences(bytes))
+                .subscribeOn(Schedulers.boundedElastic())
+                .onErrorMap(e -> new DavClientException("Failed to parse calendar-query REPORT for " + calendarURL.asUri(), e)))
+            .flatMapIterable(references -> references)
+            .flatMapDelayError(reference -> {
+                // Resolve relative hrefs and send only their path to the configured DAV server.
+                String path = collection.resolve(reference.href()).getRawPath();
+                return fetchCalendarObjectData.apply(path, reference.etag())
+                    .map(ics -> new CalendarObject(URI.create(path), ics));
+            }, EVENT_FETCH_CONCURRENCY, 1);
+    }
+
+    private Mono<IndexItem> collectEvents(Context context, String owner, CalendarURL calendarURL, CalendarObject calendarObject) {
         String resourceName = calendarObject.icsResourceFullName();
         return Mono.fromCallable(() -> CalendarUtil.parseIcs(calendarObject.calendarData()))
             .subscribeOn(Schedulers.boundedElastic())

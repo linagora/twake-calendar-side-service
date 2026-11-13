@@ -19,6 +19,7 @@
 package com.linagora.calendar.dav;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.List;
 
 import javax.xml.XMLConstants;
@@ -31,6 +32,7 @@ import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
 
 import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
@@ -103,6 +105,27 @@ public class XMLUtil {
             }
         }
         return eventIds.build();
+    }
+
+    public record CalendarObjectReference(URI href, String etag) {
+    }
+
+    public static List<CalendarObjectReference> extractCalendarObjectReferences(byte[] xml)
+            throws ParserConfigurationException, IOException, SAXException, XPathExpressionException {
+        Document doc = DOCUMENT_BUILDER_FACTORY.newDocumentBuilder()
+            .parse(new java.io.ByteArrayInputStream(xml));
+        XPath xpath = XPathFactory.newInstance().newXPath();
+        xpath.setNamespaceContext(new DavNamespaceContext());
+        String expression = "/d:multistatus/d:response/d:propstat[contains(normalize-space(d:status), ' 200 ')]/d:prop/d:getetag";
+        NodeList etags = (NodeList) xpath.evaluate(expression, doc, XPathConstants.NODESET);
+        ImmutableList.Builder<CalendarObjectReference> references = ImmutableList.builder();
+        for (int i = 0; i < etags.getLength(); i++) {
+            Element etag = (Element) etags.item(i);
+            Element response = (Element) etag.getParentNode().getParentNode().getParentNode();
+            String href = response.getElementsByTagNameNS("DAV:", "href").item(0).getTextContent();
+            references.add(new CalendarObjectReference(URI.create(href), etag.getTextContent()));
+        }
+        return references.build();
     }
 
     /**

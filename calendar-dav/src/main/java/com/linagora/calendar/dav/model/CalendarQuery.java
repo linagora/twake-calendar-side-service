@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import javax.xml.namespace.QName;
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamWriter;
 
@@ -182,12 +183,20 @@ public record CalendarQuery(List<PropFilter> propFilters) {
             IsNotDefinedPropFilter.class, new IsNotDefinedPropFilterXmlWriter());
 
     public String toCalendarQueryReport() throws Exception {
+        return toCalendarQueryReport(new QName(CalDavXml.CALDAV_NS, CalDavXml.ELEMENT_CALENDAR_DATA, CalDavXml.PREFIX_CALDAV));
+    }
+
+    public String toCalendarQueryEtagReport() throws Exception {
+        return toCalendarQueryReport(new QName(CalDavXml.DAV_NS, "getetag", CalDavXml.PREFIX_DAV));
+    }
+
+    private String toCalendarQueryReport(QName requestedProperty) throws Exception {
         StringWriter stringWriter = new StringWriter();
         XMLStreamWriter writer = XML_OUTPUT_FACTORY.createXMLStreamWriter(stringWriter);
 
         try {
             writeCalendarQueryRoot(writer);
-            writePropSection(writer);
+            writePropSection(writer, requestedProperty);
             writeFilterSection(writer);
 
             writer.writeEndElement();
@@ -208,9 +217,9 @@ public record CalendarQuery(List<PropFilter> propFilters) {
         writer.writeNamespace(CalDavXml.PREFIX_DAV, CalDavXml.DAV_NS);
     }
 
-    private void writePropSection(XMLStreamWriter writer) throws Exception {
+    private void writePropSection(XMLStreamWriter writer, QName requestedProperty) throws Exception {
         writer.writeStartElement(CalDavXml.PREFIX_DAV, CalDavXml.ELEMENT_PROP, CalDavXml.DAV_NS);
-        writer.writeEmptyElement(CalDavXml.PREFIX_CALDAV, CalDavXml.ELEMENT_CALENDAR_DATA, CalDavXml.CALDAV_NS);
+        writer.writeEmptyElement(requestedProperty.getPrefix(), requestedProperty.getLocalPart(), requestedProperty.getNamespaceURI());
         writer.writeEndElement();
     }
 

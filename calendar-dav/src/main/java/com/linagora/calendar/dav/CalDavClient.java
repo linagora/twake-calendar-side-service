@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 
 import javax.net.ssl.SSLException;
 
@@ -1070,32 +1071,74 @@ public class CalDavClient extends DavClient {
         Preconditions.checkArgument(calendarURL != null, "calendarURL must not be null");
         Preconditions.checkArgument(calendarQuery != null, "calendarQuery must not be null");
 
-        return httpClientPublisher.flatMap(client ->
-            client.headers(headers -> {
-                    headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML);
-                    headers.add(HEADER_DEPTH, "1");
-                })
-                .request(REPORT_METHOD)
-                .uri(calendarURL.asUri().toASCIIString())
-                .send(ByteBufMono.fromString(Mono.fromCallable(calendarQuery::toCalendarQueryReport)))
-                .responseSingle((response, body) -> {
-                    int statusCode = response.status().code();
+        return httpClientPublisher.flatMap(client -> executeCalendarQueryReport(client, calendarURL, calendarQuery::toCalendarQueryReport))
+            .map(CalendarReportXmlResponse::new);
+    }
 
-                    if (statusCode == HttpStatus.SC_MULTI_STATUS) {
-                        return body.asByteArray()
-                            .map(CalendarReportXmlResponse::new);
-                    }
+    public Mono<byte[]> calendarQueryEtagReport(Username username, CalendarURL calendarURL) {
+        return calendarQueryEtagReport(httpClientWithImpersonation(username), calendarURL);
+    }
 
-                    return body.asString(StandardCharsets.UTF_8)
-                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
-                        .flatMap(errorBody -> Mono.error(new DavClientException("""
-                            Unexpected status code: %d when executing RFC 4791 calendar-query REPORT on '%s'
-                            %s
-                            """.formatted(
-                            statusCode,
-                            calendarURL.asUri().toASCIIString(),
-                            errorBody))));
-                }));
+    public Mono<byte[]> calendarQueryEtagReport(OpenPaaSId domainId, CalendarURL calendarURL) {
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(client -> calendarQueryEtagReport(client, calendarURL));
+    }
+
+    private Mono<byte[]> calendarQueryEtagReport(HttpClient client, CalendarURL calendarURL) {
+        return executeCalendarQueryReport(client, calendarURL, CalendarQuery.ofFilters()::toCalendarQueryEtagReport);
+    }
+
+    private Mono<byte[]> executeCalendarQueryReport(HttpClient client, CalendarURL calendarURL, Callable<String> reportBody) {
+        return client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML)
+                .add(HEADER_DEPTH, "1"))
+            .request(REPORT_METHOD)
+            .uri(calendarURL.asUri().toASCIIString())
+            .send(ByteBufMono.fromString(Mono.fromCallable(reportBody)))
+            .responseSingle((response, body) -> {
+                int statusCode = response.status().code();
+
+                if (statusCode == HttpStatus.SC_MULTI_STATUS) {
+                    return body.asByteArray();
+                }
+
+                return responseBodyAsString(body)
+                    .flatMap(errorBody -> Mono.error(new DavClientException("""
+                        Unexpected status code: %d when executing RFC 4791 calendar-query REPORT on '%s'
+                        %s
+                        """.formatted(statusCode, calendarURL.asUri().toASCIIString(), errorBody))));
+            });
+    }
+
+    public Mono<String> fetchCalendarObjectData(Username username, String path, String etag) {
+        return fetchCalendarObjectData(httpClientWithImpersonation(username), path, etag);
+    }
+
+    public Mono<String> fetchCalendarObjectData(OpenPaaSId domainId, String path, String etag) {
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(client -> fetchCalendarObjectData(client, path, etag));
+    }
+
+    private Mono<String> fetchCalendarObjectData(HttpClient client, String path, String etag) {
+        if (StringUtils.isEmpty(path) || !path.startsWith("/") || path.startsWith("//")) {
+            return Mono.error(new DavClientException("Invalid calendar object path: " + path));
+        }
+
+        return client.headers(headers -> headers
+                .add(HttpHeaderNames.ACCEPT, "text/calendar")
+                .add(HttpHeaderNames.IF_MATCH, etag))
+            .get()
+            .uri(path)
+            .responseSingle((response, body) -> switch (response.status().code()) {
+                case HttpStatus.SC_OK -> body.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.error(() -> new DavClientException("Empty calendar object at " + path)));
+                case HttpStatus.SC_NOT_FOUND -> {
+                    LOGGER.debug("Calendar object {} was not found", path);
+                    yield Mono.empty();
+                }
+                default -> responseBodyAsString(body)
+                    .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
+                        "fetching calendar object '%s'".formatted(path), errorBody)));
+            });
     }
 
     /**
