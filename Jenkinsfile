@@ -27,7 +27,7 @@ def runTestBranch(String branch, String projects) {
 
 pipeline {
     agent {
-        label 'heavy'
+        label 'ci-lenovo-overflow'
     }
 
     tools {
