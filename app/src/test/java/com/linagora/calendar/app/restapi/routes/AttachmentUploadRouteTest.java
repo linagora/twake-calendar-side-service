@@ -26,6 +26,7 @@ import static org.mockserver.model.HttpRequest.request;
 import static org.mockserver.model.HttpResponse.response;
 
 import java.io.ByteArrayInputStream;
+import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -57,6 +58,7 @@ import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.saas.drive.configuration.TDriveConfiguration;
 import com.linagora.calendar.saas.drive.configuration.TDriveConfiguration.InstanceResolver;
@@ -124,8 +126,22 @@ class AttachmentUploadRouteTest {
                     binder.bind(TDriveConfiguration.class).toInstance(configuration);
                     binder.bind(TDriveAttachmentStore.class).toInstance(new TDriveAttachmentStore(configuration,
                         new LocalPartTDriveInstanceResolver(configuration.localPartDomain()), uri -> URI.create(baseUrl + "/" + uri.getHost())));
+                } else {
+                    binder.bind(RestApiConfiguration.class).toInstance(fallbackProxyToDriveMock());
                 }
             });
+    }
+
+    private static RestApiConfiguration fallbackProxyToDriveMock() {
+        try {
+            return RestApiConfiguration.builder()
+                .enableBasicAuth(Optional.of(true))
+                .adminPassword(Optional.of(PASSWORD))
+                .openpaasBackendURL(Optional.of(URI.create("http://localhost:" + drive.getLocalPort()).toURL()))
+                .build();
+        } catch (MalformedURLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void setUp(TwakeCalendarGuiceServer server) {
