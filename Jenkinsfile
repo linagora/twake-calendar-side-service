@@ -60,6 +60,7 @@ pipeline {
                                 ':james-project',
                                 ':james-server-guice',
                                 ':logback-json-classic',
+                                ':logback-jackson',
                                 ':tmail-saas-rabbitmq',
                                 ':jmap-extensions',
                                 ':jmap-extensions-opensearch',
