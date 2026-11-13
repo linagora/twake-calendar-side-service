@@ -22,7 +22,7 @@ import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.function.UnaryOperator;
+import java.util.function.Function;
 
 import jakarta.inject.Inject;
 
@@ -85,12 +85,12 @@ public class ResourceRoutes implements Routes {
             return new AdministratorDTO(administrator.username().asString(), administrator.davRight().value());
         }
 
-        public ResourceAdministrator toResourceAdministrator() {
+        public ResourceAdministrator toResourceAdministrator(Domain domain) {
             if (StringUtils.isBlank(email)) {
                 throw new IllegalArgumentException("Administrator must provide 'email'");
             }
             DavRight right = DavRight.fromValue(Optional.ofNullable(davRight).orElse(RIGHT_DEFAULT.value()));
-            return new ResourceAdministrator(Username.of(email), right);
+            return new ResourceAdministrator(usernameInDomain(email, domain), right);
         }
     }
 
@@ -139,6 +139,17 @@ public class ResourceRoutes implements Routes {
 
     private static void validateName(String name) {
         Preconditions.checkArgument(StringUtils.isNotBlank(name), "Field 'name' is required");
+    }
+
+    /**
+     * Rejects users outside the domain of the path before any existence lookup, so that the answer does not
+     * disclose whether a user of another domain exists.
+     */
+    private static Username usernameInDomain(String email, Domain domain) {
+        Username username = Username.of(email);
+        Preconditions.checkArgument(username.getDomainPart().map(domain::equals).orElse(false),
+            "User must belong to domain: %s", domain.asString());
+        return username;
     }
 
     @Override
@@ -229,9 +240,10 @@ public class ResourceRoutes implements Routes {
     private String createResource(Request req, Response res) throws JsonExtractException {
         OpenPaaSDomain domain = asDomainObject(req);
         ResourceCreationDTO creationDTO = validate(creationDTOJsonExtractor.parse(req.body()), ResourceCreationDTO::validate);
-        Mono<OpenPaaSId> creatorIdMono = retrieveExistingUser(Username.of(creationDTO.creator))
+        Username creator = validate(creationDTO.creator, email -> usernameInDomain(email, domain.domain()));
+        List<ResourceAdministrator> administrators = toResourceAdministrators(creationDTO.administrators, domain.domain());
+        Mono<OpenPaaSId> creatorIdMono = retrieveExistingUser(creator)
             .map(OpenPaaSUser::id);
-        List<ResourceAdministrator> administrators = toResourceAdministrators(creationDTO.administrators);
 
         return creatorIdMono
             .flatMap(creatorId -> resourceService.create(creationDTO.toInsertRequest(creatorId, domain.id()), administrators))
@@ -251,7 +263,7 @@ public class ResourceRoutes implements Routes {
         ResourceId resourceId = new ResourceId(req.params("id"));
 
         return retrieveActiveResource(resourceId, domain.id())
-            .flatMap(resource -> updateResourceFromDTO(resource, dto))
+            .flatMap(resource -> updateResourceFromDTO(resource, dto, domain.domain()))
             .doOnSuccess(_ -> res.status(HttpStatus.NO_CONTENT_204))
             .thenReturn(StringUtils.EMPTY)
             .onErrorMap(ResourceAdministratorNotFoundException.class, this::badRequest)
@@ -260,14 +272,14 @@ public class ResourceRoutes implements Routes {
             .block();
     }
 
-    private Mono<Void> updateResourceFromDTO(Resource resource, ResourceUpdateDTO dto) {
+    private Mono<Void> updateResourceFromDTO(Resource resource, ResourceUpdateDTO dto, Domain domain) {
         return dto.administrators()
-            .map(administrators -> resourceService.updateAdmins(resource, toResourceAdministrators(administrators)))
+            .map(administrators -> resourceService.updateAdmins(resource, toResourceAdministrators(administrators, domain)))
             .orElse(Mono.empty())
             .then(resourceService.update(resource, dto.toUpdateRequest()));
     }
 
-    private <T> T validate(T dto, UnaryOperator<T> validation) {
+    private <T, R> R validate(T dto, Function<T, R> validation) {
         try {
             return validation.apply(dto);
         } catch (IllegalArgumentException e) {
@@ -275,10 +287,10 @@ public class ResourceRoutes implements Routes {
         }
     }
 
-    private List<ResourceAdministrator> toResourceAdministrators(List<AdministratorDTO> administrators) {
+    private List<ResourceAdministrator> toResourceAdministrators(List<AdministratorDTO> administrators, Domain domain) {
         try {
             return Optional.ofNullable(administrators).orElse(List.of()).stream()
-                .map(AdministratorDTO::toResourceAdministrator)
+                .map(administrator -> administrator.toResourceAdministrator(domain))
                 .toList();
         } catch (IllegalArgumentException e) {
             throw badRequest(e);

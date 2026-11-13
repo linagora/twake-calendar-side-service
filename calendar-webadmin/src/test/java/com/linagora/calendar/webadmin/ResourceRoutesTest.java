@@ -26,6 +26,7 @@ import static java.time.ZoneOffset.UTC;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 
 import java.net.URI;
@@ -645,6 +646,114 @@ class ResourceRoutesTest {
             .post("/domains/linagora.com/resources")
         .then()
             .statusCode(400);
+    }
+
+    @Test
+    void postShouldRejectAdministratorOfAnotherDomain() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSUser foreignUser = newUserOfAnotherDomain();
+
+        given()
+            .body("""
+                {
+                    "name": "Resource name",
+                    "creator": "%s",
+                    "administrators": [{ "email": "%s" }]
+                }
+                """.formatted(creator.username().asString(), foreignUser.username().asString()))
+            .post("/domains/" + DOMAIN + "/resources")
+        .then()
+            .statusCode(400)
+            .body("message", containsString("User must belong to domain: " + DOMAIN));
+    }
+
+    @Test
+    void postShouldRejectNonExistingAdministratorOfAnotherDomainWithTheSameAnswer() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+
+        given()
+            .body("""
+                {
+                    "name": "Resource name",
+                    "creator": "%s",
+                    "administrators": [{ "email": "nobody@other-%s.tld" }]
+                }
+                """.formatted(creator.username().asString(), UUID.randomUUID()))
+            .post("/domains/" + DOMAIN + "/resources")
+        .then()
+            .statusCode(400)
+            .body("message", containsString("User must belong to domain: " + DOMAIN));
+    }
+
+    @Test
+    void postShouldRejectCreatorOfAnotherDomain() {
+        sabreDavExtension.newTestUser();
+        OpenPaaSUser foreignUser = newUserOfAnotherDomain();
+
+        given()
+            .body("""
+                {
+                    "name": "Resource name",
+                    "creator": "%s",
+                    "administrators": []
+                }
+                """.formatted(foreignUser.username().asString()))
+            .post("/domains/" + DOMAIN + "/resources")
+        .then()
+            .statusCode(400)
+            .body("message", containsString("User must belong to domain: " + DOMAIN));
+    }
+
+    @Test
+    void patchShouldRejectAdministratorOfAnotherDomain() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSDomain domain = domainDAO.retrieve(Domain.of(DOMAIN)).block();
+        OpenPaaSUser foreignUser = newUserOfAnotherDomain();
+        ResourceId resourceId = createResource(domain, creator, creator);
+
+        given()
+            .body("""
+                {
+                    "administrators": [
+                        { "email": "%s" },
+                        { "email": "%s" }
+                    ]
+                }
+                """.formatted(creator.username().asString(), foreignUser.username().asString()))
+            .patch("/domains/" + DOMAIN + "/resources/" + resourceId.value())
+        .then()
+            .statusCode(400)
+            .body("message", containsString("User must belong to domain: " + DOMAIN));
+
+        ArrayNode invites = sabreDavExtension.davTestHelper()
+            .getCalendarDelegateInvites(domain.id(), resourceId)
+            .block();
+        assertThat(invites.findValuesAsText("href"))
+            .doesNotContain("mailto:" + foreignUser.username().asString());
+    }
+
+    @Test
+    void patchShouldRejectNonExistingAdministratorOfAnotherDomainWithTheSameAnswer() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSDomain domain = domainDAO.retrieve(Domain.of(DOMAIN)).block();
+        ResourceId resourceId = createResource(domain, creator, creator);
+
+        given()
+            .body("""
+                {
+                    "administrators": [{ "email": "nobody@other-%s.tld" }]
+                }
+                """.formatted(UUID.randomUUID()))
+            .patch("/domains/" + DOMAIN + "/resources/" + resourceId.value())
+        .then()
+            .statusCode(400)
+            .body("message", containsString("User must belong to domain: " + DOMAIN));
+    }
+
+    private OpenPaaSUser newUserOfAnotherDomain() {
+        Domain otherDomain = Domain.of("other-" + UUID.randomUUID() + ".tld");
+        domainDAO.add(otherDomain).block();
+        return userDAO.add(Username.of("foreign@" + otherDomain.asString())).block();
     }
 
     @Test
