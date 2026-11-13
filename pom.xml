@@ -44,7 +44,7 @@
         <module>calendar-scheduling</module>
         <module>calendar-smtp</module>
         <module>calendar-webadmin</module>
-        <module>common-contacts-api</module>
+        <module>saas/common-contacts-api</module>
         <module>saas/saas-rabbitmq</module>
         <module>saas/twake-space</module>
         <module>saas/twake-drive</module>
