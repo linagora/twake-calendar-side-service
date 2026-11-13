@@ -358,6 +358,56 @@ class CalendarSearchSourceResolverTest {
                 new SearchSource(delegatedSourceCalendar, true));
     }
 
+    @Test
+    void resolveShouldFilterSubscriptionWhoseSourceTheRequesterNoLongerReads() {
+        // Given the requester subscribed to a calendar while it was shared to them, then lost the share,
+        // keeping only the free/busy every user may read of it.
+        CalendarURL sourceCalendar = createCalendar(sourceUser, "revoked-" + UUID.randomUUID(), PublicRight.FREE_BUSY);
+        CalendarURL subscription = subscribeThroughShare(sourceCalendar);
+        davTestHelper.revokeDelegation(sourceUser, sourceCalendar, requester);
+
+        // When resolving the subscription and its source.
+        Map<CalendarURL, CalendarURL> result = testee.resolve(requester, List.of(subscription, sourceCalendar)).block();
+
+        // Then neither is searchable.
+        assertThat(result)
+            .describedAs("A subscription whose source esn-sabre lists for free/busy only must not be searchable")
+            .isEmpty();
+    }
+
+    @Test
+    void resolveSearchSourcesShouldFilterSubscriptionWhoseSourceTheRequesterNoLongerReads() {
+        CalendarURL sourceCalendar = createCalendar(sourceUser, "revoked-" + UUID.randomUUID(), PublicRight.FREE_BUSY);
+        CalendarURL subscription = subscribeThroughShare(sourceCalendar);
+        davTestHelper.revokeDelegation(sourceUser, sourceCalendar, requester);
+
+        assertThat(testee.resolveSearchSources(requester, List.of(subscription, sourceCalendar)).block())
+            .isEmpty();
+    }
+
+    @Test
+    void resolveShouldTranslateSubscriptionThroughShareToSourceCalendarWhileShared() {
+        CalendarURL sourceCalendar = createCalendar(sourceUser, "shared-" + UUID.randomUUID(), PublicRight.FREE_BUSY);
+        CalendarURL subscription = subscribeThroughShare(sourceCalendar);
+
+        assertThat(testee.resolve(requester, List.of(subscription)).block())
+            .containsExactly(entry(subscription, sourceCalendar));
+    }
+
+    private CalendarURL subscribeThroughShare(CalendarURL sourceCalendar) {
+        davTestHelper.grantDelegation(sourceUser, sourceCalendar, requester, "dav:read");
+        String subscriptionId = "subscribed-" + UUID.randomUUID();
+        davTestHelper.subscribeToSharedCalendar(requester, SubscribedCalendarRequest.builder()
+            .id(subscriptionId)
+            .sourceUserId(sourceUser.id().value())
+            .sourceCalendarId(sourceCalendar.calendarId().value())
+            .name("Subscribed through share")
+            .color("#123456")
+            .readOnly(true)
+            .build());
+        return new CalendarURL(requester.id(), new OpenPaaSId(subscriptionId));
+    }
+
     private CalendarURL createCalendar(OpenPaaSUser calendarUser, String calendarId, PublicRight publicRight) {
         calDavClient.createNewCalendar(calendarUser.username(), calendarUser.id(), new NewCalendar(
             calendarId,

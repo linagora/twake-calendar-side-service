@@ -42,6 +42,53 @@ class CalendarMirrorSourceTest {
     }
 
     @Test
+    void subscribedSourceReducedToItsLinkShouldNotBeReadable() {
+        CalendarMirrorSource mirrorSource = CalendarMirrorSource.parse(parseJson("""
+            {
+              "calendarserver:source": {
+                "_links": {
+                  "self": {
+                    "href": "/calendars/ownerId/calendarId.json"
+                  }
+                }
+              }
+            }"""));
+
+        assertThat(mirrorSource.subscribedSource()).contains(SOURCE_CALENDAR);
+        assertThat(mirrorSource.subscribedSourceReadable()).isFalse();
+        assertThat(mirrorSource.readableSourceCalendarURL()).isEmpty();
+    }
+
+    @Test
+    void fullyRenderedSubscribedSourceShouldBeReadable() {
+        CalendarMirrorSource mirrorSource = CalendarMirrorSource.parse(parseJson("""
+            {
+              "calendarserver:source": {
+                "_links": {
+                  "self": {
+                    "href": "/calendars/ownerId/calendarId.json"
+                  }
+                },
+                "dav:name": "Source",
+                "acl": []
+              }
+            }"""));
+
+        assertThat(mirrorSource.subscribedSourceReadable()).isTrue();
+        assertThat(mirrorSource.readableSourceCalendarURL()).contains(SOURCE_CALENDAR);
+    }
+
+    @Test
+    void delegatedSourceShouldBeReadable() {
+        CalendarMirrorSource mirrorSource = CalendarMirrorSource.parse(parseJson("""
+            {
+              "calendarserver:delegatedsource": "/calendars/ownerId/calendarId.json"
+            }"""));
+
+        assertThat(mirrorSource.readableSourceCalendarURL()).contains(SOURCE_CALENDAR);
+    }
+
+    @Test
     void shouldResolveSubscribedSource() {
         CalendarMirrorSource mirrorSource = CalendarMirrorSource.parse(parseJson("""
             {
