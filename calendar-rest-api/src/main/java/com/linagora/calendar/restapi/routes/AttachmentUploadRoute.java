@@ -19,8 +19,11 @@
 package com.linagora.calendar.restapi.routes;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
@@ -39,6 +42,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
+import com.google.common.base.Throwables;
 import com.google.common.net.MediaType;
 import com.linagora.calendar.saas.drive.api.Attachment;
 import com.linagora.calendar.saas.drive.api.AttachmentStorageException;
@@ -46,9 +50,12 @@ import com.linagora.calendar.saas.drive.api.AttachmentStore;
 import com.linagora.calendar.saas.drive.api.AttachmentUri;
 import com.linagora.calendar.storage.FileUploadConfiguration;
 
+import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.multipart.FileUpload;
+import io.netty.handler.codec.http.multipart.HttpData;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import reactor.netty.http.server.HttpServerRequest;
@@ -58,6 +65,7 @@ public final class AttachmentUploadRoute implements JMAPRoutes {
     private static final Logger LOGGER = LoggerFactory.getLogger(AttachmentUploadRoute.class);
     private static final String X_FILENAME_HEADER = "X-Filename";
     private static final int BODY_CHUNK_PREFETCH = 1;
+    private static final MediaType MULTIPART_FORM_DATA = MediaType.create("multipart", "form-data");
     private final ObjectMapper mapper;
     private final Authenticator authenticator;
     private final MetricFactory metricFactory;
@@ -98,11 +106,66 @@ public final class AttachmentUploadRoute implements JMAPRoutes {
 
     private Mono<Attachment> readAttachment(HttpServerRequest request) {
         return Mono.defer(() -> {
-            String filename = readFilename(request);
             String contentType = request.requestHeaders().get(HttpHeaderNames.CONTENT_TYPE);
-            validateMetadata(filename, contentType);
-            return readBody(request).map(body -> new Attachment(filename, ContentType.of(contentType), body));
+            MediaType mediaType = contentType == null ? null : MediaType.parse(contentType);
+            if (mediaType != null && mediaType.is(MULTIPART_FORM_DATA)) {
+                return readMultipartAttachment(request, mediaType);
+            } else {
+                return readRawAttachment(request, contentType);
+            }
         });
+    }
+
+    private Mono<Attachment> readRawAttachment(HttpServerRequest request, String contentType) {
+        String filename = readFilename(request);
+        // Preserve early metadata rejection for existing raw-upload clients.
+        validateMetadata(filename, contentType);
+        return readBody(request)
+            .map(body -> createAttachment(filename, contentType, body));
+    }
+
+    private Mono<Attachment> readMultipartAttachment(HttpServerRequest request, MediaType mediaType) {
+        List<String> boundaries = mediaType.parameters().get("boundary");
+        Preconditions.checkArgument(boundaries.size() == 1 && StringUtils.isNotBlank(boundaries.getFirst()),
+            "Exactly one non-empty multipart boundary is required");
+        return request.receiveForm(builder -> builder.maxSize(maxFileSize))
+            .concatMap(data -> Mono.using(data::retain,
+                retained -> Mono.fromCallable(() -> readMultipartFile(retained))
+                    .subscribeOn(Schedulers.boundedElastic()), HttpData::release), 0)
+            .single()
+            .onErrorMap(AttachmentUploadRoute::mapMultipartError);
+    }
+
+    private static Throwable mapMultipartError(Throwable error) {
+        if (error instanceof NoSuchElementException) {
+            return new IllegalArgumentException("A file part named file is required", error);
+        }
+        if (error instanceof IndexOutOfBoundsException) {
+            return new IllegalArgumentException("Exactly one file part is allowed", error);
+        }
+        if (error instanceof DecoderException) {
+            // Netty reports maxSize violations as an IOException without a dedicated exception type.
+            Throwable cause = Throwables.getRootCause(error);
+            if (cause instanceof IOException && "Size exceed allowed maximum capacity".equals(cause.getMessage())) {
+                return new PayloadTooLargeException();
+            }
+            return new IllegalArgumentException("Invalid multipart upload", error);
+        }
+        return error;
+    }
+
+    private Attachment readMultipartFile(HttpData data) throws IOException {
+        Preconditions.checkArgument(data instanceof FileUpload, "Exactly one file part named file is required");
+        FileUpload file = (FileUpload) data;
+        Preconditions.checkArgument("file".equals(file.getName()) && file.isCompleted(),
+            "Exactly one complete file part named file is required");
+        return createAttachment(file.getFilename(), file.getContentType(), file.get());
+    }
+
+    private Attachment createAttachment(String filename, String contentType, byte[] content) {
+        validateMetadata(filename, contentType);
+        validateRequestSize(content.length);
+        return new Attachment(filename, ContentType.of(contentType), content);
     }
 
     private static String readFilename(HttpServerRequest request) {
@@ -161,7 +224,7 @@ public final class AttachmentUploadRoute implements JMAPRoutes {
 
     private static void validateMetadata(String name, String contentType) {
         Preconditions.checkArgument(StringUtils.isNotBlank(name) && StringUtils.isNotBlank(contentType),
-            "%s and Content-Type are required", X_FILENAME_HEADER);
+            "Filename and Content-Type are required");
         validateFilename(name);
         Preconditions.checkArgument(contentType.chars().noneMatch(Character::isISOControl),
             "contentType must not contain control characters");
