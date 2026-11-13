@@ -18,8 +18,11 @@
 
 package com.linagora.calendar.dav;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.net.URI;
 import java.util.List;
+import java.util.stream.IntStream;
 
 import javax.xml.XMLConstants;
 import javax.xml.namespace.NamespaceContext;
@@ -31,6 +34,7 @@ import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
 
 import org.w3c.dom.Document;
+import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
@@ -103,6 +107,20 @@ public class XMLUtil {
             }
         }
         return eventIds.build();
+    }
+
+    public static List<URI> extractCalendarObjectHrefs(byte[] xml)
+            throws ParserConfigurationException, IOException, SAXException, XPathExpressionException {
+        Document doc = DOCUMENT_BUILDER_FACTORY.newDocumentBuilder()
+            .parse(new ByteArrayInputStream(xml));
+        XPath xpath = XPathFactory.newInstance().newXPath();
+        xpath.setNamespaceContext(new DavNamespaceContext());
+        NodeList nodes = (NodeList) xpath.evaluate("/d:multistatus/d:response/d:href", doc, XPathConstants.NODESET);
+        return IntStream.range(0, nodes.getLength())
+            .mapToObj(nodes::item)
+            .map(Node::getTextContent)
+            .map(URI::create)
+            .toList();
     }
 
     /**
