@@ -7,25 +7,32 @@ The endpoint is registered only when `twp.drive.enabled=true`. See the
 
 ## Request
 
+Send `multipart/form-data` as defined by RFC 7578, with exactly one file part
+named `file`.
+
 | Header | Value |
 | --- | --- |
 | `Authorization` | User authentication accepted by the calendar side service, such as `Bearer <calendar-jwt>`. |
-| `Content-Type` | The file's media type, such as `application/pdf`. |
-| `X-Filename` | A single filename encoded as UTF-8 with percent encoding. For example, `résumé.pdf` becomes `r%C3%A9sum%C3%A9.pdf`. |
+| `Content-Type` | `multipart/form-data; boundary=...` |
 
-Send the raw file bytes as the request body. The route uses
-`upload.user.total.limit` as the maximum size per request, including chunked
-requests. The default is 50 MiB.
+The file part supplies:
+
+| Part header | Value |
+| --- | --- |
+| `Content-Disposition` | `form-data; name="file"; filename="report.pdf"` |
+| `Content-Type` | The file's media type, such as `application/pdf`. Defaults to `application/octet-stream` when omitted. |
+
+Send the filename as UTF-8 and the file contents as binary bytes. Additional
+parts are rejected. The file size limit is `upload.user.total.limit` (default:
+50 MiB), including chunked requests.
 
 Set `CALENDAR_API_URL` to the side-service base URL and `CALENDAR_JWT` to a JWT
-for the calendar user. Run this example with `résumé.pdf` in the current directory.
+for the calendar user:
 
 ```sh
 curl --request POST "${CALENDAR_API_URL%/}/api/attachments" \
   --header "Authorization: Bearer ${CALENDAR_JWT}" \
-  --header 'Content-Type: application/pdf' \
-  --header 'X-Filename: r%C3%A9sum%C3%A9.pdf' \
-  --data-binary '@./résumé.pdf'
+  --form 'file=@./résumé.pdf;type=application/pdf'
 ```
 
 ## Response
@@ -38,9 +45,9 @@ A successful upload returns `201 Created` with a JSON body.
 
 | Status | Meaning |
 | --- | --- |
-| `400 Bad Request` | Missing or invalid metadata, or the resolver could not select a valid Drive instance for the user. |
+| `400 Bad Request` | Invalid multipart data or filename, or the resolver could not select a valid Drive instance for the user. |
 | `401 Unauthorized` | Missing or invalid authentication. |
 | `404 Not Found` | TDrive attachment storage is disabled. |
-| `413 Content Too Large` | The request body exceeds the upload limit. |
+| `413 Content Too Large` | The file exceeds the upload size limit. |
 | `502 Bad Gateway` | An upstream request failed or returned an invalid response. |
 | `504 Gateway Timeout` | An upstream request timed out. |

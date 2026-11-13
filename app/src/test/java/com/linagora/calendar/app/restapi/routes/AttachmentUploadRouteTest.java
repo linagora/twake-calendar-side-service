@@ -33,9 +33,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Optional;
 
+import org.apache.http.entity.mime.HttpMultipartMode;
 import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
@@ -65,16 +67,19 @@ import com.linagora.calendar.storage.FileUploadConfiguration;
 import io.restassured.RestAssured;
 import io.restassured.builder.RequestSpecBuilder;
 import io.restassured.config.HeaderConfig;
+import io.restassured.config.HttpClientConfig;
+import io.restassured.config.MultiPartConfig;
 import io.restassured.config.RestAssuredConfig;
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;
+import io.restassured.specification.RequestSpecification;
 
 class AttachmentUploadRouteTest {
     private static final String DOMAIN = "example.com";
     private static final Username USERNAME = Username.of("alice.smith@" + DOMAIN);
     private static final String PASSWORD = "secret";
-    private static final int MAX_FILE_SIZE = 12;
-    private static final byte[] CONTENT = new byte[] {0, 1, 2, 10, 13, 127, (byte) 128, (byte) 255, 3, 4, 5, 6};
+    private static final int MAX_FILE_SIZE = 1024; // 1 KiB
+    private static final byte[] CONTENT = Arrays.copyOf(new byte[] {0, 1, 2, 10, 13, 127, (byte) 128, (byte) 255, 3, 4, 5, 6}, MAX_FILE_SIZE);
     private static final String UPLOAD_PATH = "/api/attachments";
     private static final String DRIVE_DOMAIN = "drive.example.com";
     private static final String TOKEN_PATH = "/instances/alicesmith.drive.example.com/token";
@@ -228,6 +233,176 @@ class AttachmentUploadRouteTest {
             assertThat(drive.retrieveRecordedRequests(request().withPath(PERMISSION_PATH))).hasSize(1);
         }
 
+        @Nested
+        class Multipart {
+            private RequestSpecification authenticatedRequest() {
+                return given().auth().preemptive().basic(USERNAME.asString(), PASSWORD);
+            }
+
+            @BeforeEach
+            void useMultipartRequests(TwakeCalendarGuiceServer server) {
+                // No X-Filename header: the filename comes from the multipart file part.
+                RestAssured.requestSpecification = new RequestSpecBuilder()
+                    .setPort(server.getProbe(RestApiServerProbe.class).getPort().getValue())
+                    .setContentType("multipart/form-data")
+                    .setConfig(RestAssuredConfig.config()
+                        .httpClient(HttpClientConfig.httpClientConfig().httpMultipartMode(HttpMultipartMode.BROWSER_COMPATIBLE))
+                        .multiPartConfig(MultiPartConfig.multiPartConfig().defaultCharset(StandardCharsets.UTF_8)))
+                    .build();
+            }
+
+            @Test
+            void shouldUploadBinaryAtFileSizeLimit() {
+                String filename = "résumé +%.pdf";
+                String body = authenticatedRequest()
+                    .multiPart("file", filename, CONTENT, "application/pdf")
+                .when()
+                    .post(UPLOAD_PATH)
+                .then()
+                    .statusCode(201)
+                    .contentType(ContentType.JSON)
+                    .extract().asString();
+
+                assertThatJson(body).isEqualTo("""
+                    {"uri": "<uri>"}
+                    """.replace("<uri>", PUBLIC_URI));
+                assertThat(drive.retrieveRecordedRequests(request().withPath(FILE_PATH)))
+                    .singleElement().satisfies(upload -> {
+                        assertThat(upload.getBodyAsRawBytes()).isEqualTo(CONTENT);
+                        assertThat(upload.getFirstHeader("Content-Type")).isEqualTo("application/pdf");
+                        assertThat(upload.getFirstQueryStringParameter("Name")).isEqualTo(filename);
+                    });
+            }
+
+            @Test
+            void shouldDefaultMissingPartContentTypeToBinary() {
+                authenticatedRequest()
+                    .contentType("multipart/form-data; boundary=\"upload\"")
+                    .body(("--upload\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.bin\"\r\n\r\n"
+                        + "data\r\n--upload--\r\n").getBytes(StandardCharsets.UTF_8))
+                .when()
+                    .post(UPLOAD_PATH)
+                .then()
+                    .statusCode(201);
+
+                assertThat(drive.retrieveRecordedRequests(request().withPath(FILE_PATH)))
+                    .singleElement().satisfies(upload -> {
+                        assertThat(upload.getBodyAsRawBytes()).isEqualTo("data".getBytes(StandardCharsets.UTF_8));
+                        assertThat(upload.getFirstHeader("Content-Type")).isEqualTo("application/octet-stream");
+                    });
+            }
+
+            @Test
+            void shouldRejectMultipleFiles() {
+                authenticatedRequest()
+                    .multiPart("file", "one.pdf", CONTENT, "application/pdf")
+                    .multiPart("file", "two.pdf", CONTENT, "application/pdf")
+                .when()
+                    .post(UPLOAD_PATH)
+                .then()
+                    .statusCode(400);
+
+                assertNoStorageRequests();
+            }
+
+            @Test
+            void shouldRequireFileField() {
+                authenticatedRequest()
+                    .multiPart("other", "report.pdf", CONTENT, "application/pdf")
+                .when()
+                    .post(UPLOAD_PATH)
+                .then()
+                    .statusCode(400);
+
+                assertNoStorageRequests();
+            }
+
+            @Test
+            void shouldRejectTextFieldWithoutFilename() {
+                authenticatedRequest()
+                    .multiPart("file", "text")
+                .when()
+                    .post(UPLOAD_PATH)
+                .then()
+                    .statusCode(400);
+
+                assertNoStorageRequests();
+            }
+
+            @ParameterizedTest
+            @ValueSource(strings = {"", "--upload--\r\n",
+                "--upload\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.txt\"\r\n\r\ndata"})
+            void shouldRejectEmptyOrIncompleteMultipart(String body) {
+                authenticatedRequest()
+                    .contentType("multipart/form-data; boundary=upload")
+                    .body(body.getBytes(StandardCharsets.UTF_8))
+                .when()
+                    .post(UPLOAD_PATH)
+                .then()
+                    .statusCode(400);
+
+                assertNoStorageRequests();
+            }
+
+            @Test
+            void shouldFollowNettyForMissingClosingBoundary() {
+                // receiveForm emits the completed file at the next boundary, even without a closing boundary.
+                authenticatedRequest()
+                    .contentType("multipart/form-data; boundary=upload")
+                    .body(("--upload\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.txt\"\r\n\r\n"
+                        + "data\r\n--upload\r\n").getBytes(StandardCharsets.UTF_8))
+                .when()
+                    .post(UPLOAD_PATH)
+                .then()
+                    .statusCode(201);
+
+                assertThat(drive.retrieveRecordedRequests(request().withPath(FILE_PATH)))
+                    .singleElement().satisfies(upload -> {
+                        assertThat(upload.getFirstQueryStringParameter("Name")).isEqualTo("a.txt");
+                        assertThat(upload.getBodyAsRawBytes()).isEqualTo("data".getBytes(StandardCharsets.UTF_8));
+                    });
+            }
+
+            @ParameterizedTest
+            @ValueSource(strings = {"multipart/form-data", "multipart/form-data; boundary=\"\"",
+                "multipart/form-data; boundary=one; boundary=two"})
+            void shouldRejectMissingOrAmbiguousBoundary(String contentType) {
+                authenticatedRequest()
+                    .contentType(contentType)
+                    .body("invalid multipart".getBytes(StandardCharsets.UTF_8))
+                .when()
+                    .post(UPLOAD_PATH)
+                .then()
+                    .statusCode(400);
+
+                assertNoStorageRequests();
+            }
+
+            @Test
+            void shouldRejectOversizedChunkedUpload(TwakeCalendarGuiceServer server) throws Exception {
+                int size = MAX_FILE_SIZE + 1;
+                byte[] header = ("--upload\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.pdf\"\r\n"
+                    + "Content-Type: application/pdf\r\n\r\n").getBytes(StandardCharsets.UTF_8);
+                byte[] footer = "\r\n--upload--\r\n".getBytes(StandardCharsets.UTF_8);
+                byte[] body = new byte[header.length + size + footer.length];
+                System.arraycopy(header, 0, body, 0, header.length);
+                System.arraycopy(footer, 0, body, header.length + size, footer.length);
+                String auth = Base64.getEncoder().encodeToString((USERNAME.asString() + ":" + PASSWORD).getBytes(StandardCharsets.UTF_8));
+                int port = server.getProbe(RestApiServerProbe.class).getPort().getValue();
+                HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + UPLOAD_PATH))
+                    .header("Authorization", "Basic " + auth)
+                    .header("Content-Type", "multipart/form-data; boundary=upload")
+                    .POST(HttpRequest.BodyPublishers.ofInputStream(() -> new ByteArrayInputStream(body)))
+                    .build();
+
+                try (HttpClient client = HttpClient.newHttpClient()) {
+                    HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                    assertThat(response.statusCode()).isEqualTo(413);
+                }
+                assertNoStorageRequests();
+            }
+        }
+
         @Test
         void shouldRequireAuthentication() {
             given()
@@ -352,6 +527,20 @@ class AttachmentUploadRouteTest {
         @BeforeEach
         void setUpCalendar(TwakeCalendarGuiceServer server) {
             setUp(server);
+        }
+
+        @Test
+        void shouldReturnNotFoundForMultipartWhenTDriveIsDisabled() {
+            given()
+                .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
+                .contentType("multipart/form-data")
+                .multiPart("file", "report.pdf", CONTENT, "application/pdf")
+            .when()
+                .post(UPLOAD_PATH)
+            .then()
+                .statusCode(404);
+
+            assertNoStorageRequests();
         }
 
         @Test
