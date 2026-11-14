@@ -39,6 +39,7 @@ import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.restapi.ErrorType;
 import com.linagora.calendar.restapi.routes.response.BookingLinkSlotsResponse;
 import com.linagora.calendar.restapi.routes.response.BookingLinkSlotsResponse.ResourceDTO;
+import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.booking.BookingLinkNotActiveException;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
@@ -155,18 +156,18 @@ public class BookingLinkSlotsRoute extends PublicRoute {
                                   ZoneId zoneId,
                                   BookingLinkSlotsService.SlotsResult result) {
         return Mono.fromCallable(() -> BookingLinkSlotsResponse.of(result.bookingLink(), result.owner(), queryStart, queryEnd,
-                result.slots(), zoneId, toResourceDTOs(result.resources()), result.extraAttendees()).jsonAsBytes())
+                result.slots(), zoneId, toResourceDTOs(result.resources(), result.owner()), result.extraAttendees()).jsonAsBytes())
             .flatMap(bytes -> response.status(HttpResponseStatus.OK)
                 .headers(JSON_HEADER)
                 .sendByteArray(Mono.just(bytes))
                 .then());
     }
 
-    private List<ResourceDTO> toResourceDTOs(List<Resource> resources) {
+    private List<ResourceDTO> toResourceDTOs(List<Resource> resources, OpenPaaSUser owner) {
         return resources.stream()
             .map(resource -> new ResourceDTO(resource.name(),
                 Optional.ofNullable(resource.icon())
-                    .map(resourcePhotoUrlFactory::resolveURL)
+                    .map(icon -> resourcePhotoUrlFactory.resolveURL(icon, owner.username()))
                     .map(URI::toASCIIString)))
             .toList();
     }

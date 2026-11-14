@@ -32,7 +32,7 @@ import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.james.core.MailAddress;
+import org.apache.james.core.Username;
 import org.apache.james.mime4j.dom.Message;
 import org.apache.james.mime4j.field.Fields;
 
@@ -66,7 +66,6 @@ public class PublicAgendaProposalNotifier {
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventInCalendarLinkFactory eventInCalendarLinkFactory;
     private final MailSender.Factory mailSenderFactory;
-    private final MailAddress fromMailAddress;
 
     @Inject
     @Singleton
@@ -82,8 +81,6 @@ public class PublicAgendaProposalNotifier {
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.eventInCalendarLinkFactory = eventInCalendarLinkFactory;
         this.mailSenderFactory = mailSenderFactory;
-        this.fromMailAddress = templateConfiguration.sender().asOptional()
-            .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
     }
 
     public Mono<Void> notify(BookingCreated bookingCreated) {
@@ -102,7 +99,7 @@ public class PublicAgendaProposalNotifier {
     private Mono<Mail> generateMail(ResolvedSettings settings, BookingCreated bookingCreated, ActionLinks actionLinks) {
         return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(settings.locale()), EVENT_BOOKING_PROPOSE_TEMPLATE))
             .flatMap(messageGenerator -> generateMessage(settings, bookingCreated, actionLinks, messageGenerator))
-            .map(Throwing.function(message -> new Mail(templateConfiguration.sender(), List.of(bookingCreated.organizer().username().asMailAddress()), message)))
+            .map(Throwing.function(message -> new Mail(templateConfiguration.sender(bookingCreated.organizer().username()), List.of(bookingCreated.organizer().username().asMailAddress()), message)))
             .subscribeOn(Schedulers.boundedElastic());
     }
 
@@ -110,9 +107,10 @@ public class PublicAgendaProposalNotifier {
                                           BookingCreated bookingCreated,
                                           ActionLinks actionLinks,
                                           MessageGenerator messageGenerator) {
-        return messageGenerator.generate(bookingCreated.organizer().username(),
-            fromMailAddress,
-            PugModel.toPugModel(bookingCreated, actionLinks, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory))
+        Username organizer = bookingCreated.organizer().username();
+        return messageGenerator.generate(organizer,
+            templateConfiguration.senderAddress(organizer),
+            PugModel.toPugModel(bookingCreated, actionLinks, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory.forUser(organizer)))
             .map(message -> {
                 message.getHeader().addField(Fields.replyTo(bookingCreated.request().creator().asMailbox()));
                 return message;

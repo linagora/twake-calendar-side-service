@@ -20,16 +20,13 @@ package com.linagora.calendar.amqp;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import jakarta.inject.Named;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.james.core.MailAddress;
-import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.model.Cid;
 import org.apache.james.mailbox.model.ContentType;
@@ -43,6 +40,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.linagora.calendar.amqp.CalendarDelegatedNotificationConsumer.CalendarDelegatedCreatedMessage;
+import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.Mail;
@@ -85,11 +83,10 @@ public class DelegatedCalendarNotificationHandler {
     private final CalDavClient calDavClient;
     private final SettingsBasedResolver settingsResolver;
     private final MailSender.Factory mailSenderFactory;
-    private final MaybeSender maybeSender;
-    private final MailAddress senderAddress;
+    private final MailTemplateConfiguration mailTemplateConfiguration;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventEmailFilter eventEmailFilter;
-    private final URI spaCalendarBaseUrl;
+    private final DomainUrl spaCalendarBaseUrl;
     private final MimeAttachment logoAttachment;
 
     @Inject
@@ -101,19 +98,17 @@ public class DelegatedCalendarNotificationHandler {
                                                 MailTemplateConfiguration mailTemplateConfiguration,
                                                 MessageGenerator.Factory messageGeneratorFactory,
                                                 EventEmailFilter eventEmailFilter,
-                                                @Named("spaCalendarUrl") URL calendarBaseUrl,
-                                                @Named("calendar-logo") byte[] calendarLogo) throws URISyntaxException {
+                                                @Named("spaCalendarUrl") DomainUrl calendarBaseUrl,
+                                                @Named("calendar-logo") byte[] calendarLogo) {
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.resourceDAO = resourceDAO;
         this.calDavClient = calDavClient;
         this.settingsResolver = settingsResolver;
         this.mailSenderFactory = mailSenderFactory;
-        this.maybeSender = mailTemplateConfiguration.sender();
+        this.mailTemplateConfiguration = mailTemplateConfiguration;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.eventEmailFilter = eventEmailFilter;
-        this.spaCalendarBaseUrl = calendarBaseUrl.toURI();
-        this.senderAddress = maybeSender.asOptional()
-            .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
+        this.spaCalendarBaseUrl = calendarBaseUrl;
         this.logoAttachment = MimeAttachment.builder()
             .contentType(ContentType.of("image/png"))
             .cid(Cid.from("logo"))
@@ -123,13 +118,18 @@ public class DelegatedCalendarNotificationHandler {
             .build();
     }
 
+    /**
+     * @param owner the owner of the original calendar, whose domain the mail sender and links are resolved against.
+     *              For a resource calendar, the delegated user (the resource administrator).
+     */
     public record DelegatedCalendarNotificationData(String delegatorFullName,
                                                     CalendarURL originalCalendarURL,
                                                     String originalCalendarName,
                                                     OpenPaaSUser delegatedUser,
                                                     CalendarURL delegatedCalendarURL,
                                                     String rightKey,
-                                                    boolean isResource) {
+                                                    boolean isResource,
+                                                    Username owner) {
 
         public Map<String, Object> toPugModel(URI spaCalendarBaseUrl, I18NTranslator translator) throws IOException {
             String calendarDisplayName = calendarDisplayName(translator);
@@ -157,7 +157,7 @@ public class DelegatedCalendarNotificationHandler {
 
     private record CalendarMetadata(OpenPaaSUser user, JsonNode metadata) {}
 
-    private record OriginalCalendarInfo(String ownerFullName, String calendarName, boolean isResource) {}
+    private record OriginalCalendarInfo(String ownerFullName, String calendarName, boolean isResource, Optional<Username> owner) {}
 
     public Mono<Void> handle(CalendarDelegatedCreatedMessage createdMessage) {
         return buildNotificationData(createdMessage)
@@ -170,7 +170,7 @@ public class DelegatedCalendarNotificationHandler {
 
         return settingsResolver.resolveOrDefault(recipientUser)
             .flatMap(resolvedSettings -> generateMessage(notificationData, resolvedSettings))
-            .flatMap(mailMessage -> mailSenderFactory.send(new Mail(maybeSender, ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), mailMessage))
+            .flatMap(mailMessage -> mailSenderFactory.send(new Mail(mailTemplateConfiguration.sender(notificationData.owner()), ImmutableList.of(Throwing.supplier(recipientUser::asMailAddress).get()), mailMessage))
                 .onErrorMap(error -> new CalendarDelegatedNotificationHandlerException("Failed to send delegated calendar notification email", error)))
             .doOnSuccess(any -> LOGGER.debug("Consumed delegated calendar notification for user {} on calendar {}", notificationData.delegatedUser().username(), notificationData.originalCalendarURL()));
     }
@@ -181,8 +181,8 @@ public class DelegatedCalendarNotificationHandler {
             .subscribeOn(Schedulers.boundedElastic())
             .flatMap(messageGenerator -> {
                 Username recipientUser = notificationData.delegatedUser().username();
-                return Mono.fromCallable(() -> notificationData.toPugModel(spaCalendarBaseUrl, messageGenerator.getI18nTranslator()))
-                    .flatMap(pugModel -> messageGenerator.generate(recipientUser, senderAddress, pugModel, List.of(logoAttachment)));
+                return Mono.fromCallable(() -> notificationData.toPugModel(spaCalendarBaseUrl.resolve(notificationData.owner()).toURI(), messageGenerator.getI18nTranslator()))
+                    .flatMap(pugModel -> messageGenerator.generate(recipientUser, mailTemplateConfiguration.senderAddress(notificationData.owner()), pugModel, List.of(logoAttachment)));
             })
             .onErrorResume(error -> Mono.error(new CalendarDelegatedNotificationHandlerException("Failed to generate delegated calendar notification email", error)));
     }
@@ -204,7 +204,8 @@ public class DelegatedCalendarNotificationHandler {
                         delegated.user(),
                         delegatedCalendarURL,
                         message.rightKey().orElse(null),
-                        original.isResource()));
+                        original.isResource(),
+                        original.owner().orElse(delegated.user().username())));
             });
     }
 
@@ -217,9 +218,10 @@ public class DelegatedCalendarNotificationHandler {
 
     private Mono<OriginalCalendarInfo> fetchOriginalCalendarInfo(CalendarURL calendarURL) {
         return fetchCalendarWithOwner(calendarURL)
-            .map(lookup -> new OriginalCalendarInfo(lookup.user().fullName(), lookup.metadata().path(CALENDAR_NAME_PROPERTY).asText(), false))
+            .map(lookup -> new OriginalCalendarInfo(lookup.user().fullName(), lookup.metadata().path(CALENDAR_NAME_PROPERTY).asText(), false,
+                Optional.of(lookup.user().username())))
             .switchIfEmpty(Mono.defer(() -> resourceDAO.findById(ResourceId.from(calendarURL.base()))
-                .map(resource -> new OriginalCalendarInfo(resource.name(), resource.name(), true))))
+                .map(resource -> new OriginalCalendarInfo(resource.name(), resource.name(), true, Optional.empty()))))
             .doOnError(e -> LOGGER.error("Failed to fetch original calendar info for {}", calendarURL.serialize(), e));
     }
 }

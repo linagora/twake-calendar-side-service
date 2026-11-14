@@ -69,6 +69,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 
+import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.CardDavClient.AddressBookPropertiesUpdate;
 import com.linagora.calendar.dav.CardDavClient.AddressBookSharee;
@@ -210,7 +211,7 @@ public class AddressBookDelegatedNotificationConsumerTest {
 
         DelegatedAddressBookNotificationHandler notificationHandler = new DelegatedAddressBookNotificationHandler(
             openPaaSUserDAO, cardDavClient, settingsResolver, mailSenderFactory, mailTemplateConfig, messageFactory,
-            EventEmailFilter.acceptAll(), URI.create(CONTACTS_URL).toURL(), new byte[0]);
+            EventEmailFilter.acceptAll(), DomainUrl.of(URI.create(CONTACTS_URL).toURL()), new byte[0]);
 
         consumer = new AddressBookDelegatedNotificationConsumer(
             channelPool, QueueArguments.Builder::new, notificationHandler);

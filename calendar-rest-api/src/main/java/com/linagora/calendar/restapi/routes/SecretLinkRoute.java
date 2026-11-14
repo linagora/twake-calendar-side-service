@@ -34,6 +34,7 @@ import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.storage.CalendarURL;
@@ -59,7 +60,7 @@ public class SecretLinkRoute extends CalendarRoute {
     private final ObjectMapper objectMapper;
 
     private final SecretLinkStore secretLinkStore;
-    private final URL secretLinkBaseUrl;
+    private final DomainUrl secretLinkBaseUrl;
 
     @Inject
     public SecretLinkRoute(Authenticator authenticator,
@@ -88,7 +89,7 @@ public class SecretLinkRoute extends CalendarRoute {
             .onErrorMap(SecretLinkPermissionException.class, e -> new ForbiddenException(e.getMessage()))
             .flatMap(token -> response.status(HttpResponseStatus.OK)
                 .header("Content-Type", "application/json;charset=utf-8")
-                .sendByteArray(buildResponseBody(token, calendarURL))
+                .sendByteArray(buildResponseBody(token, calendarURL, secretLinkBaseUrl.resolve(session.getUser())))
                 .then());
     }
 
@@ -108,14 +109,14 @@ public class SecretLinkRoute extends CalendarRoute {
             .orElse(SHOULD_RESET_LINK_DEFAULT);
     }
 
-    private URI buildSecretLinkURL(SecretLinkToken token, CalendarURL calendarURL) throws URISyntaxException {
-        return new URIBuilder(secretLinkBaseUrl.toURI())
-            .setPath(Strings.CS.removeEnd(secretLinkBaseUrl.getPath(), "/") + "/api" + calendarURL.asUri() + "/calendar.ics")
+    private URI buildSecretLinkURL(SecretLinkToken token, CalendarURL calendarURL, URL baseUrl) throws URISyntaxException {
+        return new URIBuilder(baseUrl.toURI())
+            .setPath(Strings.CS.removeEnd(baseUrl.getPath(), "/") + "/api" + calendarURL.asUri() + "/calendar.ics")
             .addParameter("token", token.value())
             .build();
     }
 
-    private Mono<byte[]> buildResponseBody(SecretLinkToken token, CalendarURL calendarURL) {
-        return Mono.fromCallable(() -> objectMapper.writeValueAsBytes(Collections.singletonMap("secretLink", buildSecretLinkURL(token, calendarURL).toString())));
+    private Mono<byte[]> buildResponseBody(SecretLinkToken token, CalendarURL calendarURL, URL baseUrl) {
+        return Mono.fromCallable(() -> objectMapper.writeValueAsBytes(Collections.singletonMap("secretLink", buildSecretLinkURL(token, calendarURL, baseUrl).toString())));
     }
 }

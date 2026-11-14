@@ -34,6 +34,7 @@ import org.apache.james.mime4j.dom.Message;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.restapi.routes.ImportProcessor.ImportResult;
 import com.linagora.calendar.restapi.routes.ImportProcessor.ImportResult.FailedItem;
@@ -70,8 +71,8 @@ class ImportMailReportRenderTest {
         generator = new ModelCapturingMessageGenerator();
 
         RestApiConfiguration configuration = RestApiConfiguration.builder()
-            .calendarSpaUrl(Optional.of(URI.create("https://calendar.example.com").toURL()))
-            .contactSpaUrl(Optional.of(URI.create("https://contacts.example.com").toURL()))
+            .calendarSpaUrl(Optional.of(DomainUrl.of(URI.create("https://calendar.example.com").toURL())))
+            .contactSpaUrl(Optional.of(DomainUrl.of(URI.create("https://contacts.example.com").toURL())))
             .adminPassword(Optional.of("admin"))
             .build();
 
@@ -105,6 +106,29 @@ class ImportMailReportRenderTest {
 
         assertThat(failedList())
             .containsExactly(eventValues);
+    }
+
+    @Test
+    void reportModelShouldResolveTheBaseUrlAgainstTheDomainOfTheImportingUser() {
+        RestApiConfiguration configuration = RestApiConfiguration.builder()
+            .calendarSpaUrl(Optional.of(DomainUrl.parse("https://calendar.{domain}")))
+            .adminPassword(Optional.of("admin"))
+            .build();
+        ImportMailReportRender perDomainTestee = new ImportMailReportRender(
+            new MailTemplateConfiguration("file:///unused", "no-reply@{domain}"),
+            (language, type) -> generator,
+            configuration,
+            new byte[0], new byte[0]);
+
+        perDomainTestee.generateMail(ImportType.ICS, Language.ENGLISH, ImportResult.succeed(), BOB).block();
+
+        assertThat(content().get("baseUrl"))
+            .isEqualTo("https://calendar.open-paas.org");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> content() {
+        return (Map<String, Object>) generator.capturedModel.get().get("content");
     }
 
     @SuppressWarnings("unchecked")

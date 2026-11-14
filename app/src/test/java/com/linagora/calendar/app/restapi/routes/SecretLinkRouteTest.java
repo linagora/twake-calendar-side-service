@@ -41,6 +41,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 
 import com.github.fge.lambdas.Throwing;
+import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
@@ -83,7 +84,7 @@ class SecretLinkRouteTest {
         AppTestHelper.OIDC_BY_PASS_MODULE,
         DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
         binder -> {
-            Mockito.doReturn(Throwing.supplier(() -> URI.create(SECRET_LINK_BASE_URL).toURL()).get())
+            Mockito.doReturn(DomainUrl.of(Throwing.supplier(() -> URI.create(SECRET_LINK_BASE_URL).toURL()).get()))
                 .when(spyRestApiConfiguration).getSelfUrl();
             binder.bind(RestApiConfiguration.class).toInstance(spyRestApiConfiguration);
         });

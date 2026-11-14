@@ -25,7 +25,6 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 
-import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.model.Cid;
 import org.apache.james.mailbox.model.ContentType;
@@ -51,7 +50,6 @@ public class ImportMailReportRender {
     private final RestApiConfiguration configuration;
     private final byte[] calendarLogo;
     private final byte[] contactsLogo;
-    private final MailAddress fromMailAddress;
 
     @Inject
     @Singleton
@@ -65,14 +63,12 @@ public class ImportMailReportRender {
         this.configuration = configuration;
         this.calendarLogo = calendarLogo;
         this.contactsLogo = contactLogo;
-        this.fromMailAddress = templateConfiguration.sender().asOptional()
-            .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
     }
 
     public Mono<Mail> generateMail(ImportType importType, Language language, ImportResult importResult, Username username) {
         String baseUrl = switch (importType) {
-            case ICS -> configuration.getCalendarSpaUrl().toString();
-            case VCARD -> configuration.getContactSpaUrl().toString();
+            case ICS -> configuration.getCalendarSpaUrl().resolve(username).toString();
+            case VCARD -> configuration.getContactSpaUrl().resolve(username).toString();
         };
         byte[] logoBytes = switch (importType) {
             case ICS -> calendarLogo;
@@ -94,8 +90,8 @@ public class ImportMailReportRender {
             .build();
 
         return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(language, importType.getTemplateType()))
-            .flatMap(messageGenerator -> messageGenerator.generate(username, fromMailAddress, model, ImmutableList.of(logoAttachment)))
-            .map(Throwing.function(message -> new Mail(templateConfiguration.sender(), List.of(username.asMailAddress()), message)))
+            .flatMap(messageGenerator -> messageGenerator.generate(username, templateConfiguration.senderAddress(username), model, ImmutableList.of(logoAttachment)))
+            .map(Throwing.function(message -> new Mail(templateConfiguration.sender(username), List.of(username.asMailAddress()), message)))
             .subscribeOn(Schedulers.boundedElastic());
     }
 

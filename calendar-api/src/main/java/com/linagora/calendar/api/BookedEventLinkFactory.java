@@ -19,13 +19,13 @@
 package com.linagora.calendar.api;
 
 import java.net.URI;
-import java.net.URL;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 
 import org.apache.commons.lang3.Strings;
+import org.apache.james.core.Username;
 
 import com.linagora.calendar.api.BookedEventTokenSigner.BookedEvent;
 
@@ -33,30 +33,31 @@ import reactor.core.publisher.Mono;
 
 /**
  * Builds the link to the excal page displaying a confirmed reservation:
- * {@code {spaExcalUrl}/booking/confirmed/{jwt}}.
+ * {@code {spaExcalUrl}/booking/confirmed/{jwt}}, {@code spaExcalUrl} being resolved against the domain of the
+ * booking link owner.
  */
 public class BookedEventLinkFactory {
 
     private static final String BOOKING_CONFIRMED_PATH = "/booking/confirmed/";
 
     private final BookedEventTokenSigner bookedEventTokenSigner;
-    private final String excalBaseUrl;
+    private final DomainUrl spaExcalUrl;
 
     @Inject
     @Singleton
     public BookedEventLinkFactory(@Named("participationActionLinks") JwtSigner jwtSigner,
                                   JwtVerifier jwtVerifier,
-                                  @Named("spaExcalUrl") URL spaExcalUrl) {
+                                  @Named("spaExcalUrl") DomainUrl spaExcalUrl) {
         this(new BookedEventTokenSigner.Default(jwtSigner, jwtVerifier), spaExcalUrl);
     }
 
-    public BookedEventLinkFactory(BookedEventTokenSigner bookedEventTokenSigner, URL spaExcalUrl) {
+    public BookedEventLinkFactory(BookedEventTokenSigner bookedEventTokenSigner, DomainUrl spaExcalUrl) {
         this.bookedEventTokenSigner = bookedEventTokenSigner;
-        this.excalBaseUrl = Strings.CS.removeEnd(spaExcalUrl.toString(), "/");
+        this.spaExcalUrl = spaExcalUrl;
     }
 
-    public Mono<URI> generateLink(BookedEvent bookedEvent) {
+    public Mono<URI> generateLink(BookedEvent bookedEvent, Username owner) {
         return bookedEventTokenSigner.signAsJwt(bookedEvent)
-            .map(jwt -> URI.create(excalBaseUrl + BOOKING_CONFIRMED_PATH + jwt));
+            .map(jwt -> URI.create(Strings.CS.removeEnd(spaExcalUrl.resolve(owner).toString(), "/") + BOOKING_CONFIRMED_PATH + jwt));
     }
 }

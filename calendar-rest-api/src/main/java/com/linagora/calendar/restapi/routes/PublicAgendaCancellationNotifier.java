@@ -67,7 +67,6 @@ public class PublicAgendaCancellationNotifier {
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventInCalendarLinkFactory eventInCalendarLinkFactory;
     private final MailSender.Factory mailSenderFactory;
-    private final MailAddress fromMailAddress;
 
     @Inject
     public PublicAgendaCancellationNotifier(@Named("language_timezone") SettingsBasedResolver settingsResolver,
@@ -80,8 +79,6 @@ public class PublicAgendaCancellationNotifier {
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.eventInCalendarLinkFactory = eventInCalendarLinkFactory;
         this.mailSenderFactory = mailSenderFactory;
-        this.fromMailAddress = templateConfiguration.sender().asOptional()
-            .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
     }
 
     public Mono<Void> notify(BookedEventCancelled cancelled) {
@@ -110,7 +107,7 @@ public class PublicAgendaCancellationNotifier {
     private Mono<Mail> generateMail(ResolvedSettings settings, BookedEventCancelled cancelled, MailAddress recipient) {
         return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(settings.locale()), EVENT_BOOKING_CANCELLED_TEMPLATE))
             .flatMap(messageGenerator -> generateMessage(settings, cancelled, recipient, messageGenerator))
-            .map(message -> new Mail(templateConfiguration.sender(), List.of(recipient), message));
+            .map(message -> new Mail(templateConfiguration.sender(cancelled.organizer().username()), List.of(recipient), message));
     }
 
     private Mono<Message> generateMessage(ResolvedSettings settings,
@@ -118,10 +115,10 @@ public class PublicAgendaCancellationNotifier {
                                           MailAddress recipient,
                                           MessageGenerator messageGenerator) {
         return Mono.fromCallable(() -> AsciiMailAddress.toInternetAddress(recipient))
-            .flatMap(recipientAddress -> Mono.fromCallable(() -> AsciiMailAddress.toInternetAddress(fromMailAddress))
+            .flatMap(recipientAddress -> Mono.fromCallable(() -> AsciiMailAddress.toInternetAddress(templateConfiguration.senderAddress(cancelled.organizer().username())))
                 .flatMap(fromAddress -> messageGenerator.generate(recipientAddress,
                     fromAddress,
-                    PugModel.toPugModel(cancelled, recipient, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory),
+                    PugModel.toPugModel(cancelled, recipient, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory.forUser(cancelled.organizer().username())),
                     List.of())));
     }
 

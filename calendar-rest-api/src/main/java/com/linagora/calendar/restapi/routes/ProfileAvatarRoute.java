@@ -70,7 +70,7 @@ public class ProfileAvatarRoute extends CalendarRoute {
             .switchIfEmpty(Mono.error(NotFoundException::new))
             .flatMap(user -> response
                 .status(302)
-                .header("Location", configuration.getSelfUrl() + "/api/avatars?email=" + user.username().asString())
+                .header("Location", configuration.getSelfUrl().resolve(session.getUser()) + "/api/avatars?email=" + user.username().asString())
                 .header("Cache-Control", "max-age=1800, public")
                 .send());
     }
