@@ -29,6 +29,7 @@ import jakarta.inject.Named;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.james.core.Domain;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.exceptions.UnauthorizedException;
 import org.apache.james.metrics.api.MetricFactory;
@@ -36,6 +37,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableList;
+import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.api.JwtVerifier;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.CalendarEventNotFoundException;
@@ -77,21 +79,21 @@ public class ResourceParticipationRoute extends PublicRoute {
     private final CalDavEventRepository calDavEventRepository;
     private final ResourceDAO resourceDAO;
     private final OpenPaaSDomainDAO openPaaSDomainDAO;
-    private final URI locationRedirectUri;
+    private final DomainUrl calendarBaseUrl;
     private final JwtVerifier jwtVerifier;
 
     @Inject
     public ResourceParticipationRoute(CalDavEventRepository calDavEventRepository,
                                       ResourceDAO resourceDAO,
                                       OpenPaaSDomainDAO openPaaSDomainDAO,
-                                      @Named("spaCalendarUrl") URL calendarBaseUrl,
+                                      @Named("spaCalendarUrl") DomainUrl calendarBaseUrl,
                                       JwtVerifier jwtVerifier,
                                       MetricFactory metricFactory) {
         super(metricFactory);
         this.calDavEventRepository = calDavEventRepository;
         this.resourceDAO = resourceDAO;
         this.openPaaSDomainDAO = openPaaSDomainDAO;
-        this.locationRedirectUri = URI.create(Strings.CS.removeEnd(calendarBaseUrl.toString(), "/") + "/calendar");
+        this.calendarBaseUrl = calendarBaseUrl;
         this.jwtVerifier = jwtVerifier;
     }
 
@@ -106,7 +108,9 @@ public class ResourceParticipationRoute extends PublicRoute {
             .flatMap(updateReq -> resourceDAO.findById(updateReq.resourceId())
                 .switchIfEmpty(Mono.error(new ResourceNotFoundException(updateReq.resourceId())))
                 .flatMap(resource -> updateResourceParticipation(resource, updateReq.eventId(), updateReq.partStat())))
-            .then(sendRedirectResponse(response))
+            .map(Optional::of)
+            .defaultIfEmpty(Optional.empty())
+            .flatMap(resourceDomain -> sendRedirectResponse(response, resourceDomain))
             .onErrorResume(Exception.class, exception -> {
                 if (exception instanceof UnauthorizedException unauthorized) {
                     LOGGER.warn("Unauthorized access for [{}]: {}", request.uri(), unauthorized.getMessage());
@@ -130,11 +134,12 @@ public class ResourceParticipationRoute extends PublicRoute {
             });
     }
 
-    private Mono<Void> updateResourceParticipation(Resource resource,
-                                                   String eventPathId,
-                                                   PartStat partStat) {
+    private Mono<Domain> updateResourceParticipation(Resource resource,
+                                                     String eventPathId,
+                                                     PartStat partStat) {
         return openPaaSDomainDAO.retrieve(resource.domain())
-            .flatMap(domain -> calDavEventRepository.updatePartStat(domain, resource.id(), eventPathId, partStat));
+            .flatMap(domain -> calDavEventRepository.updatePartStat(domain, resource.id(), eventPathId, partStat)
+                .thenReturn(domain.domain()));
     }
 
     private Mono<UpdatePartStatRequest> validateAndExtractUpdateRequest(HttpServerRequest request) {
@@ -212,11 +217,21 @@ public class ResourceParticipationRoute extends PublicRoute {
             .findAny();
     }
 
-    private Mono<Void> sendRedirectResponse(HttpServerResponse response) {
-        return response.status(HttpResponseStatus.FOUND.code())
-            .header(HttpHeaderNames.LOCATION, locationRedirectUri.toASCIIString())
-            .send()
-            .then();
+    /**
+     * The participation link is public: the calendar to redirect to is the one of the domain of the resource.
+     */
+    private Mono<Void> sendRedirectResponse(HttpServerResponse response, Optional<Domain> resourceDomain) {
+        return Mono.fromCallable(() -> locationRedirectUri(resourceDomain))
+            .flatMap(locationRedirectUri -> response.status(HttpResponseStatus.FOUND.code())
+                .header(HttpHeaderNames.LOCATION, locationRedirectUri.toASCIIString())
+                .send()
+                .then());
+    }
+
+    private URI locationRedirectUri(Optional<Domain> resourceDomain) {
+        URL baseUrl = resourceDomain.map(calendarBaseUrl::resolve)
+            .orElseGet(calendarBaseUrl::asUrl);
+        return URI.create(Strings.CS.removeEnd(baseUrl.toString(), "/") + "/calendar");
     }
 
 }

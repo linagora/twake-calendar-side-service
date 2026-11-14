@@ -20,7 +20,6 @@ package com.linagora.calendar.restapi.routes.people.search;
 
 import static com.linagora.calendar.restapi.routes.people.search.ContactSearchProvider.buildAvatarUrl;
 
-import java.net.URL;
 import java.util.Set;
 
 import jakarta.inject.Inject;
@@ -32,6 +31,7 @@ import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
 
 import com.google.common.collect.ImmutableSet;
+import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute.ObjectType;
 import com.linagora.calendar.restapi.routes.people.search.ContactSearchProvider.ContactResponseDTO;
@@ -47,12 +47,12 @@ public class UserSearchProvider implements PeopleSearchProvider {
     public static final ImmutableSet<ObjectType> OBJECT_TYPES = ImmutableSet.of(ObjectType.USER);
 
     private final OpenPaaSUserDAO userDAO;
-    private final URL baseAvatarUrl;
+    private final DomainUrl baseAvatarUrl;
     private final DomainSettingsResolver domainSettingsResolver;
 
     @Inject
     public UserSearchProvider(OpenPaaSUserDAO userDAO,
-                              @Named("selfUrl") URL baseAvatarUrl,
+                              @Named("selfUrl") DomainUrl baseAvatarUrl,
                               DomainSettingsResolver domainSettingsResolver) {
         this.userDAO = userDAO;
         this.baseAvatarUrl = baseAvatarUrl;
@@ -77,7 +77,7 @@ public class UserSearchProvider implements PeopleSearchProvider {
                     case LIMITED -> searchLimited(domain, query);
                     case ENABLED -> userDAO.search(domain, query, limit);
                 }))
-            .map(this::toResponseDTO);
+            .map(user -> toResponseDTO(user, session.getUser()));
     }
 
     private Flux<OpenPaaSUser> searchLimited(Domain domain, String query) {
@@ -86,11 +86,11 @@ public class UserSearchProvider implements PeopleSearchProvider {
             .flux();
     }
 
-    private ContactResponseDTO toResponseDTO(OpenPaaSUser user) {
+    private ContactResponseDTO toResponseDTO(OpenPaaSUser user, Username searcher) {
         return new ContactResponseDTO(user.id().value(),
             user.username().asString(),
             user.fullName(),
-            buildAvatarUrl(baseAvatarUrl, user.username().asString()).toString(),
+            buildAvatarUrl(baseAvatarUrl.resolve(searcher), user.username().asString()).toString(),
             ObjectType.USER.name().toLowerCase());
     }
 }

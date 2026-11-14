@@ -18,14 +18,17 @@
 
 package com.linagora.calendar.smtp.template;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.time.ZonedDateTime;
 
+import org.apache.james.core.Domain;
 import org.junit.jupiter.api.Test;
 
+import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.smtp.template.content.model.EventInCalendarLinkFactory;
 
 public class EventInCalendarLinkFactoryTest {
@@ -38,5 +41,22 @@ public class EventInCalendarLinkFactoryTest {
         assertThat(eventInCalendarLink)
             .isEqualTo("http://localhost:3000/calendar/#/calendar?start=10-01-2023");
 
+    }
+
+    @Test
+    void forDomainShouldResolveThePlaceholder() {
+        EventInCalendarLinkFactory testee = new EventInCalendarLinkFactory(DomainUrl.parse("https://calendar.{domain}/"))
+            .forDomain(Domain.of("domain-b.tld"));
+
+        assertThat(testee.getEventInCalendarLink(ZonedDateTime.parse("2023-10-01T10:00:00Z")))
+            .isEqualTo("https://calendar.domain-b.tld/calendar/#/calendar?start=10-01-2023");
+    }
+
+    @Test
+    void getEventInCalendarLinkShouldFailWhenPlaceholderIsNotResolved() {
+        EventInCalendarLinkFactory testee = new EventInCalendarLinkFactory(DomainUrl.parse("https://calendar.{domain}/"));
+
+        assertThatThrownBy(() -> testee.getEventInCalendarLink(ZonedDateTime.parse("2023-10-01T10:00:00Z")))
+            .isInstanceOf(IllegalStateException.class);
     }
 }

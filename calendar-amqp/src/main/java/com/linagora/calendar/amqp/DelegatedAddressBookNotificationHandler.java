@@ -20,8 +20,6 @@ package com.linagora.calendar.amqp;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
 import java.util.List;
 import java.util.Map;
 
@@ -30,8 +28,6 @@ import jakarta.inject.Named;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-import org.apache.james.core.MailAddress;
-import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.model.Cid;
 import org.apache.james.mailbox.model.ContentType;
@@ -39,6 +35,7 @@ import org.apache.james.mime4j.dom.Message;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.amqp.AddressBookDelegatedNotificationConsumer.AddressBookDelegatedCreatedMessage;
+import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.Mail;
@@ -77,11 +74,10 @@ public class DelegatedAddressBookNotificationHandler {
     private final CardDavClient cardDavClient;
     private final SettingsBasedResolver settingsResolver;
     private final MailSender.Factory mailSenderFactory;
-    private final MaybeSender sender;
-    private final MailAddress senderAddress;
+    private final MailTemplateConfiguration templateConfiguration;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventEmailFilter eventEmailFilter;
-    private final URI contactsBaseUrl;
+    private final DomainUrl contactsBaseUrl;
     private final MimeAttachment logoAttachment;
 
     @Inject
@@ -92,18 +88,16 @@ public class DelegatedAddressBookNotificationHandler {
                                                    MailTemplateConfiguration templateConfiguration,
                                                    MessageGenerator.Factory messageGeneratorFactory,
                                                    EventEmailFilter eventEmailFilter,
-                                                   @Named("spaContactsUrl") URL contactsBaseUrl,
-                                                   @Named("contacts-logo") byte[] contactsLogo) throws URISyntaxException {
+                                                   @Named("spaContactsUrl") DomainUrl contactsBaseUrl,
+                                                   @Named("contacts-logo") byte[] contactsLogo) {
         this.userDAO = userDAO;
         this.cardDavClient = cardDavClient;
         this.settingsResolver = settingsResolver;
         this.mailSenderFactory = mailSenderFactory;
-        this.sender = templateConfiguration.sender();
-        this.senderAddress = sender.asOptional()
-            .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
+        this.templateConfiguration = templateConfiguration;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.eventEmailFilter = eventEmailFilter;
-        this.contactsBaseUrl = contactsBaseUrl.toURI();
+        this.contactsBaseUrl = contactsBaseUrl;
         this.logoAttachment = MimeAttachment.builder()
             .contentType(ContentType.of(LOGO_CONTENT_TYPE))
             .cid(Cid.from(LOGO_CONTENT_ID))
@@ -123,7 +117,7 @@ public class DelegatedAddressBookNotificationHandler {
             .filter(Throwing.predicate(data -> eventEmailFilter.shouldProcess(data.recipient().username().asMailAddress())))
             .flatMap(data -> settingsResolver.resolveOrDefault(data.recipient().username())
                 .flatMap(settings -> generateMessage(data, settings))
-                .flatMap(mail -> mailSenderFactory.send(new Mail(sender,
+                .flatMap(mail -> mailSenderFactory.send(new Mail(templateConfiguration.sender(data.owner()),
                     List.of(Throwing.supplier(data.recipient().username()::asMailAddress).get()), mail))))
             .onErrorMap(error -> new IllegalStateException("Failed to send address book delegation email for " + message.path(), error));
     }
@@ -138,7 +132,7 @@ public class DelegatedAddressBookNotificationHandler {
                     AddressBookURL sourceURL = AddressBookURL.parse(Strings.CS.removeEnd(sourcePath, JSON_EXTENSION));
                     return userDAO.retrieve(sourceURL.baseId())
                         .flatMap(owner -> cardDavClient.fetchAddressBookMetadata(owner.username(), sourceURL)
-                            .map(source -> new NotificationData(owner.fullName(), source.path(ADDRESS_BOOK_NAME_PROPERTY).asText(), recipient)));
+                            .map(source -> new NotificationData(owner.username(), owner.fullName(), source.path(ADDRESS_BOOK_NAME_PROPERTY).asText(), recipient)));
                 }));
     }
 
@@ -146,11 +140,11 @@ public class DelegatedAddressBookNotificationHandler {
         Username recipient = data.recipient().username();
         return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(settings.locale()), MAIL_TEMPLATE))
             .subscribeOn(Schedulers.boundedElastic())
-            .flatMap(generator -> Mono.fromCallable(() -> data.toPugModel(contactsBaseUrl, generator.getI18nTranslator()))
-                .flatMap(model -> generator.generate(recipient, senderAddress, model, List.of(logoAttachment))));
+            .flatMap(generator -> Mono.fromCallable(() -> data.toPugModel(contactsBaseUrl.resolve(data.owner()).toURI(), generator.getI18nTranslator()))
+                .flatMap(model -> generator.generate(recipient, templateConfiguration.senderAddress(data.owner()), model, List.of(logoAttachment))));
     }
 
-    private record NotificationData(String ownerName, String addressBookName, OpenPaaSUser recipient) {
+    private record NotificationData(Username owner, String ownerName, String addressBookName, OpenPaaSUser recipient) {
         Map<String, Object> toPugModel(URI contactsBaseUrl, I18NTranslator translator) throws IOException {
             String displayName = StringUtils.isBlank(addressBookName) || DEFAULT_ADDRESS_BOOK_DAV_NAME.equals(addressBookName)
                 ? SubjectRenderer.of(translator.get(DEFAULT_ADDRESS_BOOK_NAME_KEY)).render(Map.of("delegatorName", ownerName))

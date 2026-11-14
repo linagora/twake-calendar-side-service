@@ -144,6 +144,16 @@ public class EventMailHandler {
         this.mailDeliveryFailureNotifier = mailDeliveryFailureNotifier;
     }
 
+    /**
+     * The calendar links of an event mail point to the calendar of the domain of the organizer.
+     */
+    private EventInCalendarLinkFactory eventInCalendarLinkFactoryFor(CalendarEventNotificationEmail event) {
+        MailAddress organizer = EventParseUtils.getOrganizer(event.getFirstVEvent())
+            .map(EventFields.Person::email)
+            .orElse(event.senderEmail());
+        return eventInCalendarLinkFactory.forDomain(organizer.getDomain());
+    }
+
     interface EventMessageGenerator {
         Mono<Message> generate(ResolvedSettings resolvedSettings);
 
@@ -202,7 +212,7 @@ public class EventMailHandler {
             MailAddress fromAddress = event.base().senderEmail();
 
             return EventMessageGenerator.generateActionLinks(participationActionLinkFactory, event.base())
-                .map(actionLinks -> event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser, actionLinks))
+                .map(actionLinks -> event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactoryFor(event.base()), isInternalUser, actionLinks))
                 .flatMap(scopedVariable -> messageGenerator.generate(recipientUser, fromAddress, scopedVariable, attachments));
         }
     }
@@ -232,7 +242,7 @@ public class EventMailHandler {
             MailAddress fromAddress = event.base().senderEmail();
 
             return EventMessageGenerator.generateActionLinks(participationActionLinkFactory, event.base())
-                .map(actionLinks -> event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser, actionLinks))
+                .map(actionLinks -> event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactoryFor(event.base()), isInternalUser, actionLinks))
                 .flatMap(scopedVariable -> messageGenerator.generate(recipientUser, fromAddress, scopedVariable, attachments));
         }
     }
@@ -269,10 +279,10 @@ public class EventMailHandler {
 
         private Map<String, Object> toPugModel(ResolvedSettings resolvedSettings) {
             if (publiclyCreated()) {
-                return event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser,
+                return event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactoryFor(event.base()), isInternalUser,
                     booker(), canceler(), !DISPLAY_FORWARD_WARNING);
             }
-            return event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactory, isInternalUser);
+            return event.toPugModel(resolvedSettings.locale(), resolvedSettings.zoneId(), eventInCalendarLinkFactoryFor(event.base()), isInternalUser);
         }
 
         private PersonModel booker() {
@@ -335,7 +345,7 @@ public class EventMailHandler {
                 .locale(resolvedSettings.locale())
                 .timeZoneDisplay(resolvedSettings.zoneId())
                 .translator(messageGenerator.getI18nTranslator())
-                .eventInCalendarLink(eventInCalendarLinkFactory);
+                .eventInCalendarLink(eventInCalendarLinkFactoryFor(event.base()));
 
             List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(event.base().event(), ImmutableMethod.REPLY);
 
@@ -376,7 +386,7 @@ public class EventMailHandler {
                 .locale(resolvedSettings.locale())
                 .zoneToDisplay(resolvedSettings.zoneId())
                 .translator(messageGenerator.getI18nTranslator())
-                .eventInCalendarLink(eventInCalendarLinkFactory)
+                .eventInCalendarLink(eventInCalendarLinkFactoryFor(event.base()))
                 .buildAsMap();
 
             List<MimeAttachment> attachments = EventMessageGenerator.createAttachments(event.base().event(), ImmutableMethod.COUNTER);

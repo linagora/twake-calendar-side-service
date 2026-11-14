@@ -63,7 +63,6 @@ public class BookingLinkRequestAcknowledgementNotifier {
     private final MailTemplateConfiguration templateConfiguration;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final MailSender.Factory mailSenderFactory;
-    private final MailAddress fromMailAddress;
     private final Scheduler mailScheduler;
     private final BookedEventLinkFactory bookedEventLinkFactory;
 
@@ -78,8 +77,6 @@ public class BookingLinkRequestAcknowledgementNotifier {
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.mailSenderFactory = mailSenderFactory;
         this.bookedEventLinkFactory = bookedEventLinkFactory;
-        this.fromMailAddress = templateConfiguration.sender().asOptional()
-            .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
         this.mailScheduler = Schedulers.newBoundedElastic(1, DEFAULT_BOUNDED_ELASTIC_QUEUESIZE,
             "bookingLinkAcknowledgementMailScheduler");
     }
@@ -103,9 +100,9 @@ public class BookingLinkRequestAcknowledgementNotifier {
     private Mono<Mail> generateMail(ResolvedSettings settings, BookingCreated bookingCreated, MailAddress recipient) {
         return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(
                 new Language(settings.locale()), EVENT_BOOKING_REQUEST_RECEIVED_TEMPLATE))
-            .flatMap(messageGenerator -> bookedEventLinkFactory.generateLink(bookingCreated.bookedEvent())
+            .flatMap(messageGenerator -> bookedEventLinkFactory.generateLink(bookingCreated.bookedEvent(), bookingCreated.organizer().username())
                 .flatMap(reservationLink -> generateMessage(settings, bookingCreated, reservationLink, recipient, messageGenerator)))
-            .map(message -> new Mail(templateConfiguration.sender(), List.of(recipient), message));
+            .map(message -> new Mail(templateConfiguration.sender(bookingCreated.organizer().username()), List.of(recipient), message));
     }
 
     private Mono<Message> generateMessage(ResolvedSettings settings,
@@ -114,7 +111,7 @@ public class BookingLinkRequestAcknowledgementNotifier {
                                           MailAddress recipient,
                                           MessageGenerator messageGenerator) {
         return Mono.fromCallable(() -> AsciiMailAddress.toInternetAddress(recipient))
-            .flatMap(recipientAddress -> Mono.fromCallable(() -> AsciiMailAddress.toInternetAddress(fromMailAddress))
+            .flatMap(recipientAddress -> Mono.fromCallable(() -> AsciiMailAddress.toInternetAddress(templateConfiguration.senderAddress(bookingCreated.organizer().username())))
                 .flatMap(fromAddress -> messageGenerator.generate(recipientAddress, fromAddress,
                     PugModel.toPugModel(bookingCreated, reservationLink, settings.locale(), settings.zoneId()), List.of())));
     }

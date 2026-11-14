@@ -64,7 +64,6 @@ public class MailDeliveryFailureNotifier {
     private final MailTemplateConfiguration templateConfiguration;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final MailSender.Factory mailSenderFactory;
-    private final MailAddress fromMailAddress;
     private final MimeAttachment logoAttachment;
 
     @Inject
@@ -77,8 +76,6 @@ public class MailDeliveryFailureNotifier {
         this.templateConfiguration = templateConfiguration;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.mailSenderFactory = mailSenderFactory;
-        this.fromMailAddress = templateConfiguration.sender().asOptional()
-            .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
         this.logoAttachment = MimeAttachment.builder()
             .contentType(ContentType.of("image/png"))
             .cid(Cid.from("logo"))
@@ -121,9 +118,9 @@ public class MailDeliveryFailureNotifier {
     private Mono<Mail> generateMail(String recipient, String failedSubject, MailAddress organizer,
                                     Username organizerUser, ResolvedSettings settings) {
         return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(settings.locale()), TEMPLATE))
-            .flatMap(generator -> generator.generate(organizerUser, fromMailAddress,
+            .flatMap(generator -> generator.generate(organizerUser, templateConfiguration.senderAddress(organizerUser),
                 toPugModel(recipient, failedSubject), List.of(logoAttachment)))
-            .map(message -> new Mail(templateConfiguration.sender(), List.of(organizer), message))
+            .map(message -> new Mail(templateConfiguration.sender(organizerUser), List.of(organizer), message))
             .subscribeOn(Schedulers.boundedElastic());
     }
 

@@ -21,7 +21,6 @@ package com.linagora.calendar.amqp;
 import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
 import static com.linagora.calendar.storage.event.EventParseUtils.DuplicateAttendeePolicy.KEEP_FIRST;
 
-import java.net.URL;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -35,14 +34,15 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
-import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.ResourceService;
@@ -106,9 +106,8 @@ public class EventResourceHandler {
     private final OpenPaaSDomainDAO domainDAO;
     private final SettingsBasedResolver settingsResolver;
     private final EventEmailFilter eventEmailFilter;
-    private final MaybeSender maybeSender;
-    private final MailAddress senderAddress;
-    private final String resourceReplyURL;
+    private final MailTemplateConfiguration mailTemplateConfiguration;
+    private final DomainUrl calendarBaseUrl;
     private final JwtSigner jwtSigner;
     private final CalDavEventRepository calDavEventRepository;
 
@@ -120,7 +119,7 @@ public class EventResourceHandler {
                                 @Named("language_timezone") SettingsBasedResolver settingsResolver,
                                 EventEmailFilter eventEmailFilter,
                                 MailTemplateConfiguration mailTemplateConfiguration,
-                                @Named("selfUrl") URL calendarBaseUrl,
+                                @Named("selfUrl") DomainUrl calendarBaseUrl,
                                 JwtSigner jwtSigner, CalDavEventRepository calDavEventRepository) {
         this.resourceService = resourceService;
         this.mailSenderFactory = mailSenderFactory;
@@ -128,11 +127,9 @@ public class EventResourceHandler {
         this.domainDAO = domainDAO;
         this.settingsResolver = settingsResolver;
         this.eventEmailFilter = eventEmailFilter;
-        this.maybeSender = mailTemplateConfiguration.sender();
+        this.mailTemplateConfiguration = mailTemplateConfiguration;
         this.calDavEventRepository = calDavEventRepository;
-        this.senderAddress = maybeSender.asOptional()
-            .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
-        this.resourceReplyURL = calendarBaseUrl.toString() + RESOURCE_REPLY_URI;
+        this.calendarBaseUrl = calendarBaseUrl;
         this.jwtSigner = jwtSigner;
     }
 
@@ -214,9 +211,11 @@ public class EventResourceHandler {
     }
 
     private Mono<Void> sendRequestMail(CalendarResourceMessageDTO calendarResourceMessageDTO, String resourceName, MailAddress recipient) {
+        Domain organizerDomain = getOrganizerEmail(calendarResourceMessageDTO).orElse(recipient).getDomain();
         return sendMail((SettingsBasedResolver.ResolvedSettings settings, I18NTranslator translator) ->
-                toPugModel(calendarResourceMessageDTO, resourceName, settings.locale(), settings.zoneId()),
+                toPugModel(calendarResourceMessageDTO, resourceName, settings.locale(), settings.zoneId(), organizerDomain),
             recipient,
+            organizerDomain,
             RESOURCE_REQUEST_TEMPLATE_TYPE);
     }
 
@@ -224,11 +223,13 @@ public class EventResourceHandler {
         return sendMail((SettingsBasedResolver.ResolvedSettings settings, I18NTranslator translator) ->
                 Mono.just(toPugModel(calendarResourceMessageDTO, resourceName, settings.locale(), settings.zoneId(), approved, translator)),
             recipient,
+            recipient.getDomain(),
             RESOURCE_REPLY_TEMPLATE_TYPE);
     }
 
     private Mono<Void> sendMail(BiFunction<SettingsBasedResolver.ResolvedSettings, I18NTranslator, Mono<Map<String, Object>>> modelGenerator,
                                 MailAddress recipient,
+                                Domain organizerDomain,
                                 TemplateType templateType) {
         Username recipientUser = Username.fromMailAddress(recipient);
         return getUserSettings(recipientUser)
@@ -237,15 +238,16 @@ public class EventResourceHandler {
                     .subscribeOn(Schedulers.boundedElastic())
                     .flatMap(messageGenerator ->
                         modelGenerator.apply(resolvedSettings, messageGenerator.getI18nTranslator())
-                            .flatMap(model -> sendMessage(recipientUser, recipient, messageGenerator, model))));
+                            .flatMap(model -> sendMessage(recipientUser, recipient, organizerDomain, messageGenerator, model))));
     }
 
     private Mono<Void> sendMessage(Username recipientUser,
                                    MailAddress recipient,
+                                   Domain organizerDomain,
                                    MessageGenerator messageGenerator,
                                    Map<String, Object> model) {
-        return messageGenerator.generate(recipientUser, senderAddress, model, List.of())
-            .flatMap(message -> mailSenderFactory.send(new Mail(maybeSender, List.of(recipient), message)));
+        return messageGenerator.generate(recipientUser, mailTemplateConfiguration.senderAddress(organizerDomain), model, List.of())
+            .flatMap(message -> mailSenderFactory.send(new Mail(mailTemplateConfiguration.sender(organizerDomain), List.of(recipient), message)));
     }
 
     private Mono<SettingsBasedResolver.ResolvedSettings> getUserSettings(Username user) {
@@ -262,13 +264,14 @@ public class EventResourceHandler {
     private Mono<Map<String, Object>> toPugModel(CalendarResourceMessageDTO calendarResourceMessageDTO,
                                                         String resourceName,
                                                         Locale locale,
-                                                        ZoneId zoneToDisplay) {
+                                                        ZoneId zoneToDisplay,
+                                                        Domain organizerDomain) {
         String resourceId = calendarResourceMessageDTO.resourceId();
         String eventId = calendarResourceMessageDTO.eventId();
 
         return signAsJwt(resourceId, eventId)
             .map(jwt -> {
-                String baseLink = resourceReplyURL
+                String baseLink = (calendarBaseUrl.resolve(organizerDomain).toString() + RESOURCE_REPLY_URI)
                     .replace(PLACEHOLDER_RESOURCE_ID, resourceId)
                     .replace(PLACEHOLDER_EVENT_ID, eventId)
                     .replace(PLACEHOLDER_JWT, jwt);
