@@ -318,6 +318,7 @@ public class CalDavEventRepositoryTest {
                         ["dtend", { "tzid": "Asia/Ho_Chi_Minh" }, "date-time", "${json-unit.any-string}"],
                         ["summary", {}, "text", "Modified Instance"],
                         ["organizer", { "cn": "Van Tung TRAN" }, "cal-address", "mailto:%s"],
+                        ["sequence", {}, "integer", 1],
                         ["attendee", { "partstat": "ACCEPTED", "cn": "Benoît TELLIER" }, "cal-address", "mailto:%s"]
                       ],
                       []
