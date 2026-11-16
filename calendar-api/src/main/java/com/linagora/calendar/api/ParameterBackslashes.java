@@ -62,10 +62,14 @@ final class ParameterBackslashes {
 
     private static String rewriteLine(String line) {
         int nameEnd = indexOfAny(line, 0, PARAMETER_SEPARATOR, VALUE_SEPARATOR);
-        if (nameEnd < 0 || line.charAt(nameEnd) != PARAMETER_SEPARATOR || line.indexOf(BACKSLASH) < 0) {
+        if (!hasParameters(line, nameEnd) || line.indexOf(BACKSLASH) < 0) {
             return line;
         }
         return rewriteParameters(line, nameEnd).orElse(line);
+    }
+
+    private static boolean hasParameters(String line, int nameEnd) {
+        return nameEnd >= 0 && line.charAt(nameEnd) == PARAMETER_SEPARATOR;
     }
 
     private static Optional<String> rewriteParameters(String line, int nameEnd) {
