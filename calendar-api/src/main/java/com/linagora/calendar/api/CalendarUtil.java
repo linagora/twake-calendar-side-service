@@ -65,7 +65,6 @@ import net.fortuna.ical4j.model.ComponentBuilder;
 import net.fortuna.ical4j.model.ComponentContainer;
 import net.fortuna.ical4j.model.ComponentFactory;
 import net.fortuna.ical4j.model.ComponentList;
-import net.fortuna.ical4j.model.Encodable;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyFactory;
 import net.fortuna.ical4j.model.PropertyList;
@@ -314,6 +313,8 @@ public class CalendarUtil {
      * The ical4j content handler, except for VTIMEZONEs: ical4j builds their {@link TimeZone} before handing it to the
      * registry, and that construction may expand observances without bound. They are handed over as definitions to
      * {@link CustomizedTimeZoneRegistry#register(VTimeZone)}, which checks them first.
+     *
+     * <p>Properties are built by a {@link TextDecodingPropertyBuilder}, which decodes TEXT values as RFC 5545 requires.
      */
     private static class TimeZoneCheckingContentHandler extends DefaultContentHandler {
         private final CustomizedTimeZoneRegistry tzRegistry;
@@ -321,6 +322,16 @@ public class CalendarUtil {
         TimeZoneCheckingContentHandler(Consumer<Calendar> consumer, CustomizedTimeZoneRegistry tzRegistry, ContentHandlerContext context) {
             super(consumer, tzRegistry, context);
             this.tzRegistry = tzRegistry;
+        }
+
+        @Override
+        public void startProperty(String name) {
+            super.startProperty(name);
+            if (propertyBuilder != null) {
+                propertyBuilder = new TextDecodingPropertyBuilder(propertyFactories())
+                    .name(name)
+                    .timeZoneRegistry(tzRegistry);
+            }
         }
 
         @Override
@@ -335,27 +346,6 @@ public class CalendarUtil {
             calendarComponents.add(component);
             if (component instanceof VTimeZone vTimeZone) {
                 tzRegistry.register(vTimeZone);
-            }
-        }
-
-        /**
-         * Hands TEXT values whose line break escapes ical4j would misread over with these escapes already decoded:
-         * see {@link TextNewlineEscapes}. The parameters of a property being parsed before its value, the property
-         * built so far tells whether ical4j decodes its value.
-         */
-        @Override
-        public void propertyValue(String value) {
-            super.propertyValue(value);
-            if (TextNewlineEscapes.misreadByIcal4j(value) && isDecodedByIcal4j()) {
-                super.propertyValue(TextNewlineEscapes.decodeLineBreaks(value));
-            }
-        }
-
-        private boolean isDecodedByIcal4j() {
-            try {
-                return propertyBuilder.build() instanceof Encodable;
-            } catch (Exception e) {
-                return false;
             }
         }
     }
