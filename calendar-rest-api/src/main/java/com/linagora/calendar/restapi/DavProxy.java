@@ -36,11 +36,13 @@ import com.linagora.calendar.storage.TechnicalTokenService;
 
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpStatusClass;
+import io.netty.handler.timeout.ReadTimeoutException;
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufFlux;
 import reactor.netty.NettyOutbound;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.http.client.HttpClientResponse;
+import reactor.netty.http.client.PrematureCloseException;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
@@ -60,7 +62,7 @@ public class DavProxy extends DavClient {
     }
 
     public Mono<Void> forwardRequest(HttpServerRequest request, HttpServerResponse response) {
-        LOGGER.info("Proxying DAV request {} {}", request.method(), request.uri());
+        LOGGER.debug("Proxying DAV request {} {}", request.method(), request.uri());
         return request.receive().aggregate().asByteArray()
             .switchIfEmpty(Mono.just("".getBytes()))
             .flatMap(payload -> authenticator.authenticate(request)
@@ -85,7 +87,26 @@ public class DavProxy extends DavClient {
                                 .send((req, out) -> out.sendByteArray(Mono.just(payload)))
                                 .response((res, in) -> handleSabreResponse(response, request, res, in))))
                         .then()
-                        .onErrorMap(DavServiceUnavailableException::new)));
+                        .doOnError(error -> logUpstreamFailure(request, error))
+                        .onErrorMap(DavProxy::asProxyError)));
+    }
+
+    private static void logUpstreamFailure(HttpServerRequest request, Throwable error) {
+        MDCStructuredLogger.forLogger(LOGGER)
+            .field("method", request.method().name())
+            .field("url", request.uri())
+            .field("exception", error.getClass().getName())
+            .log(logger -> logger.warn("Failure upon proxied DAV request {} {}: {}", request.method(), request.uri(), error.getClass().getName(), error));
+    }
+
+    private static RuntimeException asProxyError(Throwable error) {
+        if (error instanceof ReadTimeoutException) {
+            return new DavGatewayTimeoutException(error);
+        }
+        if (error instanceof PrematureCloseException) {
+            return new DavServiceUnavailableException("DAV upstream service closed the connection prematurely", error);
+        }
+        return new DavServiceUnavailableException(error);
     }
 
     private static NettyOutbound handleSabreResponse(HttpServerResponse response, HttpServerRequest req, HttpClientResponse res, ByteBufFlux in) {
