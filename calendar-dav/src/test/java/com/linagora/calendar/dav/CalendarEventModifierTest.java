@@ -40,6 +40,8 @@ import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalendarEventUpdatePatch.AttendeePartStatusUpdatePatch;
 
 import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import net.fortuna.ical4j.model.property.Attendee;
@@ -408,5 +410,47 @@ public class CalendarEventModifierTest {
             .of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED))
             .apply(calendar))
             .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void shouldKeepBackslashesOfParameterValues() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Sabre//Sabre VObject 4.2.2//EN
+            BEGIN:VEVENT
+            UID:rsvp-backslash@example.com
+            DTSTAMP:20251001T080000Z
+            DTSTART:20251020T100000Z
+            DURATION:PT1H
+            SUMMARY:Weekly
+            ORGANIZER;CN=Org:mailto:organizer@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=CORP\\Zoé Martin:mailto:zoe@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION;ROLE=X-CHAIR\\:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("\n", "\r\n"));
+
+        Calendar updated = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("zoe@example.com", PartStat.DECLINED))
+            .apply(calendar);
+        Calendar updatedBob = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED))
+            .apply(updated);
+        Calendar reread = CalendarUtil.parseIcs(updatedBob.toString());
+
+        VEvent event = (VEvent) reread.getComponent(Component.VEVENT).get();
+        Attendee zoe = attendee(event, "mailto:zoe@example.com");
+        Attendee bob = attendee(event, "mailto:bob@example.com");
+
+        assertThat(zoe.getParameter(Parameter.CN).get().getValue()).isEqualTo("CORP\\Zoé Martin");
+        assertThat(zoe.getParameter(Parameter.PARTSTAT).get().getValue()).isEqualTo("DECLINED");
+        assertThat(bob.getParameter(Parameter.ROLE).get().getValue()).isEqualTo("X-CHAIR\\");
+        assertThat(bob.getParameter(Parameter.PARTSTAT).get().getValue()).isEqualTo("ACCEPTED");
+    }
+
+    private static Attendee attendee(VEvent event, String calAddress) {
+        return event.getAttendees().stream()
+            .filter(attendee -> attendee.getCalAddress().toASCIIString().equals(calAddress))
+            .findFirst()
+            .get();
     }
 }
