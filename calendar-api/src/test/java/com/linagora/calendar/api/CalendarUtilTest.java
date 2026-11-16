@@ -933,6 +933,20 @@ class CalendarUtilTest {
     }
 
     @Test
+    void parseIcsShouldDecodeTextEscapesInASinglePass() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty("DESCRIPTION:a\\\\\\,b\\;c\\\\;d\\\"e\\xf\\\\\\\\g\\nh"));
+
+        assertThat(firstEventProperty(calendar, Property.DESCRIPTION).getValue()).isEqualTo("a\\,b;c\\;d\"e\\xf\\\\g\nh");
+    }
+
+    @Test
+    void parseIcsShouldKeepATrailingBackslashOfATextValue() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty("DESCRIPTION:a\\nb\\"));
+
+        assertThat(firstEventProperty(calendar, Property.DESCRIPTION).getValue()).isEqualTo("a\nb\\");
+    }
+
+    @Test
     void copyOfShouldKeepBackslashesOfParameterValues() {
         Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty("X-FOO;TYPE=\"€uro\\\\N\";CN=\"a\\^nb\":bar"));
 
