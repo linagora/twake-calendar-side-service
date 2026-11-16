@@ -20,6 +20,8 @@ package com.linagora.calendar.amqp;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.util.List;
 import java.util.Map;
 
@@ -35,7 +37,6 @@ import org.apache.james.mime4j.dom.Message;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.amqp.AddressBookDelegatedNotificationConsumer.AddressBookDelegatedCreatedMessage;
-import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.Mail;
@@ -77,7 +78,7 @@ public class DelegatedAddressBookNotificationHandler {
     private final MailTemplateConfiguration templateConfiguration;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventEmailFilter eventEmailFilter;
-    private final DomainUrl contactsBaseUrl;
+    private final URI contactsBaseUrl;
     private final MimeAttachment logoAttachment;
 
     @Inject
@@ -88,8 +89,8 @@ public class DelegatedAddressBookNotificationHandler {
                                                    MailTemplateConfiguration templateConfiguration,
                                                    MessageGenerator.Factory messageGeneratorFactory,
                                                    EventEmailFilter eventEmailFilter,
-                                                   @Named("spaContactsUrl") DomainUrl contactsBaseUrl,
-                                                   @Named("contacts-logo") byte[] contactsLogo) {
+                                                   @Named("spaContactsUrl") URL contactsBaseUrl,
+                                                   @Named("contacts-logo") byte[] contactsLogo) throws URISyntaxException {
         this.userDAO = userDAO;
         this.cardDavClient = cardDavClient;
         this.settingsResolver = settingsResolver;
@@ -97,7 +98,7 @@ public class DelegatedAddressBookNotificationHandler {
         this.templateConfiguration = templateConfiguration;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.eventEmailFilter = eventEmailFilter;
-        this.contactsBaseUrl = contactsBaseUrl;
+        this.contactsBaseUrl = contactsBaseUrl.toURI();
         this.logoAttachment = MimeAttachment.builder()
             .contentType(ContentType.of(LOGO_CONTENT_TYPE))
             .cid(Cid.from(LOGO_CONTENT_ID))
@@ -140,7 +141,7 @@ public class DelegatedAddressBookNotificationHandler {
         Username recipient = data.recipient().username();
         return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(settings.locale()), MAIL_TEMPLATE))
             .subscribeOn(Schedulers.boundedElastic())
-            .flatMap(generator -> Mono.fromCallable(() -> data.toPugModel(contactsBaseUrl.resolve(data.owner()).toURI(), generator.getI18nTranslator()))
+            .flatMap(generator -> Mono.fromCallable(() -> data.toPugModel(contactsBaseUrl, generator.getI18nTranslator()))
                 .flatMap(model -> generator.generate(recipient, templateConfiguration.senderAddress(data.owner()), model, List.of(logoAttachment))));
     }
 

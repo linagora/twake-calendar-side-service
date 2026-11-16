@@ -110,7 +110,7 @@ public class PublicAgendaProposalNotifier {
         Username organizer = bookingCreated.organizer().username();
         return messageGenerator.generate(organizer,
             templateConfiguration.senderAddress(organizer),
-            PugModel.toPugModel(bookingCreated, actionLinks, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory.forUser(organizer)))
+            PugModel.toPugModel(bookingCreated, actionLinks, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory))
             .map(message -> {
                 message.getHeader().addField(Fields.replyTo(bookingCreated.request().creator().asMailbox()));
                 return message;

@@ -28,15 +28,15 @@ import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 
 import com.google.common.base.Preconditions;
-import com.linagora.calendar.api.DomainUrl;
 
 /**
  * @param senderTemplate the sender of the notification mails. It may contain the
- *                       {@value DomainUrl#DOMAIN_PLACEHOLDER} placeholder, e.g. {@code no-reply@{domain}}, replaced by
+ *                       {@value #DOMAIN_PLACEHOLDER} placeholder, e.g. {@code no-reply@{domain}}, replaced by
  *                       the domain of the user the mail is about.
  */
 public record MailTemplateConfiguration(String templateLocationPath,
                                         String senderTemplate) {
+    public static final String DOMAIN_PLACEHOLDER = "{domain}";
     private static final String TEMPLATE_LOCATION = "mail.template.location";
     private static final String SENDER = "mail.sender";
     private static final Domain SAMPLE_DOMAIN = Domain.of("example.com");
@@ -52,7 +52,7 @@ public record MailTemplateConfiguration(String templateLocationPath,
 
     public MailTemplateConfiguration {
         Preconditions.checkNotNull(senderTemplate, "'senderTemplate' must not be null");
-        if (senderTemplate.contains(DomainUrl.DOMAIN_PLACEHOLDER)) {
+        if (senderTemplate.contains(DOMAIN_PLACEHOLDER)) {
             Preconditions.checkArgument(!resolve(senderTemplate, SAMPLE_DOMAIN).isNullSender(),
                 "'%s' is not a valid sender template", senderTemplate);
         }
@@ -63,11 +63,11 @@ public record MailTemplateConfiguration(String templateLocationPath,
     }
 
     private static MaybeSender resolve(String senderTemplate, Domain domain) {
-        return MaybeSender.getMailSender(senderTemplate.replace(DomainUrl.DOMAIN_PLACEHOLDER, domain.asString()));
+        return MaybeSender.getMailSender(senderTemplate.replace(DOMAIN_PLACEHOLDER, domain.asString()));
     }
 
     public boolean isSenderPerDomain() {
-        return senderTemplate.contains(DomainUrl.DOMAIN_PLACEHOLDER);
+        return senderTemplate.contains(DOMAIN_PLACEHOLDER);
     }
 
     /**
@@ -75,7 +75,7 @@ public record MailTemplateConfiguration(String templateLocationPath,
      */
     public MaybeSender sender() {
         Preconditions.checkState(!isSenderPerDomain(),
-            "Sender '%s' contains %s and must be resolved against a domain", senderTemplate, DomainUrl.DOMAIN_PLACEHOLDER);
+            "Sender '%s' contains %s and must be resolved against a domain", senderTemplate, DOMAIN_PLACEHOLDER);
         return MaybeSender.getMailSender(senderTemplate);
     }
 

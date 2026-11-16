@@ -81,7 +81,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.EventEmailFilter;
-import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavEventRepository;
@@ -253,7 +252,7 @@ public class EventResourceConsumerTest {
             settingsResolver,
             eventEmailFilter,
             mailTemplateConfig,
-            DomainUrl.of(URI.create("https://calendar.linagora.local").toURL()),
+            URI.create("https://calendar.linagora.local").toURL(),
             jwtSigner,
             calDavEventRepository);
 

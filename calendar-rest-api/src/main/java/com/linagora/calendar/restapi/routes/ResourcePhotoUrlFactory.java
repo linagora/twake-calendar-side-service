@@ -20,21 +20,20 @@ package com.linagora.calendar.restapi.routes;
 
 import java.net.URI;
 import java.net.URL;
+import java.util.function.Function;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
-import org.apache.james.core.Username;
 
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Preconditions;
-import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 
 public class ResourcePhotoUrlFactory {
-    private final DomainUrl baseUrl;
+    private final Function<String, URI> buildURLFunction;
     private static final CharMatcher ALLOWED_ICON_CHARS = CharMatcher.inRange('a', 'z')
         .or(CharMatcher.inRange('A', 'Z'))
         .or(CharMatcher.inRange('0', '9'))
@@ -48,16 +47,13 @@ public class ResourcePhotoUrlFactory {
     }
 
     public ResourcePhotoUrlFactory(URL baseUrl) {
-        this(DomainUrl.of(baseUrl));
+        this.buildURLFunction = resourceIconName
+            -> URI.create(Strings.CI.removeEnd(baseUrl.toString(), "/") + "/images/icon/" + resourceIconName + ".svg");
     }
 
-    public ResourcePhotoUrlFactory(DomainUrl baseUrl) {
-        this.baseUrl = baseUrl;
-    }
-
-    public URI resolveURL(String iconName, Username user) {
+    public URI resolveURL(String iconName) {
         Preconditions.checkArgument(StringUtils.isNotBlank(iconName) && ALLOWED_ICON_CHARS.matchesAllOf(iconName),
             "iconName must contain only alphanumeric, hyphen, or underscore characters");
-        return URI.create(Strings.CI.removeEnd(baseUrl.resolve(user).toString(), "/") + "/images/icon/" + iconName + ".svg");
+        return buildURLFunction.apply(iconName);
     }
 }

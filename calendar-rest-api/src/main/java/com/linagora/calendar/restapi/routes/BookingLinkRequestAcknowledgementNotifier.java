@@ -100,7 +100,7 @@ public class BookingLinkRequestAcknowledgementNotifier {
     private Mono<Mail> generateMail(ResolvedSettings settings, BookingCreated bookingCreated, MailAddress recipient) {
         return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(
                 new Language(settings.locale()), EVENT_BOOKING_REQUEST_RECEIVED_TEMPLATE))
-            .flatMap(messageGenerator -> bookedEventLinkFactory.generateLink(bookingCreated.bookedEvent(), bookingCreated.organizer().username())
+            .flatMap(messageGenerator -> bookedEventLinkFactory.generateLink(bookingCreated.bookedEvent())
                 .flatMap(reservationLink -> generateMessage(settings, bookingCreated, reservationLink, recipient, messageGenerator)))
             .map(message -> new Mail(templateConfiguration.sender(bookingCreated.organizer().username()), List.of(recipient), message));
     }

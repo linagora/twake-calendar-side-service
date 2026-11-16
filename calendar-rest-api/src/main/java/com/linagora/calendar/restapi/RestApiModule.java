@@ -20,6 +20,7 @@ package com.linagora.calendar.restapi;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -59,7 +60,6 @@ import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.OptionalBinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.linagora.calendar.api.BookedEventTokenSigner;
-import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.api.JwtSigner;
 import com.linagora.calendar.api.JwtVerifier;
 import com.linagora.calendar.api.MeetingConferenceLinkGenerator;
@@ -338,35 +338,35 @@ public class RestApiModule extends AbstractModule {
     @Provides
     @Singleton
     @Named("spaCalendarUrl")
-    DomainUrl provideSpaCalendarUrl(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+    URL provideSpaCalendarUrl(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
         return getURLFromConfiguration(propertiesProvider, "spa.calendar.url");
     }
 
     @Provides
     @Singleton
     @Named("spaContactsUrl")
-    DomainUrl provideSpaContactsUrl(RestApiConfiguration configuration) {
+    URL provideSpaContactsUrl(RestApiConfiguration configuration) {
         return configuration.getContactSpaUrl();
     }
 
     @Provides
     @Singleton
     @Named("spaExcalUrl")
-    DomainUrl provideSpaExcalUrl(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
+    URL provideSpaExcalUrl(PropertiesProvider propertiesProvider) throws ConfigurationException, FileNotFoundException {
         return getURLFromConfiguration(propertiesProvider, "spa.excal.url");
     }
 
     @Provides
     @Singleton
     @Named("selfUrl")
-    DomainUrl provideSelfUrl(RestApiConfiguration restApiConfiguration) {
+    URL provideSelfUrl(RestApiConfiguration restApiConfiguration) {
         return restApiConfiguration.getSelfUrl();
     }
 
-    private DomainUrl getURLFromConfiguration(PropertiesProvider propertiesProvider, String propertyName) throws ConfigurationException, FileNotFoundException {
+    private URL getURLFromConfiguration(PropertiesProvider propertiesProvider, String propertyName) throws ConfigurationException, FileNotFoundException {
         Configuration config = propertiesProvider.getConfiguration("configuration");
         return Optional.ofNullable(config.getString(propertyName))
-            .map(DomainUrl::parse)
+            .map(Throwing.function(url -> URI.create(url).toURL()))
             .orElseThrow(() -> new FileNotFoundException(
                 "Missing configuration for '" + propertyName + "'"));
     }

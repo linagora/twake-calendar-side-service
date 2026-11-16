@@ -20,6 +20,7 @@ package com.linagora.calendar.api;
 
 import java.net.URI;
 import java.net.URL;
+import java.util.function.Function;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -41,25 +42,20 @@ public class EventParticipationActionLinkFactory {
     }
 
     private final ParticipationTokenSigner participationTokenSigner;
-    private final DomainUrl spaExcalUrl;
+    private final Function<String, URI> buildParticipationActionLinkFunction;
 
     @Inject
     @Singleton
     public EventParticipationActionLinkFactory(@Named("participationActionLinks") JwtSigner jwtSigner,
                                                JwtVerifier jwtVerifier,
-                                               @Named("spaExcalUrl") DomainUrl spaExcalUrl) {
+                                               @Named("spaExcalUrl") URL spaExcalUrl) {
         this(new ParticipationTokenSigner.Default(jwtSigner, jwtVerifier), spaExcalUrl);
     }
 
     public EventParticipationActionLinkFactory(ParticipationTokenSigner participationTokenSigner,
                                                URL spaExcalUrl) {
-        this(participationTokenSigner, DomainUrl.of(spaExcalUrl));
-    }
-
-    public EventParticipationActionLinkFactory(ParticipationTokenSigner participationTokenSigner,
-                                               DomainUrl spaExcalUrl) {
         this.participationTokenSigner = participationTokenSigner;
-        this.spaExcalUrl = spaExcalUrl;
+        this.buildParticipationActionLinkFunction = jwt -> URI.create(Strings.CS.removeEnd(spaExcalUrl.toString(), "/") + "/excal/?jwt=" + jwt);
     }
 
     public Mono<ActionLinks> generateLinks(MailAddress organizer, MailAddress attendee, String eventUid, String calendarURI) {
@@ -79,15 +75,10 @@ public class EventParticipationActionLinkFactory {
                 participationTokenSigner
                     .signAsJwt(maybeParticipation))
             .map(tokens -> {
-                String excalBaseUrl = Strings.CS.removeEnd(spaExcalUrl.resolve(organizer.getDomain()).toString(), "/");
-                URI yesLink = participationActionLink(excalBaseUrl, tokens.getT1());
-                URI noLink = participationActionLink(excalBaseUrl, tokens.getT2());
-                URI maybeLink = participationActionLink(excalBaseUrl, tokens.getT3());
+                URI yesLink = buildParticipationActionLinkFunction.apply(tokens.getT1());
+                URI noLink = buildParticipationActionLinkFunction.apply(tokens.getT2());
+                URI maybeLink = buildParticipationActionLinkFunction.apply(tokens.getT3());
                 return new ActionLinks(yesLink, noLink, maybeLink);
             });
-    }
-
-    private static URI participationActionLink(String excalBaseUrl, String jwt) {
-        return URI.create(excalBaseUrl + "/excal/?jwt=" + jwt);
     }
 }

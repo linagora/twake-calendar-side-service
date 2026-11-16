@@ -20,6 +20,8 @@ package com.linagora.calendar.amqp;
 
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -40,7 +42,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.linagora.calendar.amqp.CalendarDelegatedNotificationConsumer.CalendarDelegatedCreatedMessage;
-import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.Mail;
@@ -86,7 +87,7 @@ public class DelegatedCalendarNotificationHandler {
     private final MailTemplateConfiguration mailTemplateConfiguration;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final EventEmailFilter eventEmailFilter;
-    private final DomainUrl spaCalendarBaseUrl;
+    private final URI spaCalendarBaseUrl;
     private final MimeAttachment logoAttachment;
 
     @Inject
@@ -98,8 +99,8 @@ public class DelegatedCalendarNotificationHandler {
                                                 MailTemplateConfiguration mailTemplateConfiguration,
                                                 MessageGenerator.Factory messageGeneratorFactory,
                                                 EventEmailFilter eventEmailFilter,
-                                                @Named("spaCalendarUrl") DomainUrl calendarBaseUrl,
-                                                @Named("calendar-logo") byte[] calendarLogo) {
+                                                @Named("spaCalendarUrl") URL calendarBaseUrl,
+                                                @Named("calendar-logo") byte[] calendarLogo) throws URISyntaxException {
         this.openPaaSUserDAO = openPaaSUserDAO;
         this.resourceDAO = resourceDAO;
         this.calDavClient = calDavClient;
@@ -108,7 +109,7 @@ public class DelegatedCalendarNotificationHandler {
         this.mailTemplateConfiguration = mailTemplateConfiguration;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.eventEmailFilter = eventEmailFilter;
-        this.spaCalendarBaseUrl = calendarBaseUrl;
+        this.spaCalendarBaseUrl = calendarBaseUrl.toURI();
         this.logoAttachment = MimeAttachment.builder()
             .contentType(ContentType.of("image/png"))
             .cid(Cid.from("logo"))
@@ -119,7 +120,7 @@ public class DelegatedCalendarNotificationHandler {
     }
 
     /**
-     * @param owner the owner of the original calendar, whose domain the mail sender and links are resolved against.
+     * @param owner the owner of the original calendar, whose domain the mail sender is resolved against.
      *              For a resource calendar, the delegated user (the resource administrator).
      */
     public record DelegatedCalendarNotificationData(String delegatorFullName,
@@ -181,7 +182,7 @@ public class DelegatedCalendarNotificationHandler {
             .subscribeOn(Schedulers.boundedElastic())
             .flatMap(messageGenerator -> {
                 Username recipientUser = notificationData.delegatedUser().username();
-                return Mono.fromCallable(() -> notificationData.toPugModel(spaCalendarBaseUrl.resolve(notificationData.owner()).toURI(), messageGenerator.getI18nTranslator()))
+                return Mono.fromCallable(() -> notificationData.toPugModel(spaCalendarBaseUrl, messageGenerator.getI18nTranslator()))
                     .flatMap(pugModel -> messageGenerator.generate(recipientUser, mailTemplateConfiguration.senderAddress(notificationData.owner()), pugModel, List.of(logoAttachment)));
             })
             .onErrorResume(error -> Mono.error(new CalendarDelegatedNotificationHandlerException("Failed to generate delegated calendar notification email", error)));

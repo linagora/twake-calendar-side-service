@@ -45,7 +45,6 @@ import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
-import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.storage.model.Aud;
 
 public class RestApiConfiguration {
@@ -61,10 +60,10 @@ public class RestApiConfiguration {
         private Optional<String> jwtPrivatePath = Optional.empty();
         private Optional<List<String>> jwtPublicPath = Optional.empty();
         private Optional<Duration> jwtValidity = Optional.empty();
-        private Optional<DomainUrl> calendarSpaUrl = Optional.empty();
-        private Optional<DomainUrl> contactSpaUrl = Optional.empty();
+        private Optional<URL> calendarSpaUrl = Optional.empty();
+        private Optional<URL> contactSpaUrl = Optional.empty();
         private Optional<URL> davdURL = Optional.empty();
-        private Optional<DomainUrl> selfURL = Optional.empty();
+        private Optional<URL> selfURL = Optional.empty();
         private Optional<URL> visioURL = Optional.empty();
         private Optional<Boolean> sharingCalendarEnabled = Optional.empty();
         private Optional<Boolean> sharingAddressbookEnabled = Optional.empty();
@@ -125,7 +124,7 @@ public class RestApiConfiguration {
             return this;
         }
 
-        public Builder selfUrl(Optional<DomainUrl> url) {
+        public Builder selfUrl(Optional<URL> url) {
             this.selfURL = url;
             return this;
         }
@@ -135,12 +134,12 @@ public class RestApiConfiguration {
             return this;
         }
 
-        public Builder calendarSpaUrl(Optional<DomainUrl> url) {
+        public Builder calendarSpaUrl(Optional<URL> url) {
             this.calendarSpaUrl = url;
             return this;
         }
 
-        public Builder contactSpaUrl(Optional<DomainUrl> url) {
+        public Builder contactSpaUrl(Optional<URL> url) {
             this.contactSpaUrl = url;
             return this;
         }
@@ -212,9 +211,9 @@ public class RestApiConfiguration {
                 ArrayNode arrayNode = defaultBusinessHours();
 
                 return new RestApiConfiguration(port,
-                    calendarSpaUrl.orElse(DomainUrl.of(URI.create("https://e-calendrier.avocat.fr").toURL())),
-                    contactSpaUrl.orElse(DomainUrl.of(URI.create("https://e-contacts.avocat.fr").toURL())),
-                    selfURL.orElse(DomainUrl.of(URI.create("https://twcalendar.linagora.com").toURL())),
+                    calendarSpaUrl.orElse(URI.create("https://e-calendrier.avocat.fr").toURL()),
+                    contactSpaUrl.orElse(URI.create("https://e-contacts.avocat.fr").toURL()),
+                    selfURL.orElse(URI.create("https://twcalendar.linagora.com").toURL()),
                     davdURL.orElse(URI.create("https://dav.linagora.com").toURL()),
                     visioURL.orElse(URI.create("https://jitsi.linagora.com").toURL()),
                     jwtPrivatePath.orElse("classpath://jwt_privatekey"),
@@ -262,15 +261,13 @@ public class RestApiConfiguration {
     public static RestApiConfiguration parseConfiguration(Configuration configuration) {
         Function<String, Optional<URL>> urlParser = propertyName -> Optional.ofNullable(configuration.getString(propertyName, null))
             .map(Throwing.function(urlAsString -> URI.create(urlAsString).toURL()));
-        Function<String, Optional<DomainUrl>> domainUrlParser = propertyName -> Optional.ofNullable(configuration.getString(propertyName, null))
-            .map(DomainUrl::parse);
 
         Optional<Port> port = Optional.ofNullable(configuration.getInteger("rest.api.port", null))
             .map(Port::of);
-        Optional<DomainUrl> calendarSpaUrl = domainUrlParser.apply("spa.calendar.url");
-        Optional<DomainUrl> contactSpaUrl = domainUrlParser.apply("spa.contacts.url");
+        Optional<URL> calendarSpaUrl = urlParser.apply("spa.calendar.url");
+        Optional<URL> contactSpaUrl = urlParser.apply("spa.contacts.url");
         Optional<URL> davURL = urlParser.apply("dav.url");
-        Optional<DomainUrl> selfURL = domainUrlParser.apply("self.url");
+        Optional<URL> selfURL = urlParser.apply("self.url");
         Optional<URL> visioURL = urlParser.apply("visio.url");
         Optional<String> jwtPrivateKey = Optional.ofNullable(configuration.getString("jwt.key.private", null));
         Optional<List<String>> jwtPublicKey = Optional.ofNullable(configuration.getString("jwt.key.public", null))
@@ -351,9 +348,9 @@ public class RestApiConfiguration {
     }
 
     private final Optional<Port> port;
-    private final DomainUrl calendarSpaUrl;
-    private final DomainUrl contactSpaUrl;
-    private final DomainUrl selfUrl;
+    private final URL calendarSpaUrl;
+    private final URL contactSpaUrl;
+    private final URL selfUrl;
     private final URL davURL;
     private final URL visioURL;
     private final String jwtPrivatePath;
@@ -375,8 +372,8 @@ public class RestApiConfiguration {
     private final String adminPassword;
 
     @VisibleForTesting
-    RestApiConfiguration(Optional<Port> port, DomainUrl calendarSpaUrl,
-                         DomainUrl contactSpaUrl, DomainUrl selfUrl, URL davURL, URL visioURL,
+    RestApiConfiguration(Optional<Port> port, URL calendarSpaUrl,
+                         URL contactSpaUrl, URL selfUrl, URL davURL, URL visioURL,
                          String jwtPrivatePath, List<String> jwtPublicPath, Duration jwtValidity, URL oidcUserInfoUrl, IntrospectionEndpoint introspectionEndpoint,
                          String oidcIntrospectionClaim, List<Aud> aud, boolean calendarSharingENabled, boolean sharingCalendarEnabled,
                          boolean domainMembersAddressbookEnabled, String defaultLanguage, String defaultTimezone, boolean defaultUse24hFormat,
@@ -410,11 +407,11 @@ public class RestApiConfiguration {
         return port;
     }
 
-    public DomainUrl getCalendarSpaUrl() {
+    public URL getCalendarSpaUrl() {
         return calendarSpaUrl;
     }
 
-    public DomainUrl getContactSpaUrl() {
+    public URL getContactSpaUrl() {
         return contactSpaUrl;
     }
 
@@ -442,7 +439,7 @@ public class RestApiConfiguration {
         return davURL;
     }
 
-    public DomainUrl getSelfUrl() {
+    public URL getSelfUrl() {
         return selfUrl;
     }
 

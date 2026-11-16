@@ -35,7 +35,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
-import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.restapi.routes.CrossDomainAccessControl;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute.ObjectType;
@@ -104,12 +103,12 @@ public class ContactSearchProvider implements PeopleSearchProvider {
 
     private final EmailAddressContactSearchEngine contactSearchEngine;
     private final OpenPaaSUserDAO userDAO;
-    private final DomainUrl baseAvatarUrl;
+    private final URL baseAvatarUrl;
     private final DomainSettingsResolver domainSettingsResolver;
     private final CrossDomainAccessControl crossDomainAccessControl;
 
     @Inject
-    public ContactSearchProvider(@Named("selfUrl") DomainUrl baseAvatarUrl,
+    public ContactSearchProvider(@Named("selfUrl") URL baseAvatarUrl,
                                  EmailAddressContactSearchEngine contactSearchEngine,
                                  OpenPaaSUserDAO userDAO,
                                  DomainSettingsResolver domainSettingsResolver,
@@ -131,7 +130,7 @@ public class ContactSearchProvider implements PeopleSearchProvider {
         return userResolutionAllowed(session, objectTypesFilter)
             .flatMapMany(allowed -> Flux.from(contactSearchEngine.autoComplete(AccountId.fromString(session.getUser().asString()), query, limit))
                 .flatMap(contact -> resolveUserOrContactType(contact, session, allowed)
-                    .map(lookupResult -> toResponseDTO(lookupResult, contact, session.getUser()))));
+                    .map(lookupResult -> toResponseDTO(lookupResult, contact))));
     }
 
     private Mono<Boolean> userResolutionAllowed(MailboxSession session,
@@ -169,11 +168,11 @@ public class ContactSearchProvider implements PeopleSearchProvider {
             .orElse(false);
     }
 
-    private PeopleSearchRoute.ResponseDTO toResponseDTO(UserLookupResult lookupResult, EmailAddressContact contact, Username searcher) {
+    private PeopleSearchRoute.ResponseDTO toResponseDTO(UserLookupResult lookupResult, EmailAddressContact contact) {
         return new ContactResponseDTO(lookupResult.id(),
             contact.fields().address().asString(),
             contact.fields().fullName(),
-            buildAvatarUrl(baseAvatarUrl.resolve(searcher), contact.fields().address().asString()).toString(),
+            buildAvatarUrl(baseAvatarUrl, contact.fields().address().asString()).toString(),
             lookupResult.objectType().name().toLowerCase());
     }
 }

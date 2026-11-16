@@ -66,7 +66,6 @@ import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
 
 import com.github.fge.lambdas.Throwing;
-import com.linagora.calendar.api.DomainUrl;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavClient.NewCalendar;
 import com.linagora.calendar.dav.DavTestHelper;
@@ -212,7 +211,7 @@ public class CalendarDelegatedNotificationConsumerTest {
         byte[] calendarLogo = new byte[0];
         DelegatedCalendarNotificationHandler notificationHandler = new DelegatedCalendarNotificationHandler(
             openPaaSUserDAO, resourceDAO, calDavClient, settingsResolver, mailSenderFactory, mailTemplateConfig, messageFactory,
-            eventEmailFilter, DomainUrl.of(spaCalendarURL), calendarLogo);
+            eventEmailFilter, spaCalendarURL, calendarLogo);
 
         consumer = new CalendarDelegatedNotificationConsumer(channelPool, QueueArguments.Builder::new, notificationHandler);
         consumer.init();

@@ -118,7 +118,7 @@ public class PublicAgendaCancellationNotifier {
             .flatMap(recipientAddress -> Mono.fromCallable(() -> AsciiMailAddress.toInternetAddress(templateConfiguration.senderAddress(cancelled.organizer().username())))
                 .flatMap(fromAddress -> messageGenerator.generate(recipientAddress,
                     fromAddress,
-                    PugModel.toPugModel(cancelled, recipient, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory.forUser(cancelled.organizer().username())),
+                    PugModel.toPugModel(cancelled, recipient, settings.locale(), settings.zoneId(), eventInCalendarLinkFactory),
                     List.of())));
     }
 
