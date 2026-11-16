@@ -25,6 +25,7 @@ import java.util.Optional;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Username;
 
+import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 
@@ -34,6 +35,7 @@ import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
+import net.fortuna.ical4j.model.property.Attendee;
 
 public interface CalendarEventUpdatePatch {
 
@@ -41,6 +43,16 @@ public interface CalendarEventUpdatePatch {
      * @return true if the patch was applied; false otherwise
      */
     boolean apply(VEvent vEvent);
+
+    /**
+     * A calendar object holds a VEvent per changed occurrence of a recurring event (RECURRENCE-ID) besides the
+     * master one: the patch is applied to each VEvent it targets, so that a change of the series reaches all of them.
+     *
+     * @return true if the patch is to be applied to this VEvent of the calendar object
+     */
+    default boolean targets(VEvent vEvent) {
+        return true;
+    }
 
     class AttendeePartStatusUpdatePatch implements CalendarEventUpdatePatch {
 
@@ -56,13 +68,17 @@ public interface CalendarEventUpdatePatch {
             this.status = Preconditions.checkNotNull(status, "status must not be null");
         }
 
+        /**
+         * The answer of an attendee is for the whole series: every VEvent the attendee is invited to is targeted.
+         */
+        @Override
+        public boolean targets(VEvent vEvent) {
+            return targetAttendee(vEvent).isPresent();
+        }
+
         @Override
         public boolean apply(VEvent vEvent) {
-            return vEvent.getAttendees()
-                .stream()
-                .filter(attendee -> Strings.CI.equals(
-                    attendee.getCalAddress().toASCIIString(), "mailto:" + targetAttendeeEmail))
-                .findFirst()
+            return targetAttendee(vEvent)
                 .map(attendee -> {
                     Optional<Parameter> currentStatusOpt = attendee.getParameter(Parameter.PARTSTAT);
                     boolean sameStatus = currentStatusOpt
@@ -78,6 +94,22 @@ public interface CalendarEventUpdatePatch {
                     }
                 })
                 .orElseThrow(() -> new IllegalArgumentException("The attendee is not found in the event. " + targetAttendeeEmail));
+        }
+
+        private Optional<Attendee> targetAttendee(VEvent vEvent) {
+            return vEvent.getAttendees()
+                .stream()
+                .filter(attendee -> Strings.CI.equals(
+                    attendee.getCalAddress().toASCIIString(), "mailto:" + targetAttendeeEmail))
+                .findFirst();
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(this)
+                .add("targetAttendeeEmail", targetAttendeeEmail)
+                .add("status", status.getValue())
+                .toString();
         }
     }
 

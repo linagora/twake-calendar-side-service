@@ -21,6 +21,9 @@ package com.linagora.calendar.amqp;
 import static org.apache.james.backends.rabbitmq.Constants.EMPTY_ROUTING_KEY;
 
 import java.time.Clock;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -35,6 +38,7 @@ import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Attendee;
 import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
@@ -53,6 +57,8 @@ public class EventEmailNotificationPublisher {
     }
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private static final Comparator<VEvent> MASTER_FIRST = Comparator.comparing(vEvent -> EventParseUtils.getRecurrenceId(vEvent).isPresent());
 
     private final Sender sender;
     private final Clock clock;
@@ -76,18 +82,34 @@ public class EventEmailNotificationPublisher {
             .then();
     }
 
+    /**
+     * The answer of the attendee is for the whole series: the REPLY holds every VEVENT the attendee is invited to,
+     * the master one first, so that it conveys the answer for the series and not for a single occurrence.
+     */
     private Calendar replyCalendar(Calendar updatedCalendar, MailAddress attendee) {
-        VEvent replyEvent = EventParseUtils.getFirstEvent(updatedCalendar).copy();
+        List<VEvent> replyEvents = updatedCalendar.getComponents(Component.VEVENT).stream()
+            .map(VEvent.class::cast)
+            .sorted(MASTER_FIRST)
+            .map(vEvent -> replyEvent(vEvent, attendee))
+            .flatMap(Optional::stream)
+            .toList();
+
+        if (replyEvents.isEmpty()) {
+            throw new IllegalArgumentException("Attendee " + attendee.asString() + " is not part of the event");
+        }
+
+        return CalendarUtil.withMethod(CalendarUtil.withVEvents(updatedCalendar, replyEvents), ImmutableMethod.REPLY);
+    }
+
+    private Optional<VEvent> replyEvent(VEvent vEvent, MailAddress attendee) {
+        VEvent replyEvent = vEvent.copy();
         replyEvent.getAttendees().stream()
             .filter(candidate -> !matches(candidate, attendee))
             .toList()
             .forEach(replyEvent::remove);
 
-        if (replyEvent.getAttendees().isEmpty()) {
-            throw new IllegalArgumentException("Attendee " + attendee.asString() + " is not part of the event");
-        }
-
-        return CalendarUtil.withMethod(CalendarUtil.withSingleVEvent(updatedCalendar, replyEvent), ImmutableMethod.REPLY);
+        return Optional.of(replyEvent)
+            .filter(event -> !event.getAttendees().isEmpty());
     }
 
     private boolean matches(Attendee attendee, MailAddress mailAddress) {

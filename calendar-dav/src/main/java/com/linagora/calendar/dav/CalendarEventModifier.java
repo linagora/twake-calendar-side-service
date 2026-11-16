@@ -63,14 +63,17 @@ public class CalendarEventModifier {
         Calendar newCalendar = rejectingUnparsableDates(() -> CalendarUtil.copyOf(calendar));
         validator.ifPresent(v -> v.accept(newCalendar));
 
-        VEvent vEventToUpdate = firstVEvent(newCalendar);
+        List<VEvent> vEvents = vEvents(newCalendar);
+        patches.forEach(patch -> requireTargetedVEvent(patch, vEvents));
 
-        boolean modified = patches.stream().anyMatch(patch -> patch.apply(vEventToUpdate));
-        if (!modified) {
+        List<VEvent> modifiedVEvents = vEvents.stream()
+            .filter(this::applyPatches)
+            .toList();
+        if (modifiedVEvents.isEmpty()) {
             throw new NoUpdateRequiredException();
         }
 
-        markEventAsModified(vEventToUpdate);
+        modifiedVEvents.forEach(CalendarEventModifier::markEventAsModified);
         validateAfterUpdate(newCalendar);
 
         return newCalendar;
@@ -107,11 +110,32 @@ public class CalendarEventModifier {
         }
     }
 
-    private VEvent firstVEvent(Calendar calendar) {
-        return calendar.getComponents().stream()
+    private static List<VEvent> vEvents(Calendar calendar) {
+        List<VEvent> vEvents = calendar.getComponents().stream()
             .filter(component -> component instanceof VEvent)
             .map(component -> (VEvent) component)
-            .findFirst()
-            .orElseThrow(() -> new IllegalStateException("No VEvent found in the calendar"));
+            .toList();
+        if (vEvents.isEmpty()) {
+            throw new IllegalStateException("No VEvent found in the calendar");
+        }
+        return vEvents;
+    }
+
+    private static void requireTargetedVEvent(CalendarEventUpdatePatch patch, List<VEvent> vEvents) {
+        if (vEvents.stream().noneMatch(patch::targets)) {
+            throw new IllegalArgumentException("No VEvent of the calendar event is targeted by " + patch);
+        }
+    }
+
+    /**
+     * Applies every patch targeting the VEvent, not stopping at the first one modifying it.
+     *
+     * @return true if the VEvent was modified
+     */
+    private boolean applyPatches(VEvent vEvent) {
+        return patches.stream()
+            .filter(patch -> patch.targets(vEvent))
+            .map(patch -> patch.apply(vEvent))
+            .reduce(false, Boolean::logicalOr);
     }
 }
