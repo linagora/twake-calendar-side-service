@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import javax.xml.namespace.QName;
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamWriter;
 
@@ -38,14 +39,22 @@ import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.parameter.PartStat;
 
-public record CalendarQuery(List<PropFilter> propFilters) {
+public record CalendarQuery(List<PropFilter> propFilters, List<QName> requestedProperties) {
+
+    public static final QName CALENDAR_DATA = new QName(CalDavXml.CALDAV_NS, CalDavXml.ELEMENT_CALENDAR_DATA);
+    public static final QName GET_ETAG = new QName(CalDavXml.DAV_NS, "getetag");
 
     public static CalendarQuery ofFilters(PropFilter... propFilters) {
         return ofFilters(List.of(propFilters));
     }
 
     public static CalendarQuery ofFilters(List<PropFilter> propFilters) {
-        return new CalendarQuery(propFilters);
+        return new CalendarQuery(propFilters, List.of(CALENDAR_DATA));
+    }
+
+    public static CalendarQuery hrefs() {
+        // Requesting ETags lets Sabre use its optimized REPORT path without returning ICS payloads.
+        return new CalendarQuery(List.of(), List.of(GET_ETAG));
     }
 
     private static final XMLOutputFactory XML_OUTPUT_FACTORY = XMLOutputFactory.newInstance();
@@ -210,7 +219,9 @@ public record CalendarQuery(List<PropFilter> propFilters) {
 
     private void writePropSection(XMLStreamWriter writer) throws Exception {
         writer.writeStartElement(CalDavXml.PREFIX_DAV, CalDavXml.ELEMENT_PROP, CalDavXml.DAV_NS);
-        writer.writeEmptyElement(CalDavXml.PREFIX_CALDAV, CalDavXml.ELEMENT_CALENDAR_DATA, CalDavXml.CALDAV_NS);
+        for (QName property : requestedProperties) {
+            writer.writeEmptyElement(property.getNamespaceURI(), property.getLocalPart());
+        }
         writer.writeEndElement();
     }
 

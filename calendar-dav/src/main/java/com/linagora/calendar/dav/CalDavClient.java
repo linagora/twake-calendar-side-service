@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import javax.net.ssl.SSLException;
 
@@ -49,11 +50,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.common.base.Preconditions;
+import com.google.common.xml.XmlEscapers;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalendarSharingUpdate.RemoveSharee;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse;
 import com.linagora.calendar.dav.dto.CalendarDetailsResponse.CalendarInvite;
 import com.linagora.calendar.dav.dto.CalendarListResponse;
+import com.linagora.calendar.dav.dto.CalendarMultiGetEntry;
 import com.linagora.calendar.dav.dto.CalendarReportJsonResponse;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
 import com.linagora.calendar.dav.dto.FreeBusyBulkResponse;
@@ -73,6 +76,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.AsciiString;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import reactor.netty.ByteBufMono;
 import reactor.netty.http.client.HttpClient;
 
@@ -1097,6 +1101,44 @@ public class CalDavClient extends DavClient {
                             calendarURL.asUri().toASCIIString(),
                             errorBody))));
                 }));
+    }
+
+    public Mono<List<CalendarMultiGetEntry>> calendarMultiGet(Username username, CalendarURL calendarURL, List<URI> hrefs) {
+        return calendarMultiGet(Mono.just(httpClientWithImpersonation(username)), calendarURL, hrefs);
+    }
+
+    public Mono<List<CalendarMultiGetEntry>> calendarMultiGet(OpenPaaSId domainId, CalendarURL calendarURL, List<URI> hrefs) {
+        return calendarMultiGet(httpClientWithTechnicalToken(domainId), calendarURL, hrefs);
+    }
+
+    private Mono<List<CalendarMultiGetEntry>> calendarMultiGet(Mono<HttpClient> httpClientPublisher, CalendarURL calendarURL, List<URI> hrefs) {
+        Preconditions.checkArgument(!hrefs.isEmpty(), "calendar-multiget requires at least one href");
+        String hrefElements = hrefs.stream()
+            .map(href -> "<d:href>" + XmlEscapers.xmlContentEscaper().escape(href.toASCIIString()) + "</d:href>")
+            .collect(Collectors.joining("\n"));
+        String requestBody = """
+            <c:calendar-multiget xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+              <d:prop><c:calendar-data/></d:prop>
+              {{hrefs}}
+            </c:calendar-multiget>
+            """.replace("{{hrefs}}", hrefElements);
+
+        return httpClientPublisher.flatMap(client -> client.headers(headers -> headers.add(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML))
+            .request(REPORT_METHOD)
+            .uri(calendarURL.asUri().toASCIIString())
+            .send(ByteBufMono.fromString(Mono.just(requestBody)))
+            .responseSingle((response, body) -> {
+                if (response.status().code() == HttpStatus.SC_MULTI_STATUS) {
+                    return body.asByteArray()
+                        .switchIfEmpty(Mono.error(() -> new DavClientException("Empty calendar-multiget response for " + calendarURL.asUri())));
+                }
+                return responseBodyAsString(body)
+                    .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
+                        "executing calendar-multiget REPORT on '%s' for %d objects".formatted(calendarURL.asUri(), hrefs.size()), errorBody)));
+            }))
+            .flatMap(xml -> Mono.fromCallable(() -> XMLUtil.extractCalendarMultiGetEntries(xml))
+                .subscribeOn(Schedulers.boundedElastic())
+                .onErrorMap(e -> new DavClientException("Failed to parse calendar-multiget REPORT for " + calendarURL.asUri(), e)));
     }
 
     /**

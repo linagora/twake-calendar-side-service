@@ -21,6 +21,9 @@ package com.linagora.calendar.dav.model;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
+import java.util.List;
+
+import javax.xml.namespace.QName;
 
 import org.apache.james.core.Username;
 import org.junit.jupiter.api.Test;
@@ -32,6 +35,43 @@ import com.linagora.calendar.dav.model.CalendarQuery.AttendeePropFilter;
 import com.linagora.calendar.dav.model.CalendarQuery.TimeRangePropFilter;
 
 public class CalendarQueryTest {
+
+    @Test
+    void shouldListHrefsWithoutCalendarData() throws Exception {
+        String expected = """
+            <C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:D="DAV:">
+                <D:prop><D:getetag/></D:prop>
+                <C:filter>
+                    <C:comp-filter name="VCALENDAR">
+                        <C:comp-filter name="VEVENT"/>
+                    </C:comp-filter>
+                </C:filter>
+            </C:calendar-query>
+            """;
+
+        assertXmlSimilar(expected, CalendarQuery.hrefs().toCalendarQueryReport());
+    }
+
+    @Test
+    void shouldRequestPropertiesByNamespaceWithFilters() throws Exception {
+        CalendarQuery query = new CalendarQuery(
+            List.of(TimeRangePropFilter.dtStampBefore(Instant.parse("2027-01-01T00:00:00Z"))),
+            List.of(new QName("DAV:", "getetag"), CalendarQuery.CALENDAR_DATA));
+        String expected = """
+            <C:calendar-query xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:D="DAV:">
+                <D:prop><D:getetag/><C:calendar-data/></D:prop>
+                <C:filter>
+                    <C:comp-filter name="VCALENDAR">
+                        <C:comp-filter name="VEVENT">
+                            <C:prop-filter name="DTSTAMP"><C:time-range end="20270101T000000Z"/></C:prop-filter>
+                        </C:comp-filter>
+                    </C:comp-filter>
+                </C:filter>
+            </C:calendar-query>
+            """;
+
+        assertXmlSimilar(expected, query.toCalendarQueryReport());
+    }
 
     @Test
     void shouldGenerateCalendarQueryReportWithSingleDtStampBefore() throws Exception {

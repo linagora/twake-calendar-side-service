@@ -28,22 +28,32 @@ import static org.assertj.core.api.recursive.comparison.RecursiveComparisonConfi
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 import javax.net.ssl.SSLException;
 
 import jakarta.mail.internet.AddressException;
 
+import org.apache.http.HttpStatus;
 import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 import org.apache.james.json.DTOConverter;
@@ -51,6 +61,7 @@ import org.apache.james.server.task.json.dto.AdditionalInformationDTO;
 import org.apache.james.server.task.json.dto.AdditionalInformationDTOModule;
 import org.apache.james.task.Hostname;
 import org.apache.james.task.MemoryTaskManager;
+import org.apache.james.task.Task;
 import org.apache.james.task.TaskExecutionDetails;
 import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.WebAdminServer;
@@ -63,8 +74,10 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.DavClientException;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.dav.dto.CalendarMultiGetEntry;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -80,6 +93,7 @@ import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 import com.linagora.calendar.webadmin.service.CalendarEventsReindexService;
+import com.linagora.calendar.webadmin.task.CalendarEventsReindexTask.RunningOptions;
 import com.linagora.calendar.webadmin.task.CalendarEventsReindexTaskAdditionalInformationDTO;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 
@@ -87,6 +101,8 @@ import io.restassured.RestAssured;
 import reactor.core.publisher.Mono;
 
 public class CalendarRoutesTest {
+
+    private static final int EXPECTED_MULTIGET_BATCH_SIZE = 50;
 
     @RegisterExtension
     static SabreDavExtension sabreDavExtension = SabreDavExtension.shared();
@@ -101,6 +117,8 @@ public class CalendarRoutesTest {
     private CalendarEventsReindexService reindexService;
 
     private OpenPaaSUser openPaaSUser;
+    private CalendarURL calendar;
+    private CalendarEventsReindexService.Context reindexContext;
 
     @BeforeEach
     void setUp() throws SSLException {
@@ -109,11 +127,13 @@ public class CalendarRoutesTest {
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
         calendarSearchService = spy(new MemoryCalendarSearchService());
-        calDavClient = new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
+        calDavClient = spy(new CalDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING));
         davTestHelper = new DavTestHelper(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         reindexService = new CalendarEventsReindexService(userDAO, resourceDAO, calendarSearchService, calDavClient);
 
         this.openPaaSUser = sabreDavExtension.newTestUser();
+        calendar = CalendarURL.from(openPaaSUser.id());
+        reindexContext = new CalendarEventsReindexService.Context();
 
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
 
@@ -710,6 +730,186 @@ public class CalendarRoutesTest {
             .usingRecursiveComparison()
             .ignoringFields("attendees.partStat", "resources.partStat", "organizer.partStat")
             .isEqualTo(expected);
+    }
+
+    @Test
+    void shouldFinishWithoutMultigetWhenCalendarIsEmpty() {
+        // Given an empty calendar
+        // When reindexing it
+        Task.Result result = reindex();
+
+        // Then no multiget request is needed
+        assertThat(result).isEqualTo(Task.Result.COMPLETED);
+        assertEventCounts(0, 0);
+        verify(calDavClient, never()).calendarMultiGet(eq(openPaaSUser.username()), eq(calendar), anyList());
+    }
+
+    @Test
+    void shouldReindexLargeUserCalendarAcrossBatches() {
+        // Given a large calendar that needs a full batch and a smaller final batch
+        int remainingEventCount = 3;
+        int eventCount = EXPECTED_MULTIGET_BATCH_SIZE + remainingEventCount;
+        String largeDescription = "x".repeat(8_000);
+        for (URI eventHref : eventHrefs(eventCount)) {
+            String largeEventIcs = eventIcs(eventHref).replace("END:VEVENT", "DESCRIPTION:" + largeDescription + "\nEND:VEVENT");
+            davTestHelper.upsertCalendar(openPaaSUser.username(), eventHref, largeEventIcs).block();
+        }
+
+        // When reindexing the calendar
+        Task.Result result = reindex();
+
+        // Then all events are indexed across a full batch and the remaining batch
+        assertThat(result).isEqualTo(Task.Result.COMPLETED);
+        assertEventCounts(eventCount, 0);
+        verify(calDavClient, times(2)).calendarMultiGet(eq(openPaaSUser.username()), eq(calendar), anyList());
+        verify(calDavClient).calendarMultiGet(eq(openPaaSUser.username()), eq(calendar), argThat(batch -> batch.size() == EXPECTED_MULTIGET_BATCH_SIZE));
+        verify(calDavClient).calendarMultiGet(eq(openPaaSUser.username()), eq(calendar), argThat(batch -> batch.size() == remainingEventCount));
+    }
+
+    @Test
+    void shouldReindexResourceCalendarAcrossBatches() {
+        // Given a resource calendar with more events than one batch can hold
+        int remainingEventCount = 1;
+        int eventCount = EXPECTED_MULTIGET_BATCH_SIZE + remainingEventCount;
+        OpenPaaSDomain domain = domainDAO.retrieve(openPaaSUser.username().getDomainPart().orElseThrow()).block();
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(openPaaSUser.id(), "Meeting room", domain.id(), "room", "Room"))
+            .block();
+        calendar = CalendarURL.from(resourceId.asOpenPaaSId());
+        for (URI eventHref : eventHrefs(eventCount)) {
+            davTestHelper.upsertCalendar(domain.id(), eventHref, eventIcs(eventHref)).block();
+        }
+
+        // When reindexing the calendar
+        Task.Result result = reindex();
+
+        // Then all events are fetched in batches using the domain technical token
+        assertThat(result).isEqualTo(Task.Result.COMPLETED);
+        assertEventCounts(eventCount, 0);
+        verify(calDavClient, times(2)).calendarMultiGet(eq(domain.id()), eq(calendar), anyList());
+        verify(calDavClient).calendarMultiGet(eq(domain.id()), eq(calendar), argThat(batch -> batch.size() == EXPECTED_MULTIGET_BATCH_SIZE));
+        verify(calDavClient).calendarMultiGet(eq(domain.id()), eq(calendar), argThat(batch -> batch.size() == remainingEventCount));
+    }
+
+    @Test
+    void shouldIndexRemainingEventsWhenBatchFetchFails() {
+        // Given a failed full batch followed by a batch that can still be indexed
+        int failedEventCount = EXPECTED_MULTIGET_BATCH_SIZE;
+        int remainingEventCount = 1;
+        upsertEvents(failedEventCount + remainingEventCount);
+        doReturn(Mono.error(new DavClientException("Sabre is unavailable")))
+            .when(calDavClient).calendarMultiGet(eq(openPaaSUser.username()), eq(calendar), argThat(batch -> batch.size() == EXPECTED_MULTIGET_BATCH_SIZE));
+
+        // When reindexing the calendar
+        Task.Result result = reindex();
+
+        // Then the remaining event is indexed and the failed batch is counted
+        assertThat(result).isEqualTo(Task.Result.PARTIAL);
+        assertEventCounts(remainingEventCount, failedEventCount);
+    }
+
+    @Test
+    void shouldCompleteReindexWhenListedEventWasDeleted() {
+        // Given two listed events, one of which was deleted before multiget
+        List<URI> eventHrefs = upsertEvents(2);
+        CalendarMultiGetEntry deletedEvent = new CalendarMultiGetEntry(eventHrefs.getFirst(), HttpStatus.SC_NOT_FOUND, "");
+        CalendarMultiGetEntry readableEvent = new CalendarMultiGetEntry(eventHrefs.getLast(), HttpStatus.SC_OK, eventIcs(eventHrefs.getLast()));
+        doReturn(Mono.just(List.of(deletedEvent, readableEvent)))
+            .when(calDavClient).calendarMultiGet(eq(openPaaSUser.username()), eq(calendar), anyList());
+
+        // When reindexing the calendar
+        Task.Result result = reindex();
+
+        // Then the deleted event is skipped without marking the task as partial
+        assertThat(result).isEqualTo(Task.Result.COMPLETED);
+        assertEventCounts(1, 0);
+    }
+
+    @Test
+    void shouldReportPartialReindexWhenEventIsForbidden() {
+        // Given a multiget response with one forbidden event and one readable event
+        List<URI> eventHrefs = upsertEvents(2);
+        CalendarMultiGetEntry forbiddenEvent = new CalendarMultiGetEntry(eventHrefs.getFirst(), HttpStatus.SC_FORBIDDEN, "");
+        CalendarMultiGetEntry readableEvent = new CalendarMultiGetEntry(eventHrefs.getLast(), HttpStatus.SC_OK, eventIcs(eventHrefs.getLast()));
+        doReturn(Mono.just(List.of(forbiddenEvent, readableEvent)))
+            .when(calDavClient).calendarMultiGet(eq(openPaaSUser.username()), eq(calendar), anyList());
+
+        // When reindexing the calendar
+        Task.Result result = reindex();
+
+        // Then the readable event is indexed and the forbidden event is counted as failed
+        assertThat(result).isEqualTo(Task.Result.PARTIAL);
+        assertEventCounts(1, 1);
+    }
+
+    @Test
+    void shouldIndexValidEventsWhenAnotherIcsCannotBeParsed() {
+        // Given a multiget response with one malformed ICS and one valid ICS
+        List<URI> eventHrefs = upsertEvents(2);
+        CalendarMultiGetEntry malformedEvent = new CalendarMultiGetEntry(eventHrefs.getFirst(), HttpStatus.SC_OK, "invalid ICS");
+        CalendarMultiGetEntry validEvent = new CalendarMultiGetEntry(eventHrefs.getLast(), HttpStatus.SC_OK, eventIcs(eventHrefs.getLast()));
+        doReturn(Mono.just(List.of(malformedEvent, validEvent)))
+            .when(calDavClient).calendarMultiGet(eq(openPaaSUser.username()), eq(calendar), anyList());
+
+        // When reindexing the calendar
+        Task.Result result = reindex();
+
+        // Then the valid event is indexed despite the parse failure
+        assertThat(result).isEqualTo(Task.Result.PARTIAL);
+        assertEventCounts(1, 1);
+    }
+
+    @Test
+    void shouldReindexEventWhoseIcsExceedsXmlEntityLimit() {
+        // Given a single ICS resource larger than the original 100,000-character limit
+        URI eventHref = eventHrefs(1).getFirst();
+        String oversizedDescription = "x".repeat(150_000);
+        String largeEventIcs = eventIcs(eventHref).replace("END:VEVENT", "DESCRIPTION:" + oversizedDescription + "\nEND:VEVENT");
+        davTestHelper.upsertCalendar(openPaaSUser.username(), eventHref, largeEventIcs).block();
+
+        // When reindexing the calendar
+        Task.Result result = reindex();
+
+        // Then the event is indexed successfully
+        assertThat(result).isEqualTo(Task.Result.COMPLETED);
+        assertEventCounts(1, 0);
+    }
+
+    private List<URI> upsertEvents(int eventCount) {
+        List<URI> eventHrefs = eventHrefs(eventCount);
+        for (URI eventHref : eventHrefs) {
+            davTestHelper.upsertCalendar(openPaaSUser.username(), eventHref, eventIcs(eventHref)).block();
+        }
+        return eventHrefs;
+    }
+
+    private List<URI> eventHrefs(int eventCount) {
+        return IntStream.range(0, eventCount)
+            .mapToObj(i -> URI.create(calendar.asUri() + "/event-" + i + ".ics"))
+            .toList();
+    }
+
+    private String eventIcs(URI eventHref) {
+        return """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:{{href}}
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Batch event
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{{href}}", eventHref.toString());
+    }
+
+    private Task.Result reindex() {
+        return reindexService.reindex(reindexContext, RunningOptions.of(1000, 1)).block(Duration.ofSeconds(10));
+    }
+
+    private void assertEventCounts(int processedCount, int failedCount) {
+        assertThat(reindexContext.snapshot()).isEqualTo(new CalendarEventsReindexService.Context.Snapshot(processedCount, failedCount));
+        assertThat(calendarSearchService.search(simpleQuery("", calendar)).collectList().block()).hasSize(processedCount);
     }
 
     private EventSearchQuery simpleQuery(String query, CalendarURL calendarURL) {
