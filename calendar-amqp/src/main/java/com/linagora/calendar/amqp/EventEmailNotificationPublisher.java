@@ -71,7 +71,7 @@ public class EventEmailNotificationPublisher {
 
     public Mono<Void> publishReply(Calendar updatedCalendar, MailAddress attendee, MailAddress organizer, String eventPath) {
         return Mono.fromCallable(() -> replyCalendar(updatedCalendar, attendee))
-            .filter(replyCalendar -> !CalendarEventUtils.vEventExpired(EventParseUtils.getFirstEvent(replyCalendar), clock))
+            .filter(this::hasUpcomingOccurrence)
             .flatMap(replyCalendar -> Mono.fromCallable(() -> OBJECT_MAPPER.writeValueAsBytes(new NotificationEmailDTO(
                 attendee.asString(),
                 organizer.asString(),
@@ -80,6 +80,15 @@ public class EventEmailNotificationPublisher {
                 eventPath))))
             .flatMap(payload -> sender.send(Mono.just(new OutboundMessage(EventEmailConsumer.EXCHANGE_NAME, EMPTY_ROUTING_KEY, payload))))
             .then();
+    }
+
+    /**
+     * The REPLY is worth sending as long as one of its VEVENTs is not expired: an override can be moved after the
+     * end of the recurrence of its master.
+     */
+    private boolean hasUpcomingOccurrence(Calendar replyCalendar) {
+        return replyCalendar.<VEvent>getComponents(Component.VEVENT).stream()
+            .anyMatch(vEvent -> !CalendarEventUtils.vEventExpired(vEvent, clock));
     }
 
     /**
@@ -102,7 +111,7 @@ public class EventEmailNotificationPublisher {
     }
 
     private Optional<VEvent> replyEvent(VEvent vEvent, MailAddress attendee) {
-        VEvent replyEvent = vEvent.copy();
+        VEvent replyEvent = CalendarUtil.copy(vEvent);
         replyEvent.getAttendees().stream()
             .filter(candidate -> !matches(candidate, attendee))
             .toList()
