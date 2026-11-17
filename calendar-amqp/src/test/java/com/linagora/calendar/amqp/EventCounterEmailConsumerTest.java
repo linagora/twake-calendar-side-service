@@ -70,7 +70,7 @@ import org.awaitility.core.ConditionFactory;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
-import com.linagora.calendar.api.Participation;
+import com.linagora.calendar.api.ParticipationGrant;
 import com.linagora.calendar.api.ParticipationTokenSigner;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.SabreDavExtension;
@@ -196,7 +196,7 @@ public class EventCounterEmailConsumerTest {
         UsersRepository usersRepository = mock(UsersRepository.class);
         when(usersRepository.containsReactive(any())).thenReturn(Mono.just(INTERNAL_USER));
         ParticipationTokenSigner participationTokenSigner = mock(ParticipationTokenSigner.class);
-        when(participationTokenSigner.signAsJwt(any(Participation.class)))
+        when(participationTokenSigner.signAsJwt(any(ParticipationGrant.class)))
             .thenReturn(Mono.just("signedToken"));
 
         EventParticipationActionLinkFactory actionLinkFactory = new EventParticipationActionLinkFactory(

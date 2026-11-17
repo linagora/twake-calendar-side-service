@@ -78,7 +78,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
-import com.linagora.calendar.api.Participation;
+import com.linagora.calendar.api.ParticipationGrant;
 import com.linagora.calendar.api.ParticipationTokenSigner;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
@@ -223,11 +223,8 @@ public class EventPublicAgendaEmailConsumerTest {
         when(usersRepository.containsReactive(any())).thenReturn(Mono.just(INTERNAL_USER));
 
         ParticipationTokenSigner participationTokenSigner = mock(ParticipationTokenSigner.class);
-        when(participationTokenSigner.signAsJwt(any(Participation.class)))
-            .thenAnswer(invocation -> {
-                Participation arg = invocation.getArgument(0);
-                return Mono.just("mocked-jwt-token-" + arg.action().name().toLowerCase());
-            });
+        when(participationTokenSigner.signAsJwt(any(ParticipationGrant.class)))
+            .thenReturn(Mono.just("mocked-jwt-token"));
 
         EventParticipationActionLinkFactory actionLinkFactory = new EventParticipationActionLinkFactory(
             participationTokenSigner,

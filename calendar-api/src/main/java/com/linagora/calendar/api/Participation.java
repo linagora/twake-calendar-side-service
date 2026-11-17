@@ -52,4 +52,8 @@ public record Participation(MailAddress organizer, MailAddress attendee, String 
     public Participation withAction(ParticipantAction newAction) {
         return new Participation(organizer, attendee, eventUid, calendarURI, newAction, recurrenceId);
     }
+
+    public ParticipationGrant grant() {
+        return new ParticipationGrant(organizer, attendee, eventUid, calendarURI, recurrenceId);
+    }
 }
