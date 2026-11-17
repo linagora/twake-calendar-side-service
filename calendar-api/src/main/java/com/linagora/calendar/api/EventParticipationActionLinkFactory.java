@@ -20,6 +20,7 @@ package com.linagora.calendar.api;
 
 import java.net.URI;
 import java.net.URL;
+import java.util.Optional;
 import java.util.function.Function;
 
 import jakarta.inject.Inject;
@@ -59,12 +60,22 @@ public class EventParticipationActionLinkFactory {
     }
 
     public Mono<ActionLinks> generateLinks(MailAddress organizer, MailAddress attendee, String eventUid, String calendarURI) {
+        return generateLinks(organizer, attendee, eventUid, calendarURI, Optional.empty());
+    }
+
+    /**
+     * @param recurrenceId when present, the links answer for this occurrence of the recurring event only
+     */
+    public Mono<ActionLinks> generateLinks(MailAddress organizer, MailAddress attendee, String eventUid, String calendarURI,
+                                           Optional<String> recurrenceId) {
         Preconditions.checkArgument(organizer != null, "organizer must not be null");
         Preconditions.checkArgument(attendee != null, "attendee must not be null");
         Preconditions.checkArgument(StringUtils.isNotEmpty(eventUid), "eventUid must not be empty");
         Preconditions.checkArgument(StringUtils.isNotEmpty(calendarURI), "calendarURI must not be empty");
+        Preconditions.checkArgument(recurrenceId != null, "recurrenceId must not be null");
 
-        Participation acceptedParticipation = new Participation(organizer, attendee, eventUid, calendarURI, Participation.ParticipantAction.ACCEPTED);
+        Participation acceptedParticipation = new Participation(organizer, attendee, eventUid, calendarURI,
+            Participation.ParticipantAction.ACCEPTED, recurrenceId);
         Participation rejectedParticipation = acceptedParticipation.withAction(Participation.ParticipantAction.REJECTED);
         Participation maybeParticipation = acceptedParticipation.withAction(Participation.ParticipantAction.TENTATIVE);
 

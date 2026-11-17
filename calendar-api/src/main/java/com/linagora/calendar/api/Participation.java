@@ -18,12 +18,19 @@
 
 package com.linagora.calendar.api;
 
+import java.util.Optional;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.MailAddress;
 
 import com.google.common.base.Preconditions;
 
-public record Participation(MailAddress organizer, MailAddress attendee, String eventUid, String calendarURI, ParticipantAction action) {
+/**
+ * @param recurrenceId when present, the answer is for this occurrence of the recurring event only, otherwise for
+ *                     the whole event
+ */
+public record Participation(MailAddress organizer, MailAddress attendee, String eventUid, String calendarURI,
+                            ParticipantAction action, Optional<String> recurrenceId) {
 
     public enum ParticipantAction {
         ACCEPTED, REJECTED, TENTATIVE
@@ -35,9 +42,14 @@ public record Participation(MailAddress organizer, MailAddress attendee, String 
         Preconditions.checkArgument(StringUtils.isNotEmpty(eventUid), "Event uid must not be null");
         Preconditions.checkArgument(StringUtils.isNotEmpty(calendarURI), "Calendar URI must not be empty");
         Preconditions.checkNotNull(action, "Action must not be null");
+        Preconditions.checkNotNull(recurrenceId, "Recurrence id must not be null");
+    }
+
+    public Participation(MailAddress organizer, MailAddress attendee, String eventUid, String calendarURI, ParticipantAction action) {
+        this(organizer, attendee, eventUid, calendarURI, action, Optional.empty());
     }
 
     public Participation withAction(ParticipantAction newAction) {
-        return new Participation(organizer, attendee, eventUid, calendarURI, newAction);
+        return new Participation(organizer, attendee, eventUid, calendarURI, newAction, recurrenceId);
     }
 }

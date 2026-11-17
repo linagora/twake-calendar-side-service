@@ -322,6 +322,35 @@ public class CalendarEventModifierTest {
         }
 
         @Test
+        void shouldOnlyUpdateTheAnsweredOccurrenceWhenARecurrenceIdIsGiven() {
+            Calendar updated = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.TENTATIVE,
+                    Optional.of("20251027T100000Z")))
+                .apply(RECURRING_CALENDAR);
+
+            List<VEvent> vEvents = vEvents(updated);
+            assertThat(partStat(vEvents.get(0), "bob@example.com")).isEqualTo("TENTATIVE");
+            assertThat(vEvents.get(0).getSequence().getSequenceNo()).isEqualTo(3);
+            assertThat(partStat(vEvents.get(1), "bob@example.com")).isEqualTo("NEEDS-ACTION");
+            assertThat(vEvents.get(1).getSequence().getSequenceNo()).isEqualTo(1);
+        }
+
+        @Test
+        void shouldThrowIfTheAnsweredOccurrenceIsNotOverridden() {
+            assertThatThrownBy(() -> CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED,
+                    Optional.of("20251110T100000Z")))
+                .apply(RECURRING_CALENDAR))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        void shouldThrowIfTheAttendeeIsNotInvitedToTheAnsweredOccurrence() {
+            assertThatThrownBy(() -> CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED,
+                    Optional.of("20251103T100000Z")))
+                .apply(RECURRING_CALENDAR))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
         void shouldThrowIfAttendeeIsInvitedToNoVEvent() {
             assertThatThrownBy(() -> CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("unknown@example.com", PartStat.ACCEPTED))
                 .apply(RECURRING_CALENDAR))

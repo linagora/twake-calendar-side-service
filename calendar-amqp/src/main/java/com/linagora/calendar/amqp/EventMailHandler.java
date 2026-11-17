@@ -84,6 +84,8 @@ import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.model.ResourceId;
 
 import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.model.property.Uid;
 import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
@@ -171,10 +173,22 @@ public class EventMailHandler {
                         MailAddress attendeeMail = event.recipientEmail();
                         String eventUid = vEvent.getUid().map(Uid::getValue).orElseThrow();
                         OpenPaaSId attendeeCalendarBaseId = extractCalendarURL(event.eventPath()).base();
-                        return participationActionLinkFactory.generateLinks(organizerMail, attendeeMail, eventUid, attendeeCalendarBaseId.value())
+                        return participationActionLinkFactory.generateLinks(organizerMail, attendeeMail, eventUid, attendeeCalendarBaseId.value(),
+                                answeredOccurrence(event.event()))
                             .map(Optional::of);
                     })
                     .orElseGet(() -> Mono.just(Optional.empty())));
+        }
+
+        /**
+         * A mail about a single occurrence of a recurring event, whose ICS holds only the VEVENT of that occurrence,
+         * answers for this occurrence only. Otherwise the answer is for the whole event.
+         */
+        static Optional<String> answeredOccurrence(Calendar calendar) {
+            List<VEvent> vEvents = calendar.getComponents(Component.VEVENT);
+            return Optional.of(vEvents)
+                .filter(events -> events.size() == 1)
+                .flatMap(events -> EventParseUtils.getRecurrenceId(events.getFirst()));
         }
     }
 

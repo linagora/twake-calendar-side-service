@@ -28,6 +28,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.mail.internet.AddressException;
@@ -92,6 +93,30 @@ public class ParticipationTokenSignerTest {
         String jwt = testee.signAsJwt(participation).block();
         assertThat(testee.validateAndExtractParticipation(jwt).block())
             .isEqualTo(participation);
+    }
+
+    @Test
+    void signAsJwtShouldNotSetRecurrenceIdOfAnAnswerForTheWholeEvent() throws Exception {
+        String jwtToken = testee.signAsJwt(sampleParticipation()).block();
+
+        JsonNode payload = new ObjectMapper().readTree(decodeJWTPayloadPart(jwtToken));
+
+        assertThat(payload.has("recurrenceId")).isFalse();
+    }
+
+    @Test
+    void signAndValidateShouldRoundTripTheRecurrenceId() throws Exception {
+        Participation participation = occurrenceParticipation();
+        String jwt = testee.signAsJwt(participation).block();
+
+        assertThat(testee.validateAndExtractParticipation(jwt).block())
+            .isEqualTo(participation);
+    }
+
+    @Test
+    void withActionShouldKeepTheRecurrenceId() throws Exception {
+        assertThat(occurrenceParticipation().withAction(Participation.ParticipantAction.REJECTED).recurrenceId())
+            .contains("20251027T100000Z");
     }
 
     @Test
@@ -164,6 +189,16 @@ public class ParticipationTokenSignerTest {
             "event-uid-123",
             "calendar-uri-xyz",
             Participation.ParticipantAction.ACCEPTED);
+    }
+
+    private Participation occurrenceParticipation() throws AddressException {
+        return new Participation(
+            new MailAddress("organizer@domain.tld"),
+            new MailAddress("attendee@domain.tld"),
+            "event-uid-123",
+            "calendar-uri-xyz",
+            Participation.ParticipantAction.ACCEPTED,
+            Optional.of("20251027T100000Z"));
     }
 }
 

@@ -28,6 +28,7 @@ import org.apache.james.core.Username;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.Content;
 import net.fortuna.ical4j.model.Parameter;
@@ -58,22 +59,41 @@ public interface CalendarEventUpdatePatch {
 
         private final String targetAttendeeEmail;
         private final PartStat status;
+        private final Optional<String> recurrenceId;
 
         public AttendeePartStatusUpdatePatch(Username username, PartStat status) {
-            this(username.asString(), status);
+            this(username, status, Optional.empty());
+        }
+
+        public AttendeePartStatusUpdatePatch(Username username, PartStat status, Optional<String> recurrenceId) {
+            this(username.asString(), status, recurrenceId);
         }
 
         public AttendeePartStatusUpdatePatch(String targetAttendeeEmail, PartStat status) {
+            this(targetAttendeeEmail, status, Optional.empty());
+        }
+
+        public AttendeePartStatusUpdatePatch(String targetAttendeeEmail, PartStat status, Optional<String> recurrenceId) {
             this.targetAttendeeEmail = Preconditions.checkNotNull(targetAttendeeEmail, "targetAttendeeEmail must not be null");
             this.status = Preconditions.checkNotNull(status, "status must not be null");
+            this.recurrenceId = Preconditions.checkNotNull(recurrenceId, "recurrenceId must not be null");
         }
 
         /**
-         * The answer of an attendee is for the whole series: every VEvent the attendee is invited to is targeted.
+         * Without RECURRENCE-ID, the answer of an attendee is for the whole series: every VEvent the attendee is
+         * invited to is targeted. With a RECURRENCE-ID, the answer is for that occurrence only.
          */
         @Override
         public boolean targets(VEvent vEvent) {
-            return targetAttendee(vEvent).isPresent();
+            return targetAttendee(vEvent).isPresent() && targetsOccurrence(vEvent);
+        }
+
+        private boolean targetsOccurrence(VEvent vEvent) {
+            return recurrenceId
+                .map(expected -> EventParseUtils.getRecurrenceId(vEvent)
+                    .filter(actual -> Strings.CI.equals(actual, expected))
+                    .isPresent())
+                .orElse(true);
         }
 
         @Override
@@ -109,6 +129,7 @@ public interface CalendarEventUpdatePatch {
             return MoreObjects.toStringHelper(this)
                 .add("targetAttendeeEmail", targetAttendeeEmail)
                 .add("status", status.getValue())
+                .add("recurrenceId", recurrenceId)
                 .toString();
         }
     }

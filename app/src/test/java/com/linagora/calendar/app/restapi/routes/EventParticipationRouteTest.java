@@ -19,6 +19,8 @@
 package com.linagora.calendar.app.restapi.routes;
 
 import static com.linagora.calendar.app.restapi.routes.ImportRouteTest.mailSenderConfigurationFunction;
+import static com.linagora.calendar.dav.CalendarTestUtil.MASTER_RECURRENCE_KEY;
+import static com.linagora.calendar.dav.CalendarTestUtil.getRecurringAttendeePartStats;
 import static com.linagora.calendar.storage.TestFixture.awaitAtMost;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
@@ -41,6 +43,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -673,6 +676,105 @@ class EventParticipationRouteTest {
     }
 
     @Test
+    void acceptingAnOccurrenceUpdateEmailShouldOnlyAcceptThatOccurrence() {
+        // Given Bob invites Alice to a recurring meeting, then moves one occurrence
+        String eventUid = UUID.randomUUID().toString();
+        String aliceEmail = attendee.username().asString();
+        Calendar updatedSeries = recurringEventWithMovedOccurrence(eventUid);
+        VEvent movedOccurrence = updatedSeries.<VEvent>getComponents(Component.VEVENT).getFirst();
+        VEvent master = updatedSeries.<VEvent>getComponents(Component.VEVENT).getLast();
+        String recurrenceId = movedOccurrence.getRecurrenceId().getValue();
+
+        Calendar initialSeries = CalendarUtil.withSingleVEvent(updatedSeries, master);
+        davTestHelper.upsertCalendar(organizer, initialSeries.toString(), eventUid);
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMails().getList("")).hasSize(1));
+
+        davTestHelper.upsertCalendar(organizer, updatedSeries.toString(), eventUid);
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMails().getList("")).hasSize(2));
+
+        JsonPath mails = smtpMails();
+        assertThat(mails.getString("[1].recipients[0].address")).isEqualTo(aliceEmail);
+        String updateMail = mails.getString("[1].message");
+        Calendar request = CalendarUtil.parseIcs(extractCalendarAttachment(updateMail, "REQUEST"));
+        assertThat(request.<VEvent>getComponents(Component.VEVENT))
+            .singleElement()
+            .satisfies(event -> assertThat(event.getRecurrenceId().getValue()).isEqualTo(recurrenceId));
+        List<String> links = extractActionLinks(getHtml(updateMail));
+        assertThat(links).hasSize(3);
+
+        // When Alice clicks Accept in the update email
+        given()
+            .when()
+            .get(asLocalParticipationLink(links.getFirst()))
+            .then()
+            .statusCode(200);
+
+        // Then Bob receives an acceptance for the moved occurrence and the series still awaits Alice's response
+        awaitAtMost.untilAsserted(() -> assertThat(replyMailsTo(organizer.username().asString()))
+            .singleElement()
+            .satisfies(mail -> {
+                Calendar reply = CalendarUtil.parseIcs(extractReplyCalendarAttachment(mail));
+                assertThat(reply.getComponents(Component.VEVENT)).hasSize(1);
+                assertThat(getRecurringAttendeePartStats(reply, aliceEmail))
+                    .isEqualTo(Map.of(recurrenceId, PartStat.ACCEPTED));
+            }));
+
+        URI organizerEventHref = URI.create(CalendarURL.from(organizer.id()).asUri() + "/" + eventUid + ".ics");
+        awaitAtMost.untilAsserted(() -> {
+            Calendar updated = calDavClient.fetchCalendarEvent(organizer.username(), organizerEventHref)
+                .block()
+                .calendarData();
+            assertThat(getRecurringAttendeePartStats(updated, aliceEmail))
+                .isEqualTo(Map.of(
+                    MASTER_RECURRENCE_KEY, PartStat.NEEDS_ACTION,
+                    recurrenceId, PartStat.ACCEPTED));
+        });
+    }
+
+    private Calendar recurringEventWithMovedOccurrence(String eventUid) {
+        LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
+        LocalDateTime start = now.plusWeeks(1);
+        LocalDateTime occurrence = start.plusWeeks(1);
+        DateTimeFormatter format = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'");
+
+        return CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Twake//Calendar Test//EN
+            BEGIN:VEVENT
+            UID:{uid}
+            DTSTAMP:{stamp}
+            RECURRENCE-ID:{occurrence}
+            SEQUENCE:1
+            DTSTART:{movedStart}
+            DTEND:{movedEnd}
+            SUMMARY:Weekly meeting moved
+            ORGANIZER:mailto:{organizer}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:{attendee}
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:{uid}
+            DTSTAMP:{stamp}
+            DTSTART:{start}
+            DTEND:{end}
+            RRULE:FREQ=WEEKLY;COUNT=3
+            SUMMARY:Weekly meeting
+            ORGANIZER:mailto:{organizer}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:{attendee}
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{uid}", eventUid)
+            .replace("{stamp}", now.format(format))
+            .replace("{organizer}", organizer.username().asString())
+            .replace("{attendee}", attendee.username().asString())
+            .replace("{start}", start.format(format))
+            .replace("{end}", start.plusHours(1).format(format))
+            .replace("{occurrence}", occurrence.format(format))
+            .replace("{movedStart}", occurrence.plusHours(2).format(format))
+            .replace("{movedEnd}", occurrence.plusHours(3).format(format)));
+    }
+
+    @Test
     void internalAttendeeAnswerShouldNotSendDuplicatedReplyEmailToOrganizer() {
         String eventUid = UUID.randomUUID().toString();
         davTestHelper.upsertCalendar(
@@ -870,12 +972,17 @@ class EventParticipationRouteTest {
     }
 
     private String extractReplyCalendarAttachment(String rawMime) {
+        return extractCalendarAttachment(rawMime, "REPLY");
+    }
+
+    private String extractCalendarAttachment(String rawMime, String method) {
         Pattern calendarPattern = Pattern.compile(
-            "Content-Transfer-Encoding: base64\r?\nContent-Type: text/calendar; charset=UTF-8; method=REPLY\r?\n\r?\n([A-Za-z0-9+/=\r\n]+)",
+            "Content-Transfer-Encoding: base64\r?\nContent-Type: text/calendar; charset=UTF-8; method="
+                + method + "\r?\n\r?\n([A-Za-z0-9+/=\r\n]+)",
             Pattern.DOTALL);
         Matcher matcher = calendarPattern.matcher(rawMime);
         assertThat(matcher.find())
-            .withFailMessage("No text/calendar REPLY part found in the mail")
+            .withFailMessage("No text/calendar %s part found in the mail", method)
             .isTrue();
         return new String(Base64.getDecoder().decode(matcher.group(1).replaceAll("\\s+", "")), StandardCharsets.UTF_8);
     }
