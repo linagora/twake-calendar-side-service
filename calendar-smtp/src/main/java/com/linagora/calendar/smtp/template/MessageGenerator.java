@@ -56,6 +56,8 @@ import org.apache.james.mime4j.stream.RawField;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.base.Supplier;
+import com.google.common.base.Suppliers;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableMap;
@@ -182,6 +184,9 @@ public class MessageGenerator {
     private final Optional<TextBodyRenderer> textBodyRenderer;
     private final I18NTranslator i18nTranslator;
     private final OpenPaaSUserDAO userDAO;
+    // The subject template of a generator never changes: it is compiled once, at the first mail so that a translation
+    // lacking a subject keeps failing at generation only. A failed compilation is not memoized.
+    private final Supplier<SubjectRenderer> subjectRenderer;
 
     public MessageGenerator(I18NTranslator i18nTranslator,
                             HtmlBodyRenderer htmlBodyRenderer,
@@ -191,6 +196,7 @@ public class MessageGenerator {
         this.htmlBodyRenderer = htmlBodyRenderer;
         this.textBodyRenderer = textBodyRenderer;
         this.userDAO = userDAO;
+        this.subjectRenderer = Suppliers.memoize(Throwing.supplier(this::compileSubject).sneakyThrow()::get);
     }
 
     public Mono<Message> generate(Username recipient, MailAddress fromAddress, Map<String, Object> scopedVariable) {
@@ -331,12 +337,16 @@ public class MessageGenerator {
             .build();
     }
 
-    private String subject(Map<String, Object> scopedVariable) throws IOException {
+    private String subject(Map<String, Object> scopedVariable) {
+        return subjectRenderer.get().render(scopedVariable);
+    }
+
+    private SubjectRenderer compileSubject() throws IOException {
         String subjectTemplate = i18nTranslator.get(SUBJECT_KEY_NAME);
         Preconditions.checkArgument(StringUtils.isNotBlank(subjectTemplate),
             "Subject is empty, please check your translations for key: " + SUBJECT_KEY_NAME);
 
-        return SubjectRenderer.of(subjectTemplate).render(scopedVariable);
+        return SubjectRenderer.of(subjectTemplate);
     }
 
     public I18NTranslator getI18nTranslator() {

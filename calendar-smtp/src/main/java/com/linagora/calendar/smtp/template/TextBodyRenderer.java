@@ -24,9 +24,6 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
 
-import de.neuland.pug4j.Pug4J;
-import de.neuland.pug4j.template.PugTemplate;
-
 /**
  * Renders the text/plain alternative of a mail. The template is optional so that
  * custom template directories lacking a text version keep working (HTML only).
@@ -38,16 +35,16 @@ public class TextBodyRenderer {
         if (!Files.isRegularFile(Path.of(templatePath, TEMPLATE_FILE_NAME))) {
             return Optional.empty();
         }
-        return Optional.of(new TextBodyRenderer(HtmlBodyRenderer.loadTemplate(templatePath, TEMPLATE_FILE_NAME)));
+        return Optional.of(new TextBodyRenderer(HtmlBodyRenderer.compileTemplate(templatePath, TEMPLATE_FILE_NAME)));
     }
 
-    private final PugTemplate template;
+    private final CompiledPugTemplate template;
 
-    public TextBodyRenderer(PugTemplate template) {
+    private TextBodyRenderer(CompiledPugTemplate template) {
         this.template = template;
     }
 
     public String render(Map<String, Object> scopedValue) {
-        return Pug4J.render(template, scopedValue);
+        return template.render(scopedValue);
     }
 }
