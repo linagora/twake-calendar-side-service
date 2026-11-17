@@ -303,7 +303,7 @@ public class DockerSabreDavSetup {
             getSabreDavURI(),
             Optional.of(TRUST_ALL_SSL_CERTS),
             // Shared Docker services can take longer to respond under CI load.
-            Optional.of(Duration.ofSeconds(30)),
+            Optional.of(Duration.ofMinutes(1)),
             Optional.empty());
     }
 
