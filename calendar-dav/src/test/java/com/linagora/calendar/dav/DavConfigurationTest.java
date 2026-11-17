@@ -84,4 +84,42 @@ class DavConfigurationTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("dav.admin.user should not be empty");
     }
+
+    @Test
+    void fromShouldReadTheConnectionPoolConfiguration() {
+        PropertiesConfiguration configuration = new PropertiesConfiguration();
+        configuration.addProperty("dav.url", "http://localhost:8080");
+        configuration.addProperty("dav.admin.user", "jhon_doe");
+        configuration.addProperty("dav.admin.password", "123");
+        configuration.addProperty("dav.rest.client.max.connections", "64");
+        configuration.addProperty("dav.rest.client.pending.acquire.max.count", "32");
+        configuration.addProperty("dav.rest.client.pending.acquire.timeout", "1s");
+
+        assertThat(DavConfiguration.from(configuration).connectionPool())
+            .contains(new DavConnectionPoolConfiguration(64, Optional.of(32), Optional.of(Duration.ofSeconds(1))));
+    }
+
+    @Test
+    void fromShouldNotBoundTheConnectionPoolByDefault() {
+        PropertiesConfiguration configuration = new PropertiesConfiguration();
+        configuration.addProperty("dav.url", "http://localhost:8080");
+        configuration.addProperty("dav.admin.user", "jhon_doe");
+        configuration.addProperty("dav.admin.password", "123");
+
+        assertThat(DavConfiguration.from(configuration).connectionPool())
+            .isEmpty();
+    }
+
+    @Test
+    void fromShouldThrowWhenMaxConnectionsIsNotPositive() {
+        PropertiesConfiguration configuration = new PropertiesConfiguration();
+        configuration.addProperty("dav.url", "http://localhost:8080");
+        configuration.addProperty("dav.admin.user", "jhon_doe");
+        configuration.addProperty("dav.admin.password", "123");
+        configuration.addProperty("dav.rest.client.max.connections", "0");
+
+        assertThatThrownBy(() -> DavConfiguration.from(configuration))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("dav.rest.client.max.connections should be positive");
+    }
 }

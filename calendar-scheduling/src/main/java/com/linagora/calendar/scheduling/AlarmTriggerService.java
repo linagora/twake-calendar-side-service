@@ -37,8 +37,6 @@ import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.james.core.MailAddress;
-import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.events.Event;
 import org.apache.james.events.EventBus;
@@ -88,8 +86,7 @@ public class AlarmTriggerService {
     private final SettingsBasedResolver settingsResolver;
     private final MessageGenerator.Factory messageGeneratorFactory;
     private final AlarmInstantFactory alarmInstantFactory;
-    private final MaybeSender maybeSender;
-    private final MailAddress senderAddress;
+    private final MailTemplateConfiguration mailTemplateConfiguration;
     private final EventBus eventBus;
 
     @Inject
@@ -108,9 +105,7 @@ public class AlarmTriggerService {
         this.settingsResolver = settingsResolver;
         this.messageGeneratorFactory = messageGeneratorFactory;
         this.alarmInstantFactory = alarmInstantFactory;
-        this.maybeSender = mailTemplateConfiguration.sender();
-        this.senderAddress = maybeSender.asOptional()
-            .orElseThrow(() -> new IllegalArgumentException("Sender address must not be empty"));
+        this.mailTemplateConfiguration = mailTemplateConfiguration;
         this.eventBus = eventBus;
     }
 
@@ -182,8 +177,8 @@ public class AlarmTriggerService {
                     locale);
                 return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(locale), TEMPLATE_TYPE))
                     .subscribeOn(Schedulers.boundedElastic())
-                    .flatMap(messageGenerator -> messageGenerator.generate(recipientUser, senderAddress, model, List.of()))
-                    .flatMap(message -> mailSenderFactory.send(new Mail(maybeSender, List.of(alarmEvent.recipient()), message)));
+                    .flatMap(messageGenerator -> messageGenerator.generate(recipientUser, mailTemplateConfiguration.senderAddress(recipientUser), model, List.of()))
+                    .flatMap(message -> mailSenderFactory.send(new Mail(mailTemplateConfiguration.sender(recipientUser), List.of(alarmEvent.recipient()), message)));
             });
     }
 

@@ -210,6 +210,24 @@ public class BookingLinkEventIcsBuilderTest {
     }
 
     @Test
+    void buildShouldKeepALineBreakFollowingABackslashInTheDescription() {
+        BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.empty(), FIXED_UID_GENERATOR);
+
+        BookingRequest request = new BookingRequest(
+            Instant.parse("2036-01-26T09:30:00Z"),
+            BookingAttendee.from("BOB", "creator@example.com"),
+            List.of(),
+            "Intro",
+            false,
+            "C:\\temp\\\nnext");
+
+        BuildResult result = testee.build(request, OWNER, Duration.ofMinutes(30), BOOKING_LINK_PUBLIC_ID).block();
+
+        VEvent event = (VEvent) CalendarUtil.parseIcs(result.icsBytes()).getComponent(Component.VEVENT).get();
+        assertThat(event.getDescription().getValue()).isEqualTo("C:\\temp\\\nnext");
+    }
+
+    @Test
     void buildShouldHandleNullFields() {
         BookingLinkEventIcsBuilder testee = new BookingLinkEventIcsBuilder(FIXED_CLOCK, organizer -> Mono.just(VISIO_URL), FIXED_UID_GENERATOR);
 

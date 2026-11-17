@@ -20,6 +20,10 @@ package com.linagora.calendar.restapi;
 
 public class DavServiceUnavailableException extends RuntimeException {
     public DavServiceUnavailableException(Throwable cause) {
-        super("DAV upstream service is unavailable", cause);
+        this("DAV upstream service is unavailable", cause);
+    }
+
+    public DavServiceUnavailableException(String message, Throwable cause) {
+        super(message, cause);
     }
 }

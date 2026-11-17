@@ -313,6 +313,8 @@ public class CalendarUtil {
      * The ical4j content handler, except for VTIMEZONEs: ical4j builds their {@link TimeZone} before handing it to the
      * registry, and that construction may expand observances without bound. They are handed over as definitions to
      * {@link CustomizedTimeZoneRegistry#register(VTimeZone)}, which checks them first.
+     *
+     * <p>Properties are built by a {@link TextDecodingPropertyBuilder}, which decodes TEXT values as RFC 5545 requires.
      */
     private static class TimeZoneCheckingContentHandler extends DefaultContentHandler {
         private final CustomizedTimeZoneRegistry tzRegistry;
@@ -320,6 +322,16 @@ public class CalendarUtil {
         TimeZoneCheckingContentHandler(Consumer<Calendar> consumer, CustomizedTimeZoneRegistry tzRegistry, ContentHandlerContext context) {
             super(consumer, tzRegistry, context);
             this.tzRegistry = tzRegistry;
+        }
+
+        @Override
+        public void startProperty(String name) {
+            super.startProperty(name);
+            if (propertyBuilder != null) {
+                propertyBuilder = new TextDecodingPropertyBuilder(propertyFactories())
+                    .name(name)
+                    .timeZoneRegistry(tzRegistry);
+            }
         }
 
         @Override

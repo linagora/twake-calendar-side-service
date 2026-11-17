@@ -893,6 +893,59 @@ class CalendarUtilTest {
         assertThat(summary.getValue()).isEqualTo("a,b\\c");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"DESCRIPTION", "SUMMARY", "LOCATION", "X-ALT-DESC"})
+    void parseIcsShouldReadALineBreakFollowingAnEscapedBackslash(String propertyName) {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty(propertyName + ":C:\\\\temp\\\\\\nnext\\, done"));
+
+        assertThat(firstEventProperty(calendar, propertyName).getValue()).isEqualTo("C:\\temp\\\nnext, done");
+    }
+
+    @Test
+    void parseIcsShouldReadAnEscapedBackslashFollowedByTheLetterN() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty("DESCRIPTION:C:\\\\temp\\\\\\\\nnext\\nend"));
+
+        assertThat(firstEventProperty(calendar, Property.DESCRIPTION).getValue()).isEqualTo("C:\\temp\\\\nnext\nend");
+    }
+
+    @Test
+    void parseIcsShouldReadUpperCaseLineBreakEscapes() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty("DESCRIPTION:first\\Nsecond\\nthird"));
+
+        assertThat(firstEventProperty(calendar, Property.DESCRIPTION).getValue()).isEqualTo("first\nsecond\nthird");
+    }
+
+    @Test
+    void parseIcsShouldNotDecodeLineBreakEscapesOfNonTextValues() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty("X-FOO;VALUE=URI:http://example.com/a\\\\\\nb\\N"));
+
+        assertThat(firstEventProperty(calendar, "X-FOO").getValue()).isEqualTo("http://example.com/a\\\\\\nb\\N");
+    }
+
+    @Test
+    void parseIcsShouldReadBackTheWrittenLineBreakFollowingABackslash() {
+        Calendar written = CalendarUtil.parseIcs(icsWithEventProperty("DESCRIPTION:placeholder"));
+        firstEventProperty(written, Property.DESCRIPTION).setValue("C:\\temp\\\nnext");
+
+        Calendar readBack = CalendarUtil.parseIcs(written.toString());
+
+        assertThat(firstEventProperty(readBack, Property.DESCRIPTION).getValue()).isEqualTo("C:\\temp\\\nnext");
+    }
+
+    @Test
+    void parseIcsShouldDecodeTextEscapesInASinglePass() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty("DESCRIPTION:a\\\\\\,b\\;c\\\\;d\\\"e\\xf\\\\\\\\g\\nh"));
+
+        assertThat(firstEventProperty(calendar, Property.DESCRIPTION).getValue()).isEqualTo("a\\,b;c\\;d\"e\\xf\\\\g\nh");
+    }
+
+    @Test
+    void parseIcsShouldKeepATrailingBackslashOfATextValue() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty("DESCRIPTION:a\\nb\\"));
+
+        assertThat(firstEventProperty(calendar, Property.DESCRIPTION).getValue()).isEqualTo("a\nb\\");
+    }
+
     @Test
     void copyOfShouldKeepBackslashesOfParameterValues() {
         Calendar calendar = CalendarUtil.parseIcs(icsWithEventProperty("X-FOO;TYPE=\"€uro\\\\N\";CN=\"a\\^nb\":bar"));

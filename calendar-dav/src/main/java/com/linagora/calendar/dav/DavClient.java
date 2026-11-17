@@ -55,7 +55,10 @@ public abstract class DavClient {
     }
 
     protected HttpClient createHttpClient(boolean trustAllSslCerts, String userAgent) throws SSLException {
-        HttpClient client = HttpClient.create()
+        HttpClient client = config.connectionPool()
+            .map(DavConnectionPoolConfiguration::asConnectionProvider)
+            .map(HttpClient::create)
+            .orElseGet(HttpClient::create)
             .baseUrl(config.baseUrl().toString())
             .responseTimeout(config.responseTimeout().orElse(DEFAULT_RESPONSE_TIMEOUT))
             .headers(headers -> headers.set(HttpHeaderNames.USER_AGENT, userAgent));
