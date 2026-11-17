@@ -21,7 +21,6 @@ package com.linagora.calendar.api;
 import java.net.URI;
 import java.net.URL;
 import java.util.Optional;
-import java.util.function.Function;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -32,6 +31,7 @@ import org.apache.commons.lang3.Strings;
 import org.apache.james.core.MailAddress;
 
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.api.Participation.ParticipantAction;
 
 import reactor.core.publisher.Mono;
 
@@ -42,8 +42,11 @@ public class EventParticipationActionLinkFactory {
                               URI maybe) {
     }
 
+    public static final String JWT_PARAM = "jwt";
+    public static final String ACTION_PARAM = "action";
+
     private final ParticipationTokenSigner participationTokenSigner;
-    private final Function<String, URI> buildParticipationActionLinkFunction;
+    private final String excalBaseUrl;
 
     @Inject
     @Singleton
@@ -56,7 +59,7 @@ public class EventParticipationActionLinkFactory {
     public EventParticipationActionLinkFactory(ParticipationTokenSigner participationTokenSigner,
                                                URL spaExcalUrl) {
         this.participationTokenSigner = participationTokenSigner;
-        this.buildParticipationActionLinkFunction = jwt -> URI.create(Strings.CS.removeEnd(spaExcalUrl.toString(), "/") + "/excal/?jwt=" + jwt);
+        this.excalBaseUrl = Strings.CS.removeEnd(spaExcalUrl.toString(), "/") + "/excal/";
     }
 
     public Mono<ActionLinks> generateLinks(MailAddress organizer, MailAddress attendee, String eventUid, String calendarURI) {
@@ -74,22 +77,19 @@ public class EventParticipationActionLinkFactory {
         Preconditions.checkArgument(StringUtils.isNotEmpty(calendarURI), "calendarURI must not be empty");
         Preconditions.checkArgument(recurrenceId != null, "recurrenceId must not be null");
 
-        Participation acceptedParticipation = new Participation(organizer, attendee, eventUid, calendarURI,
-            Participation.ParticipantAction.ACCEPTED, recurrenceId);
-        Participation rejectedParticipation = acceptedParticipation.withAction(Participation.ParticipantAction.REJECTED);
-        Participation maybeParticipation = acceptedParticipation.withAction(Participation.ParticipantAction.TENTATIVE);
+        ParticipationGrant grant = new ParticipationGrant(organizer, attendee, eventUid, calendarURI, recurrenceId);
 
-        return Mono.zip(participationTokenSigner
-                    .signAsJwt(acceptedParticipation),
-                participationTokenSigner
-                    .signAsJwt(rejectedParticipation),
-                participationTokenSigner
-                    .signAsJwt(maybeParticipation))
-            .map(tokens -> {
-                URI yesLink = buildParticipationActionLinkFunction.apply(tokens.getT1());
-                URI noLink = buildParticipationActionLinkFunction.apply(tokens.getT2());
-                URI maybeLink = buildParticipationActionLinkFunction.apply(tokens.getT3());
-                return new ActionLinks(yesLink, noLink, maybeLink);
-            });
+        return participationTokenSigner.signAsJwt(grant)
+            .map(jwt -> new ActionLinks(
+                buildLink(jwt, ParticipantAction.ACCEPTED),
+                buildLink(jwt, ParticipantAction.REJECTED),
+                buildLink(jwt, ParticipantAction.TENTATIVE)));
+    }
+
+    /**
+     * All the links of an attendee share one token, which grants any answer: signing is RSA, and costly.
+     */
+    private URI buildLink(String jwt, ParticipantAction action) {
+        return URI.create(excalBaseUrl + "?" + JWT_PARAM + "=" + jwt + "&" + ACTION_PARAM + "=" + action.name());
     }
 }
