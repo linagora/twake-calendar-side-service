@@ -21,22 +21,35 @@ package com.linagora.calendar.dav.dto;
 import static com.linagora.calendar.dav.CalDavClient.ICS_EXTENSION;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.IntStream;
 
 import javax.xml.namespace.QName;
+import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamConstants;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamReader;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.xpath.XPathExpressionException;
+import javax.xml.xpath.XPathFactory;
 
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.dav.XMLUtil;
+import com.linagora.calendar.dav.XMLUtil.DavNamespaceContext;
 
 public record CalendarReportXmlResponse(byte[] xml) {
 
@@ -70,6 +83,19 @@ public record CalendarReportXmlResponse(byte[] xml) {
         public String icsResourceFullName() {
             return StringUtils.substringAfterLast(href.getPath(), "/");
         }
+    }
+
+    public List<URI> extractCalendarObjectHrefs() throws ParserConfigurationException, IOException, SAXException, XPathExpressionException {
+        Element root = XMLUtil.parseMultistatus(xml);
+        XPath xpath = XPathFactory.newInstance().newXPath();
+        xpath.setNamespaceContext(new DavNamespaceContext());
+        NodeList nodes = (NodeList) xpath.evaluate("/d:multistatus/d:response/d:href", root, XPathConstants.NODESET);
+        return IntStream.range(0, nodes.getLength())
+            .mapToObj(nodes::item)
+            .map(Node::getTextContent)
+            .map(String::strip)
+            .map(URI::create)
+            .toList();
     }
 
     public List<CalendarObject> extractCalendarObjects() {

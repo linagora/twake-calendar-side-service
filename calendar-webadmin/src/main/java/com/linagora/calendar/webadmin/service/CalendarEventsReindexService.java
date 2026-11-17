@@ -20,9 +20,12 @@ package com.linagora.calendar.webadmin.service;
 
 import static com.linagora.calendar.webadmin.CalendarRoutes.CalendarEventsReindexRequestToTask.TASK_NAME;
 
+import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 
 import jakarta.inject.Inject;
 
@@ -31,9 +34,13 @@ import org.apache.james.util.ReactorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.Lists;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.DavClientException;
+import com.linagora.calendar.dav.dto.CalendarMultiGetEntry;
 import com.linagora.calendar.dav.dto.CalendarReportXmlResponse;
+import com.linagora.calendar.dav.dto.CalendarReportXmlResponse.CalendarObject;
 import com.linagora.calendar.dav.model.CalendarQuery;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -104,6 +111,8 @@ public class CalendarEventsReindexService {
     }
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarEventsReindexService.class);
+    // Limit hrefs per calendar-multiget REPORT to keep ICS XML responses small during reindex.
+    private static final int MULTIGET_BATCH_SIZE = 50;
     private static final Map<String, String> PERSONAL_CALENDAR_QUERY = Map.of("personal", "true");
 
     private final OpenPaaSUserDAO userDAO;
@@ -154,22 +163,6 @@ public class CalendarEventsReindexService {
             });
     }
 
-    private static Flux<CalendarEvents> extractCalendarEvents(Context context, CalendarURL calendarURL, CalendarReportXmlResponse response) {
-        return Flux.fromIterable(response.extractCalendarObjects())
-            .flatMap(calendarObject -> Mono.fromCallable(() -> CalendarUtil.parseIcs(calendarObject.calendarData()))
-                .subscribeOn(Schedulers.boundedElastic())
-                .map(calendar -> calendar.<VEvent>getComponents(Component.VEVENT).stream()
-                    .map(vEvent -> EventFields.fromVEvent(vEvent, calendarURL, calendarObject.icsResourceFullName()))
-                    .toList())
-                .filter(events -> !events.isEmpty())
-                .map(CalendarEvents::of)
-                .onErrorResume(e -> {
-                    LOGGER.error("{} failed to parse ICS resource {} in calendar {}", TASK_NAME.asString(), calendarObject.icsResourceFullName(), calendarURL.serialize(), e);
-                    context.incrementFailedEvent();
-                    return Mono.empty();
-                }));
-    }
-
     private Flux<CalendarEvents> deleteIndexAndCollectEvents(Context context, OpenPaaSUser user, RunningOptions runningOptions) {
         return calendarSearchService.deleteAll(user.id())
             .doOnSuccess(ignored -> LOGGER.info("{} task deleted all events of user {}", TASK_NAME.asString(), user.username()))
@@ -188,8 +181,10 @@ public class CalendarEventsReindexService {
     }
 
     private Flux<CalendarEvents> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL) {
-        return calDavClient.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.ofFilters())
-            .flatMapMany(response -> extractCalendarEvents(context, calendarURL, response))
+        return calDavClient.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.hrefs())
+            .switchIfEmpty(Mono.error(() -> new DavClientException("Empty href REPORT response for " + calendarURL.serialize())))
+            .flatMapMany(response -> collectEvents(context, calendarURL, response,
+                hrefs -> calDavClient.calendarMultiGet(user.username(), calendarURL, hrefs)))
             .onErrorResume(e -> {
                 LOGGER.error("{} failed to read calendar {} for user {}", TASK_NAME.asString(), calendarURL.serialize(), user.username().asString(), e);
                 context.incrementFailedCalendar();
@@ -214,7 +209,51 @@ public class CalendarEventsReindexService {
             return Flux.empty();
         }
         CalendarURL calendarURL = CalendarURL.from(resource.id().asOpenPaaSId());
-        return calDavClient.calendarQueryReportXml(resource.domain(), calendarURL, CalendarQuery.ofFilters())
-            .flatMapMany(response -> extractCalendarEvents(context, calendarURL, response));
+        return calDavClient.calendarQueryReportXml(resource.domain(), calendarURL, CalendarQuery.hrefs())
+            .switchIfEmpty(Mono.error(() -> new DavClientException("Empty href REPORT response for " + calendarURL.serialize())))
+            .flatMapMany(response -> collectEvents(context, calendarURL, response,
+                hrefs -> calDavClient.calendarMultiGet(resource.domain(), calendarURL, hrefs)));
+    }
+
+    private Flux<CalendarEvents> collectEvents(Context context, CalendarURL calendarURL, CalendarReportXmlResponse response,
+                                               Function<List<URI>, Mono<List<CalendarMultiGetEntry>>> fetchBatch) {
+        return Mono.fromCallable(response::extractCalendarObjectHrefs)
+            .subscribeOn(Schedulers.boundedElastic())
+            .map(hrefs -> Lists.partition(hrefs, MULTIGET_BATCH_SIZE))
+            .flatMapMany(Flux::fromIterable)
+            .concatMap(hrefs -> Mono.defer(() -> fetchBatch.apply(hrefs))
+                .flatMapMany(Flux::fromIterable)
+                .concatMap(entry -> {
+                    // The event may have been deleted since the href listing.
+                    if (entry.isNotFound()) {
+                        return Mono.empty();
+                    }
+                    if (!entry.isSuccessful()) {
+                        LOGGER.error("{} failed to fetch ICS resource {} in calendar {}: status={}", TASK_NAME.asString(), entry.href(), calendarURL.serialize(), entry.status());
+                        context.incrementFailedEvent();
+                        return Mono.empty();
+                    }
+                    return extractCalendarEvents(context, calendarURL, new CalendarObject(entry.href(), entry.calendarData()));
+                })
+                .onErrorResume(e -> {
+                    LOGGER.error("{} failed to fetch ICS batch {} in calendar {}", TASK_NAME.asString(), hrefs, calendarURL.serialize(), e);
+                    context.failedEventCount.addAndGet(hrefs.size());
+                    return Flux.empty();
+                }));
+    }
+
+    private static Mono<CalendarEvents> extractCalendarEvents(Context context, CalendarURL calendarURL, CalendarObject calendarObject) {
+        return Mono.fromCallable(() -> CalendarUtil.parseIcs(calendarObject.calendarData()))
+            .subscribeOn(Schedulers.boundedElastic())
+            .map(calendar -> calendar.<VEvent>getComponents(Component.VEVENT).stream()
+                .map(vEvent -> EventFields.fromVEvent(vEvent, calendarURL, calendarObject.icsResourceFullName()))
+                .toList())
+            .filter(events -> !events.isEmpty())
+            .map(CalendarEvents::of)
+            .onErrorResume(e -> {
+                LOGGER.error("{} failed to parse ICS resource {} in calendar {}", TASK_NAME.asString(), calendarObject.icsResourceFullName(), calendarURL.serialize(), e);
+                context.incrementFailedEvent();
+                return Mono.empty();
+            });
     }
 }

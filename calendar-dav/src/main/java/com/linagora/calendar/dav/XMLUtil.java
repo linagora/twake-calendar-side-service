@@ -18,8 +18,12 @@
 
 package com.linagora.calendar.dav;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.net.URI;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Stream;
 
 import javax.xml.XMLConstants;
 import javax.xml.namespace.NamespaceContext;
@@ -30,11 +34,15 @@ import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
 
+import org.apache.http.message.BasicLineParser;
 import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
 import com.google.common.collect.ImmutableList;
+import com.linagora.calendar.dav.dto.CalendarMultiGetEntry;
 
 public class XMLUtil {
 
@@ -103,6 +111,48 @@ public class XMLUtil {
             }
         }
         return eventIds.build();
+    }
+
+    static List<CalendarMultiGetEntry> extractCalendarMultiGetEntries(byte[] xml) throws ParserConfigurationException, IOException, SAXException {
+        return children(parseMultistatus(xml), "DAV:", "response")
+            .map(XMLUtil::calendarMultiGetEntry)
+            .toList();
+    }
+
+    public static Element parseMultistatus(byte[] xml) throws ParserConfigurationException, IOException, SAXException {
+        Element root = DOCUMENT_BUILDER_FACTORY.newDocumentBuilder().parse(new ByteArrayInputStream(xml)).getDocumentElement();
+        if (!"DAV:".equals(root.getNamespaceURI()) || !"multistatus".equals(root.getLocalName())) {
+            throw new DavClientException("Missing DAV:multistatus in REPORT response");
+        }
+        return root;
+    }
+
+    private static CalendarMultiGetEntry calendarMultiGetEntry(Element response) {
+        URI href = URI.create(children(response, "DAV:", "href").findFirst()
+            .orElseThrow(() -> new DavClientException("Missing DAV:href in calendar-multiget response"))
+            .getTextContent().strip());
+        int status = statusCode(response);
+        if (status != 0) {
+            return new CalendarMultiGetEntry(href, status, "");
+        }
+        return children(response, "DAV:", "propstat")
+            .flatMap(propstat -> children(propstat, "DAV:", "prop")
+                .flatMap(prop -> children(prop, "urn:ietf:params:xml:ns:caldav", "calendar-data"))
+                .map(data -> new CalendarMultiGetEntry(href, statusCode(propstat), data.getTextContent())))
+            .findFirst()
+            .orElseGet(() -> new CalendarMultiGetEntry(href, 0, ""));
+    }
+
+    private static int statusCode(Element element) {
+        return children(element, "DAV:", "status").findFirst()
+            .map(status -> BasicLineParser.parseStatusLine(status.getTextContent().strip(), null).getStatusCode())
+            .orElse(0);
+    }
+
+    private static Stream<Element> children(Element parent, String namespace, String name) {
+        return Stream.iterate(parent.getFirstChild(), Objects::nonNull, Node::getNextSibling)
+            .filter(node -> namespace.equals(node.getNamespaceURI()) && name.equals(node.getLocalName()))
+            .map(Element.class::cast);
     }
 
     /**

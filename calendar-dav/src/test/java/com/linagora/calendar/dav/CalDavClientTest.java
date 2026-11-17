@@ -1327,7 +1327,7 @@ public class CalDavClientTest {
     }
 
     @Test
-    void calendarQueryReportXmlShouldReturnEmptyWhenNoEvents() {
+    void calendarQueryReportXmlShouldReturnEmptyWhenNoEvents() throws Exception {
         OpenPaaSUser user = createOpenPaaSUser();
         CalendarURL calendarURL = CalendarURL.from(user.id());
 
@@ -1337,6 +1337,40 @@ public class CalDavClientTest {
         List<CalendarObject> items = testee.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.ofFilters()).block().extractCalendarObjects();
 
         assertThat(items).isEmpty();
+        CalendarReportXmlResponse hrefReport = testee.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.hrefs()).block();
+        assertThat(hrefReport.extractCalendarObjectHrefs()).isEmpty();
+    }
+
+    @Test
+    void shouldListHrefsThenMultiGetSelectedObjects() throws Exception {
+        OpenPaaSUser user = createOpenPaaSUser();
+        CalendarURL calendarURL = CalendarURL.from(user.id());
+        URI encodedHref = URI.create(calendarURL.asUri() + "/event%20%25&one.ics");
+        URI reportedHref = URI.create(calendarURL.asUri() + "/event%20%25%26one.ics");
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:first
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:First event
+            END:VEVENT
+            END:VCALENDAR
+            """;
+        davTestHelper.upsertCalendar(user.username(), encodedHref, ics).block();
+        davTestHelper.upsertCalendar(user, ics.replace("first", "second"), "second");
+
+        CalendarReportXmlResponse hrefReport = testee.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.hrefs()).block();
+        List<URI> hrefs = hrefReport.extractCalendarObjectHrefs();
+        assertThat(hrefs).containsExactlyInAnyOrder(reportedHref, URI.create(calendarURL.asUri() + "/second.ics"));
+        assertThat(testee.calendarMultiGet(user.username(), calendarURL, List.of(encodedHref)).block())
+            .singleElement().satisfies(entry -> {
+                assertThat(entry.href()).isEqualTo(reportedHref);
+                assertThat(entry.status()).isEqualTo(200);
+                assertThat(entry.calendarData()).contains("UID:first");
+            });
     }
 
     @Test
@@ -1382,7 +1416,7 @@ public class CalDavClientTest {
     }
 
     @Test
-    void calendarQueryReportXmlShouldQueryResourceCalendar() {
+    void calendarQueryReportXmlShouldQueryResourceCalendar() throws Exception {
         // Given a resource calendar already contains an event.
         OpenPaaSUser admin = createOpenPaaSUser();
         OpenPaaSDomain domain = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB())
@@ -1431,6 +1465,16 @@ public class CalDavClientTest {
             .containsExactly("/calendars/" + resourceId.value() + "/" + resourceId.value() + "/" + resourceEventId + ".ics");
         assertThat(items).extracting(CalendarObject::calendarData)
             .anySatisfy(calendarData -> assertThat(calendarData).contains("UID:" + uid));
+
+        CalendarReportXmlResponse hrefReport = testee.calendarQueryReportXml(domain.id(), resourceCalendarURL, CalendarQuery.hrefs()).block();
+        List<URI> hrefs = hrefReport.extractCalendarObjectHrefs();
+        assertThat(hrefs).containsExactly(resourceEventUri);
+        assertThat(testee.calendarMultiGet(domain.id(), resourceCalendarURL, hrefs).block())
+            .singleElement().satisfies(entry -> {
+                assertThat(entry.href()).isEqualTo(resourceEventUri);
+                assertThat(entry.status()).isEqualTo(200);
+                assertThat(entry.calendarData()).contains("UID:" + uid);
+            });
     }
 
     @Test
