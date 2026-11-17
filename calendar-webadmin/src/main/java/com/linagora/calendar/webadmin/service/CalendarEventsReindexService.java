@@ -19,7 +19,6 @@
 package com.linagora.calendar.webadmin.service;
 
 import static com.linagora.calendar.webadmin.CalendarRoutes.CalendarEventsReindexRequestToTask.TASK_NAME;
-import static com.linagora.calendar.webadmin.task.CalendarEventsReindexTask.RunningOptions;
 
 import java.time.Duration;
 import java.util.Map;
@@ -44,6 +43,7 @@ import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.model.Resource;
+import com.linagora.calendar.webadmin.task.CalendarEventsReindexTask.RunningOptions;
 
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.component.VEvent;
@@ -104,13 +104,12 @@ public class CalendarEventsReindexService {
     }
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CalendarEventsReindexService.class);
+    private static final Map<String, String> PERSONAL_CALENDAR_QUERY = Map.of("personal", "true");
 
     private final OpenPaaSUserDAO userDAO;
     private final ResourceDAO resourceDAO;
     private final CalendarSearchService calendarSearchService;
     private final CalDavClient calDavClient;
-    private final CalendarEventsReindexHandler userHandler;
-    private final CalendarEventsReindexHandler resourceHandler;
 
     @Inject
     public CalendarEventsReindexService(OpenPaaSUserDAO userDAO, ResourceDAO resourceDAO, CalendarSearchService calendarSearchService, CalDavClient calDavClient) {
@@ -118,12 +117,18 @@ public class CalendarEventsReindexService {
         this.resourceDAO = resourceDAO;
         this.calendarSearchService = calendarSearchService;
         this.calDavClient = calDavClient;
-        this.userHandler = new UserCalendarEventsReindexHandler();
-        this.resourceHandler = new ResourceCalendarEventsReindexHandler();
     }
 
     public Mono<Task.Result> reindex(Context context, RunningOptions runningOptions) {
-        return Flux.concat(userHandler.prepareEvents(context, runningOptions), resourceHandler.prepareEvents(context, runningOptions))
+        return Flux.concat(
+                userDAO.list()
+                    .collectList()
+                    .flatMapMany(Flux::fromIterable)
+                    .concatMap(user -> deleteIndexAndCollectEvents(context, user, runningOptions)),
+                resourceDAO.findAll()
+                    .collectList()
+                    .flatMapMany(Flux::fromIterable)
+                    .concatMap(resource -> deleteIndexAndCollectEvents(context, resource)))
             .transform(ReactorUtils.<CalendarEvents, Task.Result>throttle()
                 .elements(runningOptions.eventsPerSecond())
                 .per(Duration.ofSeconds(1))
@@ -165,75 +170,51 @@ public class CalendarEventsReindexService {
                 }));
     }
 
-    public interface CalendarEventsReindexHandler {
-        Flux<CalendarEvents> prepareEvents(Context context, RunningOptions runningOptions);
+    private Flux<CalendarEvents> deleteIndexAndCollectEvents(Context context, OpenPaaSUser user, RunningOptions runningOptions) {
+        return calendarSearchService.deleteAll(user.id())
+            .doOnSuccess(ignored -> LOGGER.info("{} task deleted all events of user {}", TASK_NAME.asString(), user.username()))
+            .thenMany(Flux.defer(() -> collectEvents(context, user, runningOptions)))
+            .onErrorResume(e -> {
+                LOGGER.error("{} failed to prepare events for user {}", TASK_NAME.asString(), user.username().asString(), e);
+                context.incrementFailedUser();
+                return Mono.empty();
+            });
     }
 
-    private final class UserCalendarEventsReindexHandler implements CalendarEventsReindexHandler {
-        private static final Map<String, String> PERSONAL_CALENDAR_QUERY = Map.of("personal", "true");
-
-        @Override
-        public Flux<CalendarEvents> prepareEvents(Context context, RunningOptions runningOptions) {
-            return userDAO.list()
-                .collectList()
-                .flatMapMany(Flux::fromIterable)
-                .concatMap(user -> deleteIndexAndCollectEvents(context, user, runningOptions));
-        }
-
-        private Flux<CalendarEvents> deleteIndexAndCollectEvents(Context context, OpenPaaSUser user, RunningOptions runningOptions) {
-            return calendarSearchService.deleteAll(user.id())
-                .thenMany(Flux.defer(() -> collectEvents(context, user, runningOptions)))
-                .onErrorResume(e -> {
-                    LOGGER.error("{} failed to prepare events for user {}", TASK_NAME.asString(), user.username().asString(), e);
-                    context.incrementFailedUser();
-                    return Mono.empty();
-                });
-        }
-
-        private Flux<CalendarEvents> collectEvents(Context context, OpenPaaSUser user, RunningOptions runningOptions) {
-            return calDavClient.findUserCalendars(user.username(), user.id(), PERSONAL_CALENDAR_QUERY)
-                .flatMapMany(response -> Flux.fromIterable(response.calendars().keySet()))
-                .flatMap(calendarURL -> collectEvents(context, user, calendarURL), runningOptions.calendarsConcurrency());
-        }
-
-        private Flux<CalendarEvents> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL) {
-            return calDavClient.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.ofFilters())
-                .flatMapMany(response -> extractCalendarEvents(context, calendarURL, response))
-                .onErrorResume(e -> {
-                    LOGGER.error("{} failed to read calendar {} for user {}", TASK_NAME.asString(), calendarURL.serialize(), user.username().asString(), e);
-                    context.incrementFailedCalendar();
-                    return Mono.empty();
-                });
-        }
+    private Flux<CalendarEvents> collectEvents(Context context, OpenPaaSUser user, RunningOptions runningOptions) {
+        return calDavClient.findUserCalendars(user.username(), user.id(), PERSONAL_CALENDAR_QUERY)
+            .flatMapMany(response -> Flux.fromIterable(response.calendars().keySet()))
+            .flatMap(calendarURL -> collectEvents(context, user, calendarURL), runningOptions.calendarsConcurrency());
     }
 
-    private final class ResourceCalendarEventsReindexHandler implements CalendarEventsReindexHandler {
-        @Override
-        public Flux<CalendarEvents> prepareEvents(Context context, RunningOptions runningOptions) {
-            return resourceDAO.findAll()
-                .collectList()
-                .flatMapMany(Flux::fromIterable)
-                .concatMap(resource -> deleteIndexAndCollectEvents(context, resource));
-        }
+    private Flux<CalendarEvents> collectEvents(Context context, OpenPaaSUser user, CalendarURL calendarURL) {
+        return calDavClient.calendarQueryReportXml(user.username(), calendarURL, CalendarQuery.ofFilters())
+            .flatMapMany(response -> extractCalendarEvents(context, calendarURL, response))
+            .onErrorResume(e -> {
+                LOGGER.error("{} failed to read calendar {} for user {}", TASK_NAME.asString(), calendarURL.serialize(), user.username().asString(), e);
+                context.incrementFailedCalendar();
+                return Mono.empty();
+            });
+    }
 
-        private Flux<CalendarEvents> deleteIndexAndCollectEvents(Context context, Resource resource) {
-            return calendarSearchService.deleteAll(resource.id().asOpenPaaSId())
-                .thenMany(Flux.defer(() -> collectEvents(context, resource)))
-                .onErrorResume(e -> {
-                    String resourceId = resource.id().value();
-                    LOGGER.error("{} failed to prepare events for resource {} (calendar {}/{})", TASK_NAME.asString(), resourceId, resourceId, resourceId, e);
-                    context.incrementFailedResource();
-                    return Mono.empty();
-                });
-        }
+    private Flux<CalendarEvents> deleteIndexAndCollectEvents(Context context, Resource resource) {
+        return calendarSearchService.deleteAll(resource.id().asOpenPaaSId())
+            .doOnSuccess(ignored -> LOGGER.info("{} task deleted all events of resource {}", TASK_NAME.asString(), resource.id().value()))
+            .thenMany(Flux.defer(() -> collectEvents(context, resource)))
+            .onErrorResume(e -> {
+                String resourceId = resource.id().value();
+                LOGGER.error("{} failed to prepare events for resource {} (calendar {}/{})", TASK_NAME.asString(), resourceId, resourceId, resourceId, e);
+                context.incrementFailedResource();
+                return Mono.empty();
+            });
+    }
 
-        private Flux<CalendarEvents> collectEvents(Context context, Resource resource) {
-            if (resource.deleted()) {
-                return Flux.empty();
-            }
-            CalendarURL calendarURL = CalendarURL.from(resource.id().asOpenPaaSId());
-            return calDavClient.calendarQueryReportXml(resource.domain(), calendarURL, CalendarQuery.ofFilters())
-                .flatMapMany(response -> extractCalendarEvents(context, calendarURL, response));
+    private Flux<CalendarEvents> collectEvents(Context context, Resource resource) {
+        if (resource.deleted()) {
+            return Flux.empty();
         }
+        CalendarURL calendarURL = CalendarURL.from(resource.id().asOpenPaaSId());
+        return calDavClient.calendarQueryReportXml(resource.domain(), calendarURL, CalendarQuery.ofFilters())
+            .flatMapMany(response -> extractCalendarEvents(context, calendarURL, response));
     }
 }
