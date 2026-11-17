@@ -217,6 +217,145 @@ public class CalendarEventModifierTest {
             assertThat(updatedVEvent.getOrganizer().getParameter("CN").get().getValue()).isEqualTo("Organizer");
             assertThat(updatedVEvent.getOrganizer().getCalAddress().toASCIIString()).isEqualTo("mailto:organizer@example.com");
         }
+
+        static final Calendar RECURRING_CALENDAR = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//EN
+            BEGIN:VEVENT
+            UID:recurring
+            DTSTAMP:20251001T000000Z
+            RECURRENCE-ID:20251027T100000Z
+            DTSTART:20251027T140000Z
+            DURATION:PT1H
+            SUMMARY:Weekly (moved once)
+            ORGANIZER:mailto:organizer@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            SEQUENCE:2
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:recurring
+            DTSTAMP:20251001T000000Z
+            DTSTART:20251020T100000Z
+            DURATION:PT1H
+            RRULE:FREQ=WEEKLY
+            SUMMARY:Weekly
+            ORGANIZER:mailto:organizer@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:alice@example.com
+            SEQUENCE:1
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:recurring
+            DTSTAMP:20251001T000000Z
+            RECURRENCE-ID:20251103T100000Z
+            DTSTART:20251103T100000Z
+            DURATION:PT1H
+            SUMMARY:Weekly (alice only)
+            ORGANIZER:mailto:organizer@example.com
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:alice@example.com
+            SEQUENCE:1
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("\n", "\r\n").getBytes(StandardCharsets.UTF_8));
+
+        private static List<VEvent> vEvents(Calendar calendar) {
+            return calendar.getComponents(Component.VEVENT).stream()
+                .map(VEvent.class::cast)
+                .toList();
+        }
+
+        private static String partStat(VEvent vEvent, String attendeeEmail) {
+            return vEvent.getAttendees().stream()
+                .filter(attendee -> attendee.getCalAddress().toASCIIString().equals("mailto:" + attendeeEmail))
+                .findFirst()
+                .flatMap(attendee -> attendee.<PartStat>getParameter(Parameter.PARTSTAT))
+                .map(PartStat::getValue)
+                .orElseThrow();
+        }
+
+        @Test
+        void shouldUpdateAttendeePartStatOfEveryVEventTheAttendeeIsInvitedTo() {
+            Calendar updated = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.TENTATIVE))
+                .apply(RECURRING_CALENDAR);
+
+            List<VEvent> vEvents = vEvents(updated);
+            assertThat(partStat(vEvents.get(0), "bob@example.com")).isEqualTo("TENTATIVE");
+            assertThat(partStat(vEvents.get(1), "bob@example.com")).isEqualTo("TENTATIVE");
+        }
+
+        @Test
+        void shouldBumpSequenceOfEveryUpdatedVEvent() {
+            Calendar updated = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.TENTATIVE))
+                .apply(RECURRING_CALENDAR);
+
+            List<VEvent> vEvents = vEvents(updated);
+            assertThat(vEvents.get(0).getSequence().getSequenceNo()).isEqualTo(3);
+            assertThat(vEvents.get(1).getSequence().getSequenceNo()).isEqualTo(2);
+        }
+
+        @Test
+        void shouldLeaveUntouchedTheVEventsTheAttendeeIsNotInvitedTo() {
+            Calendar updated = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.TENTATIVE))
+                .apply(RECURRING_CALENDAR);
+
+            VEvent aliceOnlyOccurrence = vEvents(updated).get(2);
+            assertThat(aliceOnlyOccurrence.getSequence().getSequenceNo()).isEqualTo(1);
+            assertThat(partStat(aliceOnlyOccurrence, "alice@example.com")).isEqualTo("NEEDS-ACTION");
+        }
+
+        @Test
+        void shouldOnlyBumpSequenceOfTheVEventsWhosePartStatChanged() {
+            Calendar answeredOnce = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.TENTATIVE))
+                .apply(RECURRING_CALENDAR);
+            Calendar overrideAccepted = CalendarUtil.parseIcs(answeredOnce.toString()
+                .replaceFirst("PARTSTAT=TENTATIVE", "PARTSTAT=ACCEPTED")
+                .getBytes(StandardCharsets.UTF_8));
+
+            Calendar updated = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED))
+                .apply(overrideAccepted);
+
+            List<VEvent> vEvents = vEvents(updated);
+            assertThat(vEvents.get(0).getSequence().getSequenceNo()).isEqualTo(3);
+            assertThat(vEvents.get(1).getSequence().getSequenceNo()).isEqualTo(3);
+            assertThat(partStat(vEvents.get(1), "bob@example.com")).isEqualTo("ACCEPTED");
+        }
+
+        @Test
+        void shouldOnlyUpdateTheAnsweredOccurrenceWhenARecurrenceIdIsGiven() {
+            Calendar updated = CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.TENTATIVE,
+                    Optional.of("20251027T100000Z")))
+                .apply(RECURRING_CALENDAR);
+
+            List<VEvent> vEvents = vEvents(updated);
+            assertThat(partStat(vEvents.get(0), "bob@example.com")).isEqualTo("TENTATIVE");
+            assertThat(vEvents.get(0).getSequence().getSequenceNo()).isEqualTo(3);
+            assertThat(partStat(vEvents.get(1), "bob@example.com")).isEqualTo("NEEDS-ACTION");
+            assertThat(vEvents.get(1).getSequence().getSequenceNo()).isEqualTo(1);
+        }
+
+        @Test
+        void shouldThrowIfTheAnsweredOccurrenceIsNotOverridden() {
+            assertThatThrownBy(() -> CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED,
+                    Optional.of("20251110T100000Z")))
+                .apply(RECURRING_CALENDAR))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        void shouldThrowIfTheAttendeeIsNotInvitedToTheAnsweredOccurrence() {
+            assertThatThrownBy(() -> CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("bob@example.com", PartStat.ACCEPTED,
+                    Optional.of("20251103T100000Z")))
+                .apply(RECURRING_CALENDAR))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        void shouldThrowIfAttendeeIsInvitedToNoVEvent() {
+            assertThatThrownBy(() -> CalendarEventModifier.of(new AttendeePartStatusUpdatePatch("unknown@example.com", PartStat.ACCEPTED))
+                .apply(RECURRING_CALENDAR))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
     }
 
     @Test

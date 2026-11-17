@@ -20,6 +20,7 @@ package com.linagora.calendar.api;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 
 import jakarta.inject.Inject;
@@ -29,6 +30,7 @@ import org.apache.james.core.MailAddress;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -53,13 +55,18 @@ public interface ParticipationTokenSigner {
             String UID = "uid";
             String CALENDAR_URI = "calendarURI";
             String ACTION = "action";
+            String RECURRENCE_ID = "recurrenceId";
 
-            Function<Participation, Map<String, Object>> PARTICIPATION_TO_CLAIM = participation -> Map.of(
-                ATTENDEE_EMAIL, participation.attendee().asString(),
-                ORGANIZER_EMAIL, participation.organizer().asString(),
-                UID, participation.eventUid(),
-                CALENDAR_URI, participation.calendarURI(),
-                ACTION, participation.action().name());
+            Function<Participation, Map<String, Object>> PARTICIPATION_TO_CLAIM = participation -> {
+                ImmutableMap.Builder<String, Object> claims = ImmutableMap.<String, Object>builder()
+                    .put(ATTENDEE_EMAIL, participation.attendee().asString())
+                    .put(ORGANIZER_EMAIL, participation.organizer().asString())
+                    .put(UID, participation.eventUid())
+                    .put(CALENDAR_URI, participation.calendarURI())
+                    .put(ACTION, participation.action().name());
+                participation.recurrenceId().ifPresent(recurrenceId -> claims.put(RECURRENCE_ID, recurrenceId));
+                return claims.build();
+            };
 
             Function<Map<String, Object>, Participation> CLAIM_TO_PARTICIPATION = map -> {
                 Preconditions.checkNotNull(map, "Claim map must not be null");
@@ -85,7 +92,8 @@ public interface ParticipationTokenSigner {
                     toMailAddress.apply((String) map.get(ATTENDEE_EMAIL)),
                     (String) map.get(UID),
                     (String) map.get(CALENDAR_URI),
-                    Participation.ParticipantAction.valueOf((String) map.get(ACTION)));
+                    Participation.ParticipantAction.valueOf((String) map.get(ACTION)),
+                    Optional.ofNullable((String) map.get(RECURRENCE_ID)));
             };
         }
 

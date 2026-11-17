@@ -503,6 +503,94 @@ class EventParticipationRouteTest {
     }
 
     @Test
+    void externalAttendeeAnswerShouldApplyToTheWholeSeriesOfARecurringEvent(TwakeCalendarGuiceServer server) {
+        // Given a weekly event of which one occurrence was changed, the override being stored first
+        String externalUser = "externaluser@gmail.com";
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(
+            organizer,
+            generateRecurringCalendarDataWithOverride(eventUid, organizer.username().asString(), externalUser),
+            eventUid);
+
+        Participation participation = Throwing.supplier(() -> new Participation(
+            organizer.username().asMailAddress(),
+            new MailAddress(externalUser),
+            eventUid,
+            organizer.id().value(),
+            ParticipantAction.TENTATIVE)).get();
+
+        // When the external attendee answers « Maybe » through the JWT link
+        given()
+        .when()
+            .get(getParticipationTokenUrl(participation, server))
+        .then()
+            .statusCode(200);
+
+        // Then the REPLY carries the answer for the master and for the override
+        awaitAtMost.untilAsserted(() -> assertThat(replyMailsTo(organizer.username().asString())).hasSize(1));
+        String replyCalendar = extractReplyCalendarAttachment(replyMailsTo(organizer.username().asString()).getFirst());
+        assertThat(replyCalendar)
+            .contains("RRULE:FREQ=WEEKLY")
+            .contains("RECURRENCE-ID");
+        assertThat(StringUtils.countMatches(replyCalendar, "PARTSTAT=TENTATIVE")).isEqualTo(2);
+    }
+
+    @Test
+    void externalAttendeeAnswerShouldBeSentWhenOnlyAnOverrideIsUpcoming(TwakeCalendarGuiceServer server) {
+        // Given a finished weekly event of which the last occurrence was moved into the future
+        String externalUser = "externaluser@gmail.com";
+        String eventUid = UUID.randomUUID().toString();
+        LocalDateTime start = LocalDateTime.now().minusWeeks(3).withNano(0);
+        davTestHelper.upsertCalendar(
+            organizer,
+            generateRecurringCalendarDataWithOverride(eventUid, organizer.username().asString(), externalUser,
+                new RecurringEventWithOverride(start, "FREQ=WEEKLY;COUNT=2", start.plusWeeks(1), LocalDateTime.now().plusDays(3).withNano(0), "")),
+            eventUid);
+
+        // When the external attendee answers through the JWT link
+        answerThroughJwtLink(server, externalUser, eventUid, ParticipantAction.TENTATIVE);
+
+        // Then the organizer is notified of the answer for the upcoming override
+        awaitAtMost.untilAsserted(() -> assertThat(replyMailsTo(organizer.username().asString())).hasSize(1));
+    }
+
+    @Test
+    void externalAttendeeAnswerShouldBeSentWhenAnOverrideHasAnUnknownProperty(TwakeCalendarGuiceServer server) {
+        // Given a weekly event of which an override carries a property unknown to ical4j
+        String externalUser = "externaluser@gmail.com";
+        String eventUid = UUID.randomUUID().toString();
+        LocalDateTime start = LocalDateTime.now().plusDays(3).withNano(0);
+        davTestHelper.upsertCalendar(
+            organizer,
+            generateRecurringCalendarDataWithOverride(eventUid, organizer.username().asString(), externalUser,
+                new RecurringEventWithOverride(start, "FREQ=WEEKLY", start.plusWeeks(1), start.plusWeeks(1).plusHours(2), "FOOBAR:baz\n")),
+            eventUid);
+
+        // When the external attendee answers through the JWT link
+        answerThroughJwtLink(server, externalUser, eventUid, ParticipantAction.TENTATIVE);
+
+        // Then the REPLY is sent and carries the answer for the master and for the override
+        awaitAtMost.untilAsserted(() -> assertThat(replyMailsTo(organizer.username().asString())).hasSize(1));
+        String replyCalendar = extractReplyCalendarAttachment(replyMailsTo(organizer.username().asString()).getFirst());
+        assertThat(StringUtils.countMatches(replyCalendar, "PARTSTAT=TENTATIVE")).isEqualTo(2);
+    }
+
+    private void answerThroughJwtLink(TwakeCalendarGuiceServer server, String externalUser, String eventUid, ParticipantAction action) {
+        Participation participation = Throwing.supplier(() -> new Participation(
+            organizer.username().asMailAddress(),
+            new MailAddress(externalUser),
+            eventUid,
+            organizer.id().value(),
+            action)).get();
+
+        given()
+        .when()
+            .get(getParticipationTokenUrl(participation, server))
+        .then()
+            .statusCode(200);
+    }
+
+    @Test
     void replyEmailShouldOnlyCarryTheAnsweringAttendee() {
         String externalUser = "externaluser@gmail.com";
         String otherAttendee = "otherattendee@gmail.com";
@@ -1460,6 +1548,63 @@ class EventParticipationRouteTest {
             .replace("{endDateTime}", endDateTime)
             .replace("{dtStamp}", LocalDateTime.now().format(dateTimeFormatter))
             .replace("{partStat}", PartStat.NEEDS_ACTION.getValue());
+
+        return CalendarUtil.parseIcs(calendarAsString).toString();
+    }
+
+    private String generateRecurringCalendarDataWithOverride(String eventUid, String organizerEmail, String attendeeEmail) {
+        LocalDateTime start = LocalDateTime.now().plusDays(3).withNano(0);
+        return generateRecurringCalendarDataWithOverride(eventUid, organizerEmail, attendeeEmail,
+            new RecurringEventWithOverride(start, "FREQ=WEEKLY", start.plusWeeks(1), start.plusWeeks(1).plusHours(2), ""));
+    }
+
+    private record RecurringEventWithOverride(LocalDateTime start, String rrule, LocalDateTime overriddenOccurrence,
+                                              LocalDateTime overriddenStart, String overrideExtraProperties) {
+    }
+
+    private String generateRecurringCalendarDataWithOverride(String eventUid, String organizerEmail, String attendeeEmail,
+                                                             RecurringEventWithOverride event) {
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss");
+
+        String calendarAsString = """
+            BEGIN:VCALENDAR
+            PRODID:-//Sabre//Sabre VObject 4.1.4//EN
+            VERSION:2.0
+            CALSCALE:GREGORIAN
+            BEGIN:VEVENT
+            UID:{eventUid}
+            DTSTAMP:{dtStamp}Z
+            SEQUENCE:2
+            RECURRENCE-ID:{overriddenOccurrence}Z
+            DTSTART:{overriddenStart}Z
+            DTEND:{overriddenEnd}Z
+            SUMMARY:Weekly (moved once)
+            ORGANIZER:mailto:{organizerEmail}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:{attendeeEmail}
+            {overrideExtraProperties}END:VEVENT
+            BEGIN:VEVENT
+            UID:{eventUid}
+            DTSTAMP:{dtStamp}Z
+            SEQUENCE:1
+            DTSTART:{start}Z
+            DTEND:{end}Z
+            RRULE:{rrule}
+            SUMMARY:Weekly
+            ORGANIZER:mailto:{organizerEmail}
+            ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:{attendeeEmail}
+            END:VEVENT
+            END:VCALENDAR
+            """.replace("{eventUid}", eventUid)
+            .replace("{organizerEmail}", organizerEmail)
+            .replace("{attendeeEmail}", attendeeEmail)
+            .replace("{dtStamp}", LocalDateTime.now().format(dateTimeFormatter))
+            .replace("{start}", event.start().format(dateTimeFormatter))
+            .replace("{end}", event.start().plusHours(1).format(dateTimeFormatter))
+            .replace("{rrule}", event.rrule())
+            .replace("{overrideExtraProperties}", event.overrideExtraProperties())
+            .replace("{overriddenOccurrence}", event.overriddenOccurrence().format(dateTimeFormatter))
+            .replace("{overriddenStart}", event.overriddenStart().format(dateTimeFormatter))
+            .replace("{overriddenEnd}", event.overriddenStart().plusHours(1).format(dateTimeFormatter));
 
         return CalendarUtil.parseIcs(calendarAsString).toString();
     }

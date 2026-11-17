@@ -39,6 +39,7 @@ import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.amqp.EventEmailNotificationPublisher;
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory.ActionLinks;
 import com.linagora.calendar.api.Participation;
@@ -58,6 +59,9 @@ import com.linagora.calendar.storage.eventsearch.EventUid;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import net.fortuna.ical4j.model.Calendar;
+import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
@@ -154,14 +158,14 @@ public class EventParticipationRoute extends PublicRoute {
         OpenPaaSId calendarId = new OpenPaaSId(participationRequest.calendarURI());
         EventUid eventUid = new EventUid(participationRequest.eventUid());
         PartStat partStat = participantActionToPartStat(participationRequest.action());
-        AttendeePartStatusUpdatePatch patch = new AttendeePartStatusUpdatePatch(attendeeUsername, partStat);
+        AttendeePartStatusUpdatePatch patch = new AttendeePartStatusUpdatePatch(attendeeUsername, partStat, participationRequest.recurrenceId());
 
         return openPaaSUserDAO.retrieve(attendeeUsername)
             .hasElement()
             .flatMap(isAttendeeInternalUser -> {
                 Username requestUser = resolveRequestUser(attendeeUsername, organizerUsername, isAttendeeInternalUser);
                 return calDavEventRepository.updatePartStat(requestUser, calendarId, eventUid, patch)
-                    .flatMap(partStatUpdate -> notifyOrganizer(participationRequest, partStatUpdate, isAttendeeInternalUser)
+                    .flatMap(partStatUpdate -> notifyOrganizer(participationRequest, partStatUpdate, patch, isAttendeeInternalUser)
                         .thenReturn(partStatUpdate.report()))
                     .map(VCalendarDto::from)
                     .map(dto -> Pair.of(dto, isAttendeeInternalUser));
@@ -173,15 +177,19 @@ public class EventParticipationRoute extends PublicRoute {
      *
      * Only external attendees need it: answering on behalf of an internal attendee updates their own copy of the
      * event, upon which the DAV server already schedules an iTIP REPLY of its own.
+     *
+     * The REPLY only carries the VEVENTs the answer is for: a single occurrence answer is not one for the series.
      */
     private Mono<Void> notifyOrganizer(Participation participationRequest,
                                        CalDavEventRepository.PartStatUpdate partStatUpdate,
+                                       AttendeePartStatusUpdatePatch patch,
                                        boolean isAttendeeInternalUser) {
         if (isAttendeeInternalUser) {
             return Mono.empty();
         }
 
         return Mono.justOrEmpty(partStatUpdate.updatedCalendar())
+            .map(updatedCalendar -> answeredVEvents(updatedCalendar, patch))
             .flatMap(updatedCalendar -> notificationPublisher.publishReply(updatedCalendar,
                 participationRequest.attendee(), participationRequest.organizer(),
                 partStatUpdate.report().calendarHref().getPath()))
@@ -190,6 +198,13 @@ public class EventParticipationRoute extends PublicRoute {
                     participationRequest.organizer().asString(), participationRequest.attendee().asString(), error);
                 return Mono.empty();
             });
+    }
+
+    private Calendar answeredVEvents(Calendar updatedCalendar, AttendeePartStatusUpdatePatch patch) {
+        List<VEvent> answeredVEvents = updatedCalendar.<VEvent>getComponents(Component.VEVENT).stream()
+            .filter(patch::targets)
+            .toList();
+        return CalendarUtil.withVEvents(updatedCalendar, answeredVEvents);
     }
 
     private Username resolveRequestUser(Username attendee, Username organizer, boolean isAttendeeInternalUser) {
@@ -203,7 +218,8 @@ public class EventParticipationRoute extends PublicRoute {
                                                                              Boolean isAttendeeInternalUser,
                                                                              Participation participationRequest) {
         Mono<ActionLinks> generateLinks = actionLinkFactory.generateLinks(participationRequest.organizer(),
-            participationRequest.attendee(), participationRequest.eventUid(), participationRequest.calendarURI());
+            participationRequest.attendee(), participationRequest.eventUid(), participationRequest.calendarURI(),
+            participationRequest.recurrenceId());
 
         return Mono.zip(getLocale(participationRequest, isAttendeeInternalUser), generateLinks)
             .map(tuple -> new EventParticipationResponse(eventDto, participationRequest.attendee(),

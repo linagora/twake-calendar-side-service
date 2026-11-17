@@ -25,8 +25,10 @@ import java.util.Optional;
 import org.apache.commons.lang3.Strings;
 import org.apache.james.core.Username;
 
+import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.linagora.calendar.storage.event.EventParseUtils;
 
 import net.fortuna.ical4j.model.Content;
 import net.fortuna.ical4j.model.Parameter;
@@ -34,6 +36,7 @@ import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
+import net.fortuna.ical4j.model.property.Attendee;
 
 public interface CalendarEventUpdatePatch {
 
@@ -42,27 +45,60 @@ public interface CalendarEventUpdatePatch {
      */
     boolean apply(VEvent vEvent);
 
+    /**
+     * A calendar object holds a VEvent per changed occurrence of a recurring event (RECURRENCE-ID) besides the
+     * master one: the patch is applied to each VEvent it targets, so that a change of the series reaches all of them.
+     *
+     * @return true if the patch is to be applied to this VEvent of the calendar object
+     */
+    default boolean targets(VEvent vEvent) {
+        return true;
+    }
+
     class AttendeePartStatusUpdatePatch implements CalendarEventUpdatePatch {
 
         private final String targetAttendeeEmail;
         private final PartStat status;
+        private final Optional<String> recurrenceId;
 
         public AttendeePartStatusUpdatePatch(Username username, PartStat status) {
-            this(username.asString(), status);
+            this(username, status, Optional.empty());
+        }
+
+        public AttendeePartStatusUpdatePatch(Username username, PartStat status, Optional<String> recurrenceId) {
+            this(username.asString(), status, recurrenceId);
         }
 
         public AttendeePartStatusUpdatePatch(String targetAttendeeEmail, PartStat status) {
+            this(targetAttendeeEmail, status, Optional.empty());
+        }
+
+        public AttendeePartStatusUpdatePatch(String targetAttendeeEmail, PartStat status, Optional<String> recurrenceId) {
             this.targetAttendeeEmail = Preconditions.checkNotNull(targetAttendeeEmail, "targetAttendeeEmail must not be null");
             this.status = Preconditions.checkNotNull(status, "status must not be null");
+            this.recurrenceId = Preconditions.checkNotNull(recurrenceId, "recurrenceId must not be null");
+        }
+
+        /**
+         * Without RECURRENCE-ID, the answer of an attendee is for the whole series: every VEvent the attendee is
+         * invited to is targeted. With a RECURRENCE-ID, the answer is for that occurrence only.
+         */
+        @Override
+        public boolean targets(VEvent vEvent) {
+            return targetAttendee(vEvent).isPresent() && targetsOccurrence(vEvent);
+        }
+
+        private boolean targetsOccurrence(VEvent vEvent) {
+            return recurrenceId
+                .map(expected -> EventParseUtils.getRecurrenceId(vEvent)
+                    .filter(actual -> Strings.CI.equals(actual, expected))
+                    .isPresent())
+                .orElse(true);
         }
 
         @Override
         public boolean apply(VEvent vEvent) {
-            return vEvent.getAttendees()
-                .stream()
-                .filter(attendee -> Strings.CI.equals(
-                    attendee.getCalAddress().toASCIIString(), "mailto:" + targetAttendeeEmail))
-                .findFirst()
+            return targetAttendee(vEvent)
                 .map(attendee -> {
                     Optional<Parameter> currentStatusOpt = attendee.getParameter(Parameter.PARTSTAT);
                     boolean sameStatus = currentStatusOpt
@@ -78,6 +114,23 @@ public interface CalendarEventUpdatePatch {
                     }
                 })
                 .orElseThrow(() -> new IllegalArgumentException("The attendee is not found in the event. " + targetAttendeeEmail));
+        }
+
+        private Optional<Attendee> targetAttendee(VEvent vEvent) {
+            return vEvent.getAttendees()
+                .stream()
+                .filter(attendee -> Strings.CI.equals(
+                    attendee.getCalAddress().toASCIIString(), "mailto:" + targetAttendeeEmail))
+                .findFirst();
+        }
+
+        @Override
+        public String toString() {
+            return MoreObjects.toStringHelper(this)
+                .add("targetAttendeeEmail", targetAttendeeEmail)
+                .add("status", status.getValue())
+                .add("recurrenceId", recurrenceId)
+                .toString();
         }
     }
 
