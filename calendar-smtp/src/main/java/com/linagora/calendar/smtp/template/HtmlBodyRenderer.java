@@ -25,32 +25,25 @@ import java.util.Map;
 import com.google.common.escape.Escaper;
 import com.google.common.net.PercentEscaper;
 
-import de.neuland.pug4j.Pug4J;
-import de.neuland.pug4j.PugConfiguration;
 import de.neuland.pug4j.template.FileTemplateLoader;
-import de.neuland.pug4j.template.PugTemplate;
 
 public class HtmlBodyRenderer {
     private static final String TEMPLATE_FILE_NAME = "html.pug";
     private static final Escaper URI_COMPONENT_ESCAPER = new PercentEscaper("-._~", false);
 
     public static HtmlBodyRenderer forPath(String templatePath) throws IOException {
-        return new HtmlBodyRenderer(loadTemplate(templatePath, TEMPLATE_FILE_NAME));
+        return new HtmlBodyRenderer(compileTemplate(templatePath, TEMPLATE_FILE_NAME));
     }
 
-    static PugTemplate loadTemplate(String templatePath, String templateFileName) throws IOException {
+    static CompiledPugTemplate compileTemplate(String templatePath, String templateFileName) throws IOException {
         FileTemplateLoader fileLoader = new FileTemplateLoader(templatePath);
         fileLoader.setBase("");
-
-        PugConfiguration pugConfiguration = new PugConfiguration();
-        pugConfiguration.setTemplateLoader(fileLoader);
-
-        return pugConfiguration.getTemplate(templateFileName);
+        return CompiledPugTemplate.compile(fileLoader, templateFileName);
     }
 
-    private final PugTemplate template;
+    private final CompiledPugTemplate template;
 
-    public HtmlBodyRenderer(PugTemplate template) {
+    private HtmlBodyRenderer(CompiledPugTemplate template) {
         this.template = template;
     }
 
@@ -58,6 +51,6 @@ public class HtmlBodyRenderer {
         // Pug4j uses JEXL, so templates need an explicit URI component encoder.
         Map<String, Object> model = new HashMap<>(scopedValue);
         model.put("uriComponentEscaper", URI_COMPONENT_ESCAPER);
-        return Pug4J.render(template, model);
+        return template.render(model);
     }
 }

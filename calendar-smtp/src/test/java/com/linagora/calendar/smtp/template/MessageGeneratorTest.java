@@ -50,9 +50,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableMap;
 import com.linagora.calendar.smtp.i18n.I18NTranslator;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
+
+import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 class MessageGeneratorTest {
     private static final MimeAttachment LOGO = MimeAttachment.builder()
@@ -251,6 +255,56 @@ class MessageGeneratorTest {
         Mailbox to = (Mailbox) message.getTo().getFirst();
         assertThat(to.getAddress()).isEqualTo("bob@domain.tld");
         assertThat(to.getName()).isEqualTo("O'BrO'137Jean ---- ---- Annul");
+    }
+
+    @Test
+    void concurrentGenerationsShouldRenderLikeASequentialOne() throws Exception {
+        MessageGenerator testee = new MessageGenerator(translator, htmlBodyRenderer, textBodyRenderer(), null);
+        String expected = renderedContent(generate(testee, MODEL));
+        InternetAddress recipient = new InternetAddress("bob@domain.tld");
+        InternetAddress sender = new InternetAddress("no-reply@domain.tld");
+
+        List<String> concurrentlyRendered = Flux.range(0, 200)
+            .parallel(16)
+            .runOn(Schedulers.parallel())
+            .flatMap(i -> testee.generate(recipient, sender, MODEL, List.of()))
+            .map(Throwing.function(this::renderedContent).sneakyThrow())
+            .sequential()
+            .collectList()
+            .block();
+
+        assertThat(concurrentlyRendered)
+            .hasSize(200)
+            .allSatisfy(rendered -> assertThat(rendered).isEqualTo(expected));
+    }
+
+    @Test
+    void generateShouldRenderTheSubjectAndBodiesOfEachMailFromItsOwnModel() throws Exception {
+        MessageGenerator testee = new MessageGenerator(translator, htmlBodyRenderer, textBodyRenderer(), null);
+        Map<String, Object> otherModel = ImmutableMap.of(
+            "content", ImmutableMap.of(
+                "baseUrl", "https://contacts.example.com",
+                "jobSucceedCount", 3,
+                "jobFailedCount", 0));
+
+        String first = renderedContent(generate(testee, MODEL));
+        String second = renderedContent(generate(testee, otherModel));
+
+        assertThat(first).contains("9 Contact(s) imported successfully");
+        assertThat(second).contains("3 Contact(s) imported successfully")
+            .doesNotContain("9 Contact(s) imported successfully");
+    }
+
+    private Message generate(MessageGenerator testee, Map<String, Object> model) throws Exception {
+        return testee.generate(new InternetAddress("bob@domain.tld"), new InternetAddress("no-reply@domain.tld"), model, List.of())
+            .block();
+    }
+
+    private String renderedContent(Message message) throws IOException {
+        Multipart alternative = multipart(multipart(message).getBodyParts().getFirst());
+        String text = IOUtils.toString(((TextBody) alternative.getBodyParts().get(0).getBody()).getReader());
+        String html = IOUtils.toString(((TextBody) alternative.getBodyParts().get(1).getBody()).getReader());
+        return message.getSubject() + "\n" + text + "\n" + html;
     }
 
     private String[] headerLines(Message message) throws IOException {

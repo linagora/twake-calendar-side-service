@@ -22,9 +22,6 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.util.Map;
 
-import de.neuland.pug4j.Pug4J;
-import de.neuland.pug4j.PugConfiguration;
-import de.neuland.pug4j.template.PugTemplate;
 import de.neuland.pug4j.template.ReaderTemplateLoader;
 
 public class SubjectRenderer {
@@ -35,19 +32,16 @@ public class SubjectRenderer {
         String safeTemplate = AVOID_HTML_TAG_CHARACTER + templateString;
 
         ReaderTemplateLoader loader = new ReaderTemplateLoader(new StringReader(safeTemplate), TEMPLATE_LOADER_NAME);
-
-        PugConfiguration pugConfiguration = new PugConfiguration();
-        pugConfiguration.setTemplateLoader(loader);
-        return new SubjectRenderer(pugConfiguration.getTemplate(TEMPLATE_LOADER_NAME));
+        return new SubjectRenderer(CompiledPugTemplate.compile(loader, TEMPLATE_LOADER_NAME));
     }
 
-    private final PugTemplate template;
+    private final CompiledPugTemplate template;
 
-    private SubjectRenderer(PugTemplate template) {
+    private SubjectRenderer(CompiledPugTemplate template) {
         this.template = template;
     }
 
     public String render(Map<String, Object> scopedValue) {
-        return Pug4J.render(template, scopedValue);
+        return template.render(scopedValue);
     }
 }
