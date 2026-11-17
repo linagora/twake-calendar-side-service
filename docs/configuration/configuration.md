@@ -53,7 +53,7 @@ Here is the detail of the configuration entries:
 | smtp.starttls.enabled                     | Optional. SMTP startTLS setup. Prefer SSL.                                                                                                                                                                                                                                                  | smtp.starttls.enabled=true                                                           |
 | smtp.ssl.trustAllCerts                    | Optional. Defaults to false (secure).                                                                                                                                                                                                                                                       | smtp.ssl.trustAllCerts=false                                                         |
 | mail.template.location                    | Allow for custom email template location if needed. Each template directory holds an `html.pug` template, an optional `text.pug` template rendering the `text/plain` alternative, and its `translations`.                                                                                  | mail.template.location=file://root/resources/template                                |
-| mail.sender                               | From value to position in emails, when needed.                                                                                                                                                                                                                                              | mail.sender=no-reply@twake.app                                                    |
+| mail.sender                               | From value to position in emails, when needed. Accepts the `{domain}` placeholder, see below.                                                                                                                                                                                              | mail.sender=no-reply@twake.app                                                    |
 | mail.imip.recipient.whitelist             | Controls who receives email generated b the calendar (coma separated list of email address). Default toeveryone if ommitted. Usefull if the side service is deployed along side an openpaas server it wishes to replace.                                                                    | mail.imip.recipient.whitelist=btellier@linagora.com,hphan@linagora.com               |
 | admin.username                            | Optional. Used by Twake mail to access the OpenPaaS API for its DAV extension.                                                                                                                                                                                                              | admin.username=admin@linagora.com                                                    |
 | admin.password                            | Optional. Used by Twake mail to access the OpenPaaS API for its DAV extension.                                                                                                                                                                                                              | admin.password=xxxx                                                                  |
@@ -163,6 +163,19 @@ Domains are provisioned when `dnsOwnershipValidated=true`, falling back to
 | twp.saas.domain.subscription.routingKey | Optional. Defaults to `domain.subscription.changed`. Routing key bound for domain subscription messages. | twp.saas.domain.subscription.routingKey=domain.subscription.changed |
 | twp.saas.configuration.exchange | Optional. Defaults to `configuration`. Exchange the domain configuration messages are consumed from. | twp.saas.configuration.exchange=configuration |
 | twp.saas.configuration.routingKey | Optional. Defaults to `domain.dns.configuration.status`. Routing key bound for domain DNS configuration status messages. | twp.saas.configuration.routingKey=domain.dns.configuration.status |
+
+## Per-domain sender
+
+`mail.sender` may contain the `{domain}` placeholder, replaced by the mail domain of the user concerned: the organizer
+for invitations and resource requests, the booking link owner for bookings, the owner of a delegated calendar or
+address book, the user of an alarm or an import. This lets one instance serve several mail domains, each sending from
+its own domain:
+
+```
+mail.sender=no-reply@{domain}
+```
+
+Without placeholder, the value is used as is for every domain.
 
 ## Notes on JWT key generation
 
