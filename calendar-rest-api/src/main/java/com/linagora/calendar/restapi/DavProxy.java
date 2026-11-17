@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.restapi;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 import javax.net.ssl.SSLException;
@@ -110,20 +111,25 @@ public class DavProxy extends DavClient {
     }
 
     private static NettyOutbound handleSabreResponse(HttpServerResponse response, HttpServerRequest req, HttpClientResponse res, ByteBufFlux in) {
-        Mono<byte[]> aggregatedBytes = in.aggregate().asByteArray()
-            .map(sabreResponseBytes -> {
-                if (res.status().codeClass().equals(HttpStatusClass.SERVER_ERROR)) {
-                    MDCStructuredLogger.forLogger(LOGGER)
-                        .field("method", req.method().name())
-                        .field("url", req.uri())
-                        .field("statusCode", Integer.toString(res.status().code()))
-                        .field("response", new String(sabreResponseBytes))
-                        .log(logger -> logger.error("Sabre server error upon DAV request"));
-                }
-                return sabreResponseBytes;
-            });
         response.status(res.status());
         response.headers(res.responseHeaders());
-        return response.sendByteArray(aggregatedBytes);
+        if (isServerError(res)) {
+            return response.sendByteArray(in.aggregate().asByteArray()
+                .doOnNext(sabreResponseBytes -> logSabreServerError(req, res, sabreResponseBytes)));
+        }
+        return response.send(in.retain());
+    }
+
+    private static boolean isServerError(HttpClientResponse res) {
+        return res.status().codeClass().equals(HttpStatusClass.SERVER_ERROR);
+    }
+
+    private static void logSabreServerError(HttpServerRequest req, HttpClientResponse res, byte[] sabreResponseBytes) {
+        MDCStructuredLogger.forLogger(LOGGER)
+            .field("method", req.method().name())
+            .field("url", req.uri())
+            .field("statusCode", Integer.toString(res.status().code()))
+            .field("response", new String(sabreResponseBytes, StandardCharsets.UTF_8))
+            .log(logger -> logger.error("Sabre server error upon DAV request"));
     }
 }
