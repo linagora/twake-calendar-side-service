@@ -364,4 +364,161 @@ public class TwakeCalendarOidcFallbackCookieAuthenticationTest {
             .statusCode(404);
     }
 
+    private static final String TRUSTED_ORIGIN = "https://e-calendrier.avocat.fr";
+    private static final String UNTRUSTED_ORIGIN = "https://evil.example";
+    private static final String CONFIGURATION_PATCH_BODY = "[{\"name\":\"core\",\"configurations\":[{\"name\":\"language\",\"value\":\"fr\"}]}]";
+
+    private void mockValidLemonCookie(String cookieValue) {
+        mockServer.when(HttpRequest.request()
+                .withMethod("GET")
+                .withPath(COOKIE_RESOLUTION_PATH)
+                .withCookie("lemonldap", cookieValue))
+            .respond(HttpResponse.response()
+                .withStatusCode(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"result\":\"%s\"}".formatted(USERNAME.getLocalPart())));
+    }
+
+    @Test
+    void cookieAuthenticatedWriteShouldSucceedFromTrustedOrigin() {
+        mockValidLemonCookie("123");
+
+        given()
+            .cookie("lemonldap", "123")
+            .header("Origin", TRUSTED_ORIGIN)
+            .body(CONFIGURATION_PATCH_BODY)
+        .when()
+            .patch("/api/configurations")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+    }
+
+    @Test
+    void cookieAuthenticatedWriteShouldSucceedWhenRefererIsTrustedAndOriginAbsent() {
+        mockValidLemonCookie("123");
+
+        given()
+            .cookie("lemonldap", "123")
+            .header("Referer", TRUSTED_ORIGIN + "/calendar/#/settings")
+            .body(CONFIGURATION_PATCH_BODY)
+        .when()
+            .patch("/api/configurations")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+    }
+
+    @Test
+    void cookieAuthenticatedWriteShouldBeRejectedFromUntrustedOrigin() {
+        mockValidLemonCookie("123");
+
+        given()
+            .cookie("lemonldap", "123")
+            .header("Origin", UNTRUSTED_ORIGIN)
+            .body(CONFIGURATION_PATCH_BODY)
+        .when()
+            .patch("/api/configurations")
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+
+        mockServer.verify(HttpRequest.request()
+                .withMethod("GET")
+                .withPath(COOKIE_RESOLUTION_PATH),
+            exactly(0));
+    }
+
+    @Test
+    void cookieAuthenticatedSimplePostShouldBeRejectedFromUntrustedOrigin() {
+        mockValidLemonCookie("123");
+
+        given()
+            .cookie("lemonldap", "123")
+            .header("Origin", UNTRUSTED_ORIGIN)
+            .contentType("text/plain")
+            .body("{\"share\":{\"set\":[{\"dav:href\":\"mailto:attacker@evil.example\",\"dav:read-write\":true}],\"remove\":[]}}")
+        .when()
+            .post("/dav/calendars/abc/abc.json")
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+    }
+
+    @Test
+    void cookieAuthenticatedWriteShouldBeRejectedWithoutOriginNorReferer() {
+        mockValidLemonCookie("123");
+
+        given()
+            .cookie("lemonldap", "123")
+            .body(CONFIGURATION_PATCH_BODY)
+        .when()
+            .patch("/api/configurations")
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+    }
+
+    @Test
+    void cookieAuthenticatedWriteShouldBeRejectedWithOpaqueOriginEvenWhenRefererIsTrusted() {
+        mockValidLemonCookie("123");
+
+        given()
+            .cookie("lemonldap", "123")
+            .header("Origin", "null")
+            .header("Referer", TRUSTED_ORIGIN + "/")
+            .body(CONFIGURATION_PATCH_BODY)
+        .when()
+            .patch("/api/configurations")
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+    }
+
+    @Test
+    void cookieAuthenticatedWriteShouldBeRejectedFromLookalikeOrigin() {
+        mockValidLemonCookie("123");
+
+        given()
+            .cookie("lemonldap", "123")
+            .header("Origin", TRUSTED_ORIGIN + ".evil.example")
+            .body(CONFIGURATION_PATCH_BODY)
+        .when()
+            .patch("/api/configurations")
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+    }
+
+    @Test
+    void cookieAuthenticatedSecretLinkResetShouldBeRejectedFromCrossSiteNavigation(TwakeCalendarGuiceServer server) {
+        mockValidLemonCookie("123");
+        String userId = server.getProbe(CalendarDataProbe.class).userId(USERNAME).value();
+
+        given()
+            .cookie("lemonldap", "123")
+            .queryParam("shouldResetLink", "true")
+        .when()
+            .get("/calendar/api/calendars/" + userId + "/" + userId + "/secret-link")
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+    }
+
+    @Test
+    void cookieAuthenticatedReadShouldNotRequireOrigin() {
+        mockValidLemonCookie("123");
+
+        given()
+            .cookie("lemonldap", "123")
+            .header("Origin", UNTRUSTED_ORIGIN)
+        .when()
+            .get("/api/user")
+        .then()
+            .statusCode(HttpStatus.SC_OK);
+    }
+
+    @Test
+    void bearerAuthenticatedWriteShouldNotBeSubjectToOriginCheck() {
+        given()
+            .header("Authorization", "Bearer oidc_opac_token")
+            .header("Origin", UNTRUSTED_ORIGIN)
+            .body(CONFIGURATION_PATCH_BODY)
+        .when()
+            .patch("/api/configurations")
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+    }
 }
