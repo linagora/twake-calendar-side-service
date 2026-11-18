@@ -18,8 +18,8 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import static com.linagora.calendar.restapi.routes.SecretLinkRoute.CALENDAR_HOME_ID_PARAM;
-import static com.linagora.calendar.restapi.routes.SecretLinkRoute.CALENDAR_ID_PARAM;
+import static com.linagora.calendar.restapi.routes.AbstractSecretLinkRoute.CALENDAR_HOME_ID_PARAM;
+import static com.linagora.calendar.restapi.routes.AbstractSecretLinkRoute.CALENDAR_ID_PARAM;
 
 import java.net.URI;
 import java.util.List;

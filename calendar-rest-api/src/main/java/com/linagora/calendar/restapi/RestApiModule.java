@@ -111,6 +111,7 @@ import com.linagora.calendar.restapi.routes.PublicAgendaProposalNotifier;
 import com.linagora.calendar.restapi.routes.ResourceIconRoute;
 import com.linagora.calendar.restapi.routes.ResourceParticipationRoute;
 import com.linagora.calendar.restapi.routes.ResourceRoute;
+import com.linagora.calendar.restapi.routes.SecretLinkResetRoute;
 import com.linagora.calendar.restapi.routes.SecretLinkRoute;
 import com.linagora.calendar.restapi.routes.TeamCalendarRoute;
 import com.linagora.calendar.restapi.routes.ThemeRoute;
@@ -192,6 +193,7 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(UserConfigurationsRoute.class);
         routes.addBinding().to(UserConfigurationPatchRoute.class);
         routes.addBinding().to(SecretLinkRoute.class);
+        routes.addBinding().to(SecretLinkResetRoute.class);
         routes.addBinding().to(FileUploadRoute.class);
         routes.addBinding().to(DownloadCalendarRoute.class);
         routes.addBinding().to(ImportRoute.class);
