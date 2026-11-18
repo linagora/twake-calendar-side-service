@@ -89,6 +89,7 @@ import com.linagora.calendar.restapi.routes.CalendarTicketRoutes;
 import com.linagora.calendar.restapi.routes.CheckTechnicalUserTokenRoute;
 import com.linagora.calendar.restapi.routes.ConfigurationRoute;
 import com.linagora.calendar.restapi.routes.ContactSearchRoute;
+import com.linagora.calendar.restapi.routes.DavDiscoveryRoute;
 import com.linagora.calendar.restapi.routes.DomainRoute;
 import com.linagora.calendar.restapi.routes.DomainSettingsRoute;
 import com.linagora.calendar.restapi.routes.DownloadCalendarRoute;
@@ -176,6 +177,7 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(BookingLinkResetPublicIdRoute.class);
         routes.addBinding().to(BookingLinkSlotsRoute.class);
         routes.addBinding().to(BookingLinkReservationRoute.class);
+        routes.addBinding().to(DavDiscoveryRoute.class);
         routes.addBinding().to(DomainRoute.class);
         routes.addBinding().to(DomainSettingsRoute.class);
         routes.addBinding().to(EntityRoute.class);

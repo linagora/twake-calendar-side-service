@@ -566,6 +566,34 @@ class TwakeCalendarGuiceServerTest  {
             .statusCode(200); // Follows the redirect;
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"/.well-known/caldav", "/.well-known/carddav"})
+    void wellKnownDavDiscoveryShouldRedirectGetToDavServer(String path, TwakeCalendarGuiceServer server) {
+        targetRestAPI(server);
+
+        given()
+            .redirects().follow(false)
+        .when()
+            .get(path)
+        .then()
+            .statusCode(307)
+            .header("Location", "https://dav.linagora.com");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/.well-known/caldav", "/.well-known/carddav"})
+    void wellKnownDavDiscoveryShouldRedirectPropfindToDavServer(String path, TwakeCalendarGuiceServer server) {
+        targetRestAPI(server);
+
+        given()
+            .redirects().follow(false)
+        .when()
+            .request("PROPFIND", path)
+        .then()
+            .statusCode(307)
+            .header("Location", "https://dav.linagora.com");
+    }
+
     @Test
     void shouldRejectNonExistingUsers(TwakeCalendarGuiceServer server) {
         targetRestAPI(server);
