@@ -462,6 +462,40 @@ public class UserCalendarRoutesTest {
     }
 
     @Test
+    void inviteeShouldReturn400WhenShareeIsNotAUser() {
+        String calendarId = createCalendar(user, "Calendar");
+        String unknownSharee = "nobody@" + user.username().getDomainPart().orElseThrow().asString();
+
+        given()
+            .body("""
+                {"share":{"set":[{"dav:href":"mailto:%s","dav:read":true}],"remove":[]}}
+                """.formatted(unknownSharee))
+        .when()
+            .post("/users/{username}/calendars/{calendarId}/invitee", user.username().asString(), calendarId)
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Sharee not found: " + unknownSharee));
+    }
+
+    @Test
+    void inviteeShouldNotGrantAnyDelegationWhenOneShareeIsNotAUser() {
+        String calendarId = createCalendar(user, "Calendar");
+        String unknownSharee = "nobody@" + user.username().getDomainPart().orElseThrow().asString();
+
+        given()
+            .body("""
+                {"share":{"set":[{"dav:href":"mailto:%s","dav:read":true},{"dav:href":"mailto:%s","dav:read":true}],"remove":[]}}
+                """.formatted(otherUser.username().asString(), unknownSharee))
+        .when()
+            .post("/users/{username}/calendars/{calendarId}/invitee", user.username().asString(), calendarId)
+        .then()
+            .statusCode(400);
+
+        assertThat(delegatedCalendarHrefs(otherUser)).isEmpty();
+    }
+
+    @Test
     void inviteeShouldReturn404WhenCalendarDoesNotExist() {
         given()
             .body("""

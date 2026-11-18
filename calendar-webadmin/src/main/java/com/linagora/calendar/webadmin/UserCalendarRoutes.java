@@ -34,6 +34,7 @@ import java.util.UUID;
 import jakarta.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.james.core.Username;
 import org.apache.james.task.TaskId;
 import org.apache.james.task.TaskManager;
 import org.apache.james.webadmin.Constants;
@@ -49,10 +50,12 @@ import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarNotFoundException;
 import com.linagora.calendar.dav.CalendarSharingUpdate;
+import com.linagora.calendar.dav.CalendarSharingUpdate.AddSharee;
 import com.linagora.calendar.dav.DavClientException;
 import com.linagora.calendar.dav.dto.CalendarMirrorSource;
 import com.linagora.calendar.dav.importer.EventToImport;
 import com.linagora.calendar.storage.CalendarURL;
+import com.linagora.calendar.storage.MailtoUri;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
@@ -275,11 +278,40 @@ public class UserCalendarRoutes implements Routes {
         OpenPaaSUser user = retrieveUser(request, userDAO);
         CalendarSharingUpdate sharingUpdate = parseDtoBody(request, CalendarSharingUpdate.class, OBJECT_MAPPER);
         CalendarURL calendarURL = retrieveExistingCalendar(request, user);
+        validateShareesExist(user, sharingUpdate);
 
         wrapDavErrors(() -> calDavClient.updateCalendarShares(user.username(), calendarURL, sharingUpdate).block());
 
         response.status(HttpStatus.NO_CONTENT_204);
         return Constants.EMPTY_BODY;
+    }
+
+    /**
+     * Sabre silently ignores a sharee resolving to no principal. Sharees of other domains, as well as invalid addresses,
+     * are left to Sabre, which rejects them with a meaningful error.
+     */
+    private void validateShareesExist(OpenPaaSUser owner, CalendarSharingUpdate sharingUpdate) {
+        sharingUpdate.share().set().stream()
+            .map(AddSharee::davHref)
+            .flatMap(davHref -> parseUsername(davHref).stream())
+            .filter(sharee -> sharee.getDomainPart().equals(owner.username().getDomainPart()))
+            .filter(sharee -> userDAO.retrieve(sharee).blockOptional().isEmpty())
+            .findFirst()
+            .ifPresent(sharee -> {
+                throw ErrorResponder.builder()
+                    .statusCode(HttpStatus.BAD_REQUEST_400)
+                    .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                    .message("Sharee not found: %s", sharee.asString())
+                    .haltError();
+            });
+    }
+
+    private Optional<Username> parseUsername(String davHref) {
+        try {
+            return Optional.of(Username.of(MailtoUri.stripMailtoPrefix(davHref)));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
     }
 
     private CalendarURL retrieveExistingCalendar(Request request, OpenPaaSUser user) {
