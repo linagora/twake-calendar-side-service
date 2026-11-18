@@ -68,6 +68,7 @@ import org.awaitility.core.ConditionFactory;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalDavClient.NewCalendar;
+import com.linagora.calendar.dav.CalendarSharingUpdate;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
 import com.linagora.calendar.dav.ResourceService;
@@ -92,6 +93,7 @@ import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolve
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
+import com.linagora.calendar.storage.model.ResourceId;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 import com.rabbitmq.client.Channel;
 
@@ -378,14 +380,56 @@ public class CalendarDelegatedNotificationConsumerTest {
         }));
     }
 
-    private void createResource(String resourceName, List<OpenPaaSUser> administrators) {
+    @Test
+    void shouldSendRegularDelegationMailWhenResourceCalendarIsSharedWithReadRight() {
+        String resourceName = "TV";
+        ResourceId resourceId = createResource(resourceName, List.of(bob));
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        calDavClient.updateCalendarShares(domain.id(), CalendarURL.from(resourceId.asOpenPaaSId()),
+                CalendarSharingUpdate.grant(alice.username(), DavRight.READ))
+            .block();
+
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(alice.username().asString());
+            String subject = extractSubject(smtpMailsResponse.getString("[1].message"));
+            softly.assertThat(subject)
+                .isEqualTo("%s shared the “%s” calendar with you".formatted(resourceName, resourceName));
+        }));
+    }
+
+    @Test
+    void shouldSendResourceAdminMailWhenResourceCalendarIsSharedWithAdministrationRight() {
+        String resourceName = "TV";
+        ResourceId resourceId = createResource(resourceName, List.of(bob));
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(1));
+
+        calDavClient.updateCalendarShares(domain.id(), CalendarURL.from(resourceId.asOpenPaaSId()),
+                CalendarSharingUpdate.grant(alice.username(), DavRight.ADMINISTRATION))
+            .block();
+
+        awaitAtMost.untilAsserted(() -> assertThat(smtpMailsResponseSupplier.get().getList("")).hasSize(2));
+        JsonPath smtpMailsResponse = smtpMailsResponseSupplier.get();
+
+        assertSoftly(Throwing.consumer(softly -> {
+            softly.assertThat(smtpMailsResponse.getString("[1].recipients[0].address")).isEqualTo(alice.username().asString());
+            String subject = extractSubject(smtpMailsResponse.getString("[1].message"));
+            softly.assertThat(subject)
+                .isEqualTo("You were added as an admin of \"%s\" resource".formatted(resourceName));
+        }));
+    }
+
+    private ResourceId createResource(String resourceName, List<OpenPaaSUser> administrators) {
         ResourceInsertRequest resourceInsertRequest = new ResourceInsertRequest(
             administrators.isEmpty() ? bob.id() : administrators.getFirst().id(),
             "resource description",
             domain.id(),
             "tv",
             resourceName);
-        resourceService.create(resourceInsertRequest, administrators.stream()
+        return resourceService.create(resourceInsertRequest, administrators.stream()
             .map(user -> new ResourceAdministrator(user.username(), DavRight.ADMINISTRATION))
             .toList()).block();
     }

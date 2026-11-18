@@ -43,6 +43,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.linagora.calendar.amqp.CalendarDelegatedNotificationConsumer.CalendarDelegatedCreatedMessage;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.dav.DavRight;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.smtp.Mail;
 import com.linagora.calendar.smtp.MailSender;
@@ -151,6 +152,13 @@ public class DelegatedCalendarNotificationHandler {
             return originalCalendarName;
         }
 
+        /**
+         * Mirrors {@link com.linagora.calendar.dav.ResourceService.ResourceAdministrator}: any right but read makes a resource administrator.
+         */
+        public boolean isResourceAdministration() {
+            return isResource && !DavRight.READ.value().equals(rightKey);
+        }
+
         private boolean isDefaultCalendarName() {
             return StringUtils.isBlank(originalCalendarName) || DEFAULT_CALENDAR_DAV_NAME.equals(originalCalendarName);
         }
@@ -177,7 +185,7 @@ public class DelegatedCalendarNotificationHandler {
     }
 
     private Mono<Message> generateMessage(DelegatedCalendarNotificationData notificationData, ResolvedSettings resolvedSettings) {
-        TemplateType template = notificationData.isResource() ? RESOURCE_ADMIN_MAIL_TEMPLATE : MAIL_TEMPLATE;
+        TemplateType template = notificationData.isResourceAdministration() ? RESOURCE_ADMIN_MAIL_TEMPLATE : MAIL_TEMPLATE;
         return Mono.fromCallable(() -> messageGeneratorFactory.forLocalizedFeature(new Language(resolvedSettings.locale()), template))
             .subscribeOn(Schedulers.boundedElastic())
             .flatMap(messageGenerator -> {
