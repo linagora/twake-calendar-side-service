@@ -231,7 +231,7 @@ class CalendarSettingUpdaterDomainMemberCardTest {
 
     private CalendarSettingUpdater testee(CardDavClient cardDavClient) {
         SaaSUserProvisioner userProvisioner = new SaaSUserProvisioner(userDAO, domainDAO, cardDavClient, domainSettingsResolver, userContactResolver);
-        return new CalendarSettingUpdater(userConfigurationDAO, userDAO, userProvisioner, sessionProvider);
+        return new CalendarSettingUpdater(userConfigurationDAO, userDAO, domainDAO, userProvisioner, sessionProvider);
     }
 
     private void updateSettings(CalendarSettingUpdater testee, long version) {

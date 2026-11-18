@@ -26,6 +26,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.apache.james.mailbox.MailboxSession;
 import org.slf4j.Logger;
@@ -34,6 +35,7 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.node.LongNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
@@ -61,15 +63,18 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
 
     private final UserConfigurationDAO userConfigurationDAO;
     private final OpenPaaSUserDAO openPaaSUserDAO;
+    private final OpenPaaSDomainDAO domainDAO;
     private final SaaSUserProvisioner userProvisioner;
     private final SimpleSessionProvider sessionProvider;
 
     public CalendarSettingUpdater(UserConfigurationDAO userConfigurationDAO,
                                   OpenPaaSUserDAO openPaaSUserDAO,
+                                  OpenPaaSDomainDAO domainDAO,
                                   SaaSUserProvisioner userProvisioner,
                                   SimpleSessionProvider sessionProvider) {
         this.userConfigurationDAO = userConfigurationDAO;
         this.openPaaSUserDAO = openPaaSUserDAO;
+        this.domainDAO = domainDAO;
         this.userProvisioner = userProvisioner;
         this.sessionProvider = sessionProvider;
     }
@@ -130,7 +135,27 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
     private Mono<OpenPaaSUser> resolveUser(Username username) {
         return openPaaSUserDAO.retrieve(username)
             .flatMap(userProvisioner::reimportFromDirectory)
-            .switchIfEmpty(Mono.defer(() -> userProvisioner.provisionUser(username)));
+            .switchIfEmpty(Mono.defer(() -> provisionUserOfProvisionedDomain(username)));
+    }
+
+    // TWP may send settings of users whose domain is not provisioned in calendar (eg gmail.com): such users can not be
+    // created, so their settings are skipped rather than failing the message. See issue #1579.
+    private Mono<OpenPaaSUser> provisionUserOfProvisionedDomain(Username username) {
+        return isDomainProvisioned(username)
+            .flatMap(provisioned -> {
+                if (provisioned) {
+                    return userProvisioner.provisionUser(username);
+                }
+                LOGGER.warn("Skipping calendar settings update for user={}: domain={} is not provisioned in calendar",
+                    username.asString(), username.getDomainPart().map(Domain::asString).orElse(""));
+                return Mono.empty();
+            });
+    }
+
+    private Mono<Boolean> isDomainProvisioned(Username username) {
+        return Mono.justOrEmpty(username.getDomainPart())
+            .flatMap(domainDAO::retrieve)
+            .hasElement();
     }
 
     private static Optional<Long> findStoredVersion(Set<ConfigurationEntry> entries) {
