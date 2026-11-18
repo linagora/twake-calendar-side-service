@@ -100,9 +100,11 @@ public class CalendarSettingUpdaterTest {
         // keeping this an in-memory test. Auto-provisioning thus only creates the OpenPaaSUser.
         DomainSettingsResolver domainSettingsResolver = new DomainSettingsResolver(
             new MemoryDomainSettingsDAO(), Set.of(USER.getDomainPart().get()), Set.of(), new MapConfiguration(Map.of()));
+        MemoryOpenPaaSDomainDAO domainDAO = new MemoryOpenPaaSDomainDAO();
+        domainDAO.add(USER.getDomainPart().get()).block();
         SaaSUserProvisioner userProvisioner = new SaaSUserProvisioner(openPaaSUserDAO,
-            new MemoryOpenPaaSDomainDAO(), null, domainSettingsResolver, userContactResolver);
-        testee = new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, userProvisioner, sessionProvider);
+            domainDAO, null, domainSettingsResolver, userContactResolver);
+        testee = new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, domainDAO, userProvisioner, sessionProvider);
         openPaaSUserDAO.add(USER).block();
     }
 
@@ -229,6 +231,18 @@ public class CalendarSettingUpdaterTest {
         assertThat(entries)
             .containsExactlyInAnyOrder(ConfigurationEntry.of(EntryIdentifier.LANGUAGE_IDENTIFIER, TextNode.valueOf("en")),
                 ConfigurationEntry.of(TWP_SETTINGS_VERSION_IDENTIFIER, LongNode.valueOf(3)));
+    }
+
+    @Test
+    void shouldSkipSettingsOfUnknownUserWhenDomainIsNotProvisioned() {
+        Username userOfUnprovisionedDomain = Username.of(UUID.randomUUID() + "@gmail.com");
+        TWPCommonSettingsMessage message = new TWPCommonSettingsMessage("source", "nick", "req-1579",
+            System.currentTimeMillis(), 3L,
+            new TWPCommonSettingsMessage.Payload(userOfUnprovisionedDomain.asString(), Optional.of("en"), Optional.empty()));
+
+        testee.updateSettings(message).block();
+
+        assertThat(openPaaSUserDAO.retrieve(userOfUnprovisionedDomain).blockOptional()).isEmpty();
     }
 
     @Test

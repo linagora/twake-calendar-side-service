@@ -30,6 +30,7 @@ import com.google.inject.Module;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.google.inject.util.Modules;
+import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
@@ -61,8 +62,9 @@ public class TWPCalendarSettingsModule extends AbstractModule {
     @Named(TWP_INJECTION_KEY)
     TWPSettingsUpdater provideTWPSettingsUpdater(UserConfigurationDAO userConfigurationDAO,
                                                  OpenPaaSUserDAO openPaaSUserDAO,
+                                                 OpenPaaSDomainDAO openPaaSDomainDAO,
                                                  SaaSUserProvisioner userProvisioner,
                                                  SimpleSessionProvider sessionProvider) {
-        return new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, userProvisioner, sessionProvider);
+        return new CalendarSettingUpdater(userConfigurationDAO, openPaaSUserDAO, openPaaSDomainDAO, userProvisioner, sessionProvider);
     }
 }
