@@ -38,10 +38,12 @@ import com.google.inject.Module;
 import com.google.inject.Provides;
 import com.google.inject.name.Names;
 import com.linagora.calendar.dav.DavModuleTestHelper;
+import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy.ResolutionConfiguration;
 import com.linagora.calendar.restapi.auth.OidcAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrategy;
+import com.linagora.calendar.restapi.auth.TrustedOrigins;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 
 public class AppTestHelper {
@@ -88,8 +90,9 @@ public class AppTestHelper {
         @Provides
         @Named("oidcAuthenticationStrategy")
         public AuthenticationStrategy provideprovideOidcAuthenticationStrategy(OidcAuthenticationStrategy oidcAuthenticationStrategy,
-            SimpleSessionProvider sessionProvider) {
-            LemonCookieAuthenticationStrategy lemonCookieAuthenticationStrategy = new LemonCookieAuthenticationStrategy(resolutionConfiguration, sessionProvider);
+            SimpleSessionProvider sessionProvider, RestApiConfiguration restApiConfiguration) {
+            LemonCookieAuthenticationStrategy lemonCookieAuthenticationStrategy = new LemonCookieAuthenticationStrategy(resolutionConfiguration, sessionProvider,
+                TrustedOrigins.from(restApiConfiguration));
             return new OidcFallbackCookieAuthenticationStrategy(oidcAuthenticationStrategy, lemonCookieAuthenticationStrategy);
         }
     };

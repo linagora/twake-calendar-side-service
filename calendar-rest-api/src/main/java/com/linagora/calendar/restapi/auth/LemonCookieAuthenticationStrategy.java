@@ -21,8 +21,10 @@ package com.linagora.calendar.restapi.auth;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 
 import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.lang3.StringUtils;
@@ -45,9 +47,13 @@ import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableMap;
+import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.storage.SimpleSessionProvider;
 
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.QueryStringDecoder;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.http.server.HttpServerRequest;
@@ -136,20 +142,26 @@ public class LemonCookieAuthenticationStrategy implements AuthenticationStrategy
     }
 
     private static final Logger LOGGER = LoggerFactory.getLogger(LemonCookieAuthenticationStrategy.class);
+    private static final Set<HttpMethod> SAFE_METHODS = Set.of(HttpMethod.GET, HttpMethod.HEAD, HttpMethod.OPTIONS);
+    private static final String SHOULD_RESET_LINK_PARAM = "shouldResetLink";
 
     private final LemonClient lemonClient;
     private final ResolutionConfiguration resolutionConfiguration;
     private final SimpleSessionProvider sessionProvider;
+    private final TrustedOrigins trustedOrigins;
 
-    public LemonCookieAuthenticationStrategy(ResolutionConfiguration resolutionConfiguration, SimpleSessionProvider sessionProvider) {
+    public LemonCookieAuthenticationStrategy(ResolutionConfiguration resolutionConfiguration, SimpleSessionProvider sessionProvider,
+                                             TrustedOrigins trustedOrigins) {
         this.lemonClient = new LemonClient(resolutionConfiguration.resolutionURL());
         this.resolutionConfiguration = resolutionConfiguration;
         this.sessionProvider = sessionProvider;
+        this.trustedOrigins = trustedOrigins;
     }
 
     @Override
     public Mono<MailboxSession> createMailboxSession(HttpServerRequest httpRequest) {
         return Mono.justOrEmpty(extractLemonCookie(httpRequest))
+            .flatMap(cookie -> checkCrossSiteRequestForgery(httpRequest).thenReturn(cookie))
             .flatMap(lemonClient::resolveUser)
             .map(user -> Username.fromLocalPartWithDomain(user, resolutionConfiguration.resolutionDomain()))
             .map(Throwing.function(sessionProvider::createSession))
@@ -158,9 +170,48 @@ public class LemonCookieAuthenticationStrategy implements AuthenticationStrategy
                     LOGGER.warn("Failed to resolve Lemon user", error);
                     return Mono.error(new UnauthorizedException(error.getMessage(), error));
                 }
+                if (error instanceof ForbiddenException) {
+                    return Mono.error(error);
+                }
                 LOGGER.error("Unexpected error", error);
                 return Mono.error(error);
             });
+    }
+
+    /**
+     * The LemonLDAP cookie is an ambient credential: the browser attaches it to requests forged by other sites.
+     * State-changing requests authenticated by it must therefore come from a trusted origin.
+     */
+    private Mono<Void> checkCrossSiteRequestForgery(HttpServerRequest request) {
+        if (!isStateChanging(request)) {
+            return Mono.empty();
+        }
+        Optional<String> requestOrigin = requestOrigin(request);
+        if (requestOrigin.map(trustedOrigins::contains).orElse(false)) {
+            return Mono.empty();
+        }
+        return Mono.error(new ForbiddenException("Rejected cookie-authenticated " + request.method() + " " + request.uri()
+            + " from untrusted origin " + requestOrigin.orElse("<none>")));
+    }
+
+    private boolean isStateChanging(HttpServerRequest request) {
+        return !SAFE_METHODS.contains(request.method()) || isSecretLinkReset(request);
+    }
+
+    // GET .../secret-link?shouldResetLink=true regenerates the secret link
+    private boolean isSecretLinkReset(HttpServerRequest request) {
+        return new QueryStringDecoder(request.uri()).parameters()
+            .getOrDefault(SHOULD_RESET_LINK_PARAM, List.of())
+            .stream()
+            .anyMatch("true"::equalsIgnoreCase);
+    }
+
+    // Origin takes precedence: when present but opaque ("null"), do not fall back to the Referer
+    private Optional<String> requestOrigin(HttpServerRequest request) {
+        HttpHeaders headers = request.requestHeaders();
+        return Optional.ofNullable(headers.get(HttpHeaderNames.ORIGIN))
+            .or(() -> Optional.ofNullable(headers.get(HttpHeaderNames.REFERER)))
+            .flatMap(TrustedOrigins::asOrigin);
     }
 
     @Override

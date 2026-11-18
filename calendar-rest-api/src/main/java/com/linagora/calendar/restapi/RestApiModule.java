@@ -71,6 +71,7 @@ import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy.Reso
 import com.linagora.calendar.restapi.auth.OidcAuthenticationStrategy;
 import com.linagora.calendar.restapi.auth.OidcEndpointsInfoResolver;
 import com.linagora.calendar.restapi.auth.OidcFallbackCookieAuthenticationStrategy;
+import com.linagora.calendar.restapi.auth.TrustedOrigins;
 import com.linagora.calendar.restapi.routes.AvatarRoute;
 import com.linagora.calendar.restapi.routes.BookedEventCancelRoute;
 import com.linagora.calendar.restapi.routes.BookedEventGetRoute;
@@ -321,6 +322,7 @@ public class RestApiModule extends AbstractModule {
     @Named("oidcAuthenticationStrategy")
     AuthenticationStrategy provideOidcAuthenticationStrategy(OidcAuthenticationStrategy oidcAuthenticationStrategy,
                                                              SimpleSessionProvider sessionProvider,
+                                                             RestApiConfiguration restApiConfiguration,
                                                              PropertiesProvider propertiesProvider) throws ConfigurationException {
         try {
             Configuration configuration = propertiesProvider.getConfiguration("configuration");
@@ -328,7 +330,8 @@ public class RestApiModule extends AbstractModule {
             return ResolutionConfiguration.maybeFrom(configuration)
                 .<AuthenticationStrategy>map(resolutionConfig ->
                     new OidcFallbackCookieAuthenticationStrategy(oidcAuthenticationStrategy,
-                        new LemonCookieAuthenticationStrategy(resolutionConfig, sessionProvider)))
+                        new LemonCookieAuthenticationStrategy(resolutionConfig, sessionProvider,
+                            TrustedOrigins.from(restApiConfiguration, configuration))))
                 .orElse(oidcAuthenticationStrategy);
         } catch (FileNotFoundException e) {
             return oidcAuthenticationStrategy;
