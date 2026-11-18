@@ -589,7 +589,7 @@ public interface CalendarSearchRouteContract {
             .statusCode(400)
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
-            .body("error.details", startsWith("Invalid request body"));
+            .body("error.details", equalTo("Invalid request body: 'calendars' must be an array"));
     }
 
     @Test
@@ -603,7 +603,66 @@ public interface CalendarSearchRouteContract {
             .statusCode(400)
             .body("error.code", equalTo(400))
             .body("error.message", equalTo("Bad request"))
-            .body("error.details", startsWith("Invalid request body"));
+            .body("error.details", equalTo("Invalid request body: 'query' must be a string"));
+    }
+
+    @Test
+    default void shouldReturn400WhenBodyIsMissing(TwakeCalendarGuiceServer server) {
+        given()
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("Invalid request body: a JSON body is required"));
+    }
+
+    @Test
+    default void shouldReturn400WhenBodyIsJsonNull(TwakeCalendarGuiceServer server) {
+        given()
+            .body("null")
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.details", equalTo("Invalid request body: a JSON body is required"));
+    }
+
+    @Test
+    default void shouldReturn400WhenBodyIsNotAnObject(TwakeCalendarGuiceServer server) {
+        given()
+            .body("[]")
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.details", equalTo("Invalid request body: the body must be a JSON object"));
+    }
+
+    @Test
+    default void shouldReturn400WhenCalendarRefIsNotAnObject(TwakeCalendarGuiceServer server) {
+        given()
+            .body("""
+                { "calendars": ["x"] }
+                """)
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.details", equalTo("Invalid request body: 'calendars[0]' must be a JSON object"));
+    }
+
+    @Test
+    default void shouldReturn400WithoutInternalsWhenFieldIsUnknown(TwakeCalendarGuiceServer server) {
+        given()
+            .body("""
+                { "unknown": "x" }
+                """)
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.details", equalTo("Invalid request body: unknown field 'unknown'"));
     }
 
     @Test
