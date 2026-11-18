@@ -31,6 +31,7 @@ import org.apache.commons.configuration2.Configuration;
 import org.apache.commons.lang3.StringUtils;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 
@@ -42,6 +43,8 @@ public record TrustedOrigins(ImmutableSet<String> origins) {
 
     public static final String EXCAL_SPA_URL_PROPERTY = "spa.excal.url";
     public static final String EXTRA_TRUSTED_ORIGINS_PROPERTY = "oidc.fallback.lemon.cookie.trusted.origins";
+    private static final ImmutableMap<String, Integer> DEFAULT_PORTS = ImmutableMap.of("http", 80, "https", 443);
+    private static final int NO_PORT = -1;
 
     public static TrustedOrigins from(RestApiConfiguration restApiConfiguration) {
         return of(Stream.of(restApiConfiguration.getCalendarSpaUrl(),
@@ -74,23 +77,27 @@ public record TrustedOrigins(ImmutableSet<String> origins) {
      * or empty when the value is not an absolute http(s) URL (e.g. the opaque {@code Origin: null}).
      */
     public static Optional<String> asOrigin(String url) {
+        return parseUri(url)
+            .filter(uri -> uri.getHost() != null)
+            .flatMap(uri -> Optional.ofNullable(uri.getScheme())
+                .map(scheme -> scheme.toLowerCase(Locale.US))
+                .filter(DEFAULT_PORTS::containsKey)
+                .map(scheme -> scheme + "://" + uri.getHost().toLowerCase(Locale.US) + portSuffix(scheme, uri.getPort())));
+    }
+
+    private static Optional<URI> parseUri(String url) {
         try {
-            URI uri = new URI(url.trim());
-            if (uri.getScheme() == null || uri.getHost() == null) {
-                return Optional.empty();
-            }
-            String scheme = uri.getScheme().toLowerCase(Locale.US);
-            if (!scheme.equals("http") && !scheme.equals("https")) {
-                return Optional.empty();
-            }
-            int port = uri.getPort();
-            boolean defaultPort = port == -1
-                || (scheme.equals("http") && port == 80)
-                || (scheme.equals("https") && port == 443);
-            return Optional.of(scheme + "://" + uri.getHost().toLowerCase(Locale.US) + (defaultPort ? "" : ":" + port));
+            return Optional.of(new URI(url.trim()));
         } catch (URISyntaxException e) {
             return Optional.empty();
         }
+    }
+
+    private static String portSuffix(String scheme, int port) {
+        if (port == NO_PORT || DEFAULT_PORTS.get(scheme) == port) {
+            return "";
+        }
+        return ":" + port;
     }
 
     public TrustedOrigins {
