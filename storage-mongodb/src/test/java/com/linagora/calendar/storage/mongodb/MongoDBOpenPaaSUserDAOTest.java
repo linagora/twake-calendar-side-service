@@ -148,11 +148,23 @@ public class MongoDBOpenPaaSUserDAOTest implements OpenPaaSUserDAOContract {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"\u0301", "\u200B", "\u0000", "\u00AD", "\uFE0F", "\u05A0\u0301"})
+    @ValueSource(strings = {"\u0301", "\u200B", "\u0000", "\u00AD", "\uFE0F", "\u05A0\u0301", "\u0301 \u200B"})
     void searchShouldNotFindEveryoneWhenTheQueryHoldsOnlyWhatTheCollationIgnores(String query) {
         testee().add(USERNAME, "Jean", "Lastname").block();
 
         assertThat(search(query)).isEmpty();
+    }
+
+    @Test
+    void searchShouldNotRejectAQueryBecauseOneOfItsWordsHoldsOnlyWhatTheCollationIgnores() {
+        // Given Jean
+        OpenPaaSUser jean = testee().add(USERNAME, "Jean", "Lastname").block();
+
+        // When searching for Jean followed by a word made of a lone combining accent
+        List<OpenPaaSUser> result = search("jean ́");
+
+        // Then Jean is still found
+        assertThat(result).containsExactly(jean);
     }
 
     @Test
