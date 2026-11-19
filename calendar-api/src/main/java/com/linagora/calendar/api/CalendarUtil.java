@@ -38,7 +38,9 @@ import java.time.ZoneOffset;
 import java.time.temporal.ChronoField;
 import java.time.temporal.Temporal;
 import java.time.zone.ZoneRules;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -90,6 +92,14 @@ import net.fortuna.ical4j.util.MapTimeZoneCache;
 public class CalendarUtil {
 
     private static final List<ComponentFactory<? extends Component>> COMPONENT_FACTORIES = new DefaultComponentFactorySupplier().get();
+    /**
+     * The property factories holding no per-property state, in lookup order: VERSION parsed by {@link LenientVersion},
+     * then the ical4j ones.
+     */
+    private static final List<PropertyFactory<?>> STATELESS_PROPERTY_FACTORIES = Stream.concat(
+            Stream.<PropertyFactory<?>>of(new LenientVersion.Factory()),
+            new DefaultPropertyFactorySupplier().get().stream())
+        .toList();
 
     /**
      * ical4j allocates a global zone id to each registered VTIMEZONE, out of a JVM wide pool of 1500 ids
@@ -318,20 +328,27 @@ public class CalendarUtil {
      */
     private static class TimeZoneCheckingContentHandler extends DefaultContentHandler {
         private final CustomizedTimeZoneRegistry tzRegistry;
+        private final ContentHandlerContext context;
 
         TimeZoneCheckingContentHandler(Consumer<Calendar> consumer, CustomizedTimeZoneRegistry tzRegistry, ContentHandlerContext context) {
             super(consumer, tzRegistry, context);
             this.tzRegistry = tzRegistry;
+            this.context = context;
         }
 
+        /**
+         * Same as {@link DefaultContentHandler#startProperty(String)}, with a {@link TextDecodingPropertyBuilder}: not
+         * calling it spares the factories of a builder that would be replaced right away.
+         */
         @Override
         public void startProperty(String name) {
-            super.startProperty(name);
-            if (propertyBuilder != null) {
-                propertyBuilder = new TextDecodingPropertyBuilder(propertyFactories())
-                    .name(name)
-                    .timeZoneRegistry(tzRegistry);
+            if (context.getIgnoredPropertyNames().contains(name.toUpperCase(Locale.ROOT))) {
+                propertyBuilder = null;
+                return;
             }
+            propertyBuilder = new TextDecodingPropertyBuilder(propertyFactories())
+                .name(name)
+                .timeZoneRegistry(tzRegistry);
         }
 
         @Override
@@ -380,14 +397,14 @@ public class CalendarUtil {
      * {@link NonTextExtensionProperty.Factory}. Factories are looked up in order, the first one supporting a property
      * name wins.
      *
-     * <p>ical4j calls this supplier for each property it parses, so each property gets its own factories.
+     * <p>Each property gets its own {@link NonTextExtensionProperty.Factory}, which keeps the name it supports. The
+     * other factories hold no per-property state: they are shared.
      */
     private static List<PropertyFactory<?>> propertyFactories() {
-        return Stream.<Stream<? extends PropertyFactory<?>>>of(Stream.of(new LenientVersion.Factory()),
-                new DefaultPropertyFactorySupplier().get().stream(),
-                Stream.of(new NonTextExtensionProperty.Factory()))
-            .<PropertyFactory<?>>flatMap(factories -> factories)
-            .toList();
+        List<PropertyFactory<?>> factories = new ArrayList<>(STATELESS_PROPERTY_FACTORIES.size() + 1);
+        factories.addAll(STATELESS_PROPERTY_FACTORIES);
+        factories.add(new NonTextExtensionProperty.Factory());
+        return factories;
     }
 
     /**
