@@ -138,6 +138,8 @@ public class CalendarEventsReindexService {
                     .collectList()
                     .flatMapMany(Flux::fromIterable)
                     .concatMap(resource -> deleteIndexAndCollectEvents(context, resource)))
+            // Keep throttle's onErrorContinue from bypassing the collection failure handlers and counters.
+            .onErrorStop()
             .transform(ReactorUtils.<CalendarEvents, Task.Result>throttle()
                 .elements(runningOptions.eventsPerSecond())
                 .per(Duration.ofSeconds(1))

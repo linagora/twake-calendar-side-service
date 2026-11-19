@@ -859,6 +859,37 @@ public class CalendarRoutesTest {
     }
 
     @Test
+    void shouldCountEventWithoutStartAndIndexRemainingEvents() {
+        // Given a valid ICS on either side of an ICS whose VEVENT has no DTSTART
+        List<URI> eventHrefs = upsertEvents(3);
+        CalendarMultiGetEntry firstEvent = new CalendarMultiGetEntry(eventHrefs.getFirst(), HttpStatus.SC_OK, eventIcs(eventHrefs.getFirst()));
+        CalendarMultiGetEntry eventWithoutStart = new CalendarMultiGetEntry(eventHrefs.get(1), HttpStatus.SC_OK,
+            eventIcs(eventHrefs.get(1)).replace("DTSTART:20250102T120000Z\n", ""));
+        CalendarMultiGetEntry lastEvent = new CalendarMultiGetEntry(eventHrefs.getLast(), HttpStatus.SC_OK, eventIcs(eventHrefs.getLast()));
+        doReturn(Mono.just(List.of(firstEvent, eventWithoutStart, lastEvent)))
+            .when(calDavClient).calendarMultiGet(eq(openPaaSUser.username()), eq(calendar), anyList());
+
+        // When reindexing through WebAdmin
+        String taskId = given()
+            .queryParam("task", "reindex")
+            .when()
+            .post()
+            .jsonPath()
+            .get("taskId");
+
+        // Then the task reports the failure and still indexes both valid events
+        given()
+            .basePath(TasksRoutes.BASE)
+            .when()
+            .get(taskId + "/await")
+            .then()
+            .body("status", is("failed"))
+            .body("additionalInformation.processedEventCount", is(2))
+            .body("additionalInformation.failedEventCount", is(1));
+        assertThat(calendarSearchService.search(simpleQuery("", calendar)).collectList().block()).hasSize(2);
+    }
+
+    @Test
     void shouldReindexEventWhoseIcsExceedsXmlEntityLimit() {
         // Given a single ICS resource larger than the original 100,000-character limit
         URI eventHref = eventHrefs(1).getFirst();
