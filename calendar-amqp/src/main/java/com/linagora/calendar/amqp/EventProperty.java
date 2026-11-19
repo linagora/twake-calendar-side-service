@@ -27,8 +27,10 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.time.chrono.IsoChronology;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.ResolverStyle;
 import java.time.temporal.TemporalAmount;
 import java.util.Optional;
 import java.util.function.Function;
@@ -149,6 +151,20 @@ public class EventProperty {
 
     public static class DateProperty extends EventProperty {
         private static final ZoneId UTC = ZoneId.of("UTC");
+        /**
+         * A jCal date-time with or without an offset: parsing it once avoids throwing, for every zoned date-time,
+         * the exception of an offset parse before falling back to a local one. An offset wins over the tzid.
+         */
+        private static final DateTimeFormatter DATE_TIME_OPTIONAL_OFFSET = new DateTimeFormatterBuilder()
+            .parseCaseInsensitive()
+            .append(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            .optionalStart()
+            .appendOffsetId()
+            .optionalEnd()
+            .toFormatter()
+            .withResolverStyle(ResolverStyle.STRICT)
+            .withChronology(IsoChronology.INSTANCE);
+
         private final Instant date;
 
         public DateProperty(EventProperty base) {
@@ -160,19 +176,20 @@ public class EventProperty {
             return switch (valueType) {
                 case "date" -> LocalDate.from(DateTimeFormatter.ISO_LOCAL_DATE.parse(value)).atStartOfDay()
                     .toInstant(ZoneOffset.UTC);
-                case "date-time" -> {
-                    try {
-                        yield OffsetDateTime.parse(value).toInstant();
-                    } catch (DateTimeParseException e1) {
-                        ZoneId zoneId = Optional.ofNullable(attributes.get("tzid"))
-                            .map(JsonNode::asText)
-                            .map(text -> TimeZone.getTimeZone(text).toZoneId())
-                            .orElse(UTC);
-                        yield ZonedDateTime.of(LocalDateTime.parse(value), zoneId).toInstant();
-                    }
-                }
+                case "date-time" -> switch (DATE_TIME_OPTIONAL_OFFSET.parseBest(value, OffsetDateTime::from, LocalDateTime::from)) {
+                    case OffsetDateTime offsetDateTime -> offsetDateTime.toInstant();
+                    case LocalDateTime localDateTime -> ZonedDateTime.of(localDateTime, tzidZone()).toInstant();
+                    default -> throw new CalendarEventDeserializeException("Invalid date-time: " + value);
+                };
                 default -> throw new CalendarEventDeserializeException("Invalid date format: " + valueType);
             };
+        }
+
+        private ZoneId tzidZone() {
+            return Optional.ofNullable(attributes.get("tzid"))
+                .map(JsonNode::asText)
+                .map(text -> TimeZone.getTimeZone(text).toZoneId())
+                .orElse(UTC);
         }
 
         public Instant getDate() {
