@@ -39,11 +39,13 @@ import java.time.temporal.ChronoField;
 import java.time.temporal.Temporal;
 import java.time.zone.ZoneRules;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -52,6 +54,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Maps;
 
 import net.fortuna.ical4j.data.CalendarParserFactory;
 import net.fortuna.ical4j.data.ContentHandler;
@@ -130,6 +133,8 @@ public class CalendarUtil {
         static final long MAX_EXPANSION_COST = Long.getLong("tcalendar.tz.max.expansion.cost", 4_000);
         @VisibleForTesting
         static final int MAX_CUSTOM_TIMEZONES = Integer.getInteger("tcalendar.tz.max.custom.tz", 1000);
+        // TZIDs are input: bounds the globally known zones kept for the calendar
+        private static final int MAX_GLOBAL_TIMEZONES = 1000;
         private static final int MIN_EXPANDED_YEARS = 5;
         // Building a zone with several STANDARD observances expands each of them up to ten years from now
         private static final int FUTURE_EXPANDED_YEARS = 10;
@@ -138,6 +143,7 @@ public class CalendarUtil {
         private static final int MONTHS_PER_YEAR = 12;
 
         private final TimeZoneRegistryImpl delegate = new TimeZoneRegistryImpl();
+        private final Map<String, ZoneId> globalZoneIds = new ConcurrentHashMap<>();
         private int registeredCount = 0;
         private long remainingExpansionCost = MAX_EXPANSION_COST;
 
@@ -260,9 +266,16 @@ public class CalendarUtil {
                 .orElse((long) MIN_EXPANDED_YEARS) + FUTURE_EXPANDED_YEARS;
         }
 
+        /**
+         * Keeps the zone found, up to {@link #MAX_GLOBAL_TIMEZONES} of them: {@link #getZoneId(String)} answers from
+         * it, sparing the scan of {@link TimeZoneRegistry#getGlobalZoneId(String)} at each date read.
+         */
         private boolean isGloballyKnown(String tzId) {
             try {
-                TimeZoneRegistry.getGlobalZoneId(tzId);
+                ZoneId zoneId = TimeZoneRegistry.getGlobalZoneId(tzId);
+                if (globalZoneIds.size() < MAX_GLOBAL_TIMEZONES) {
+                    globalZoneIds.put(tzId, zoneId);
+                }
                 return true;
             } catch (DateTimeException e) {
                 return false;
@@ -280,12 +293,25 @@ public class CalendarUtil {
         }
 
         @Override
+        /**
+         * The rules of the registered zones or, without any, of the globally known zones of the VTIMEZONEs.
+         * ical4j only asks {@link #getZoneId(String)} the zone of a TZID when this is not empty.
+         */
         public Map<String, ZoneRules> getZoneRules() {
-            return delegate.getZoneRules();
+            Map<String, ZoneRules> registered = delegate.getZoneRules();
+            if (registered.isEmpty()) {
+                return Collections.unmodifiableMap(Maps.transformValues(globalZoneIds, ZoneId::getRules));
+            }
+            return registered;
         }
 
         @Override
         public ZoneId getZoneId(String tzId) {
+            // A globally known TZID is never registered: it cannot have a definition of its own
+            ZoneId globalZoneId = globalZoneIds.get(tzId);
+            if (globalZoneId != null) {
+                return globalZoneId;
+            }
             try {
                 // Attempt to get the zone ID from the registered timezones first
                 return delegate.getZoneId(tzId);

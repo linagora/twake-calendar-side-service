@@ -20,6 +20,7 @@ package com.linagora.calendar.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
 import java.time.Instant;
 import java.time.ZonedDateTime;
@@ -38,6 +39,7 @@ import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.TimeZone;
+import net.fortuna.ical4j.model.TimeZoneRegistry;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.component.VTimeZone;
 import net.fortuna.ical4j.model.parameter.PartStat;
@@ -230,6 +232,47 @@ class CalendarUtilTest {
         Calendar calendar = CalendarUtil.parseIcs(icsWithTimezone("Custom Linagora Time"));
 
         assertThat(start(calendar)).isEqualTo(Instant.parse("2026-10-26T10:45:00Z"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Europe/Paris", "Romance Standard Time"})
+    void parseIcsShouldResolveAGloballyKnownTimezoneToItsGlobalZone(String tzId) {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithTimezone(tzId));
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
+
+        assertSoftly(softly -> {
+            softly.assertThat(((ZonedDateTime) vEvent.getDateTimeStart().getDate()).getZone())
+                .isEqualTo(TimeZoneRegistry.getGlobalZoneId(tzId));
+            softly.assertThat(vEvent.getDateTimeStart().getValue()).isEqualTo("20261026T114500");
+            softly.assertThat(vEvent.getDateTimeEnd().getValue()).isEqualTo("20261026T123000");
+        });
+    }
+
+    @Test
+    void parseIcsShouldResolveATimezoneWithoutVTimezoneNextToAKnownOne() {
+        Calendar calendar = CalendarUtil.parseIcs(icsWithTimezone("Europe/Paris")
+            .replace("DTEND;TZID=Europe/Paris:20261026T123000", "DTEND;TZID=Asia/Tokyo:20261026T193000"));
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
+
+        assertThat(((ZonedDateTime) vEvent.getDateTimeEnd().getDate()).toInstant())
+            .isEqualTo(Instant.parse("2026-10-26T10:30:00Z"));
+    }
+
+    @Test
+    void parseIcsShouldResolveKnownAndCustomTimezonesOfTheSameCalendar() {
+        String customZone = icsWithTimezone("Custom Linagora Time");
+        String vTimezone = customZone.substring(customZone.indexOf("BEGIN:VTIMEZONE"), customZone.indexOf("BEGIN:VEVENT"));
+        Calendar calendar = CalendarUtil.parseIcs(icsWithTimezone("Europe/Paris")
+            .replace("BEGIN:VEVENT", vTimezone + "BEGIN:VEVENT")
+            .replace("DTEND;TZID=Europe/Paris", "DTEND;TZID=Custom Linagora Time"));
+        VEvent vEvent = (VEvent) calendar.getComponent(Component.VEVENT).orElseThrow();
+
+        assertSoftly(softly -> {
+            softly.assertThat(((ZonedDateTime) vEvent.getDateTimeStart().getDate()).getZone())
+                .isEqualTo(TimeZoneRegistry.getGlobalZoneId("Europe/Paris"));
+            softly.assertThat(((ZonedDateTime) vEvent.getDateTimeEnd().getDate()).toInstant())
+                .isEqualTo(Instant.parse("2026-10-26T11:30:00Z"));
+        });
     }
 
     private static String icsWithObservanceRule(String dtStart, String rRule) {
