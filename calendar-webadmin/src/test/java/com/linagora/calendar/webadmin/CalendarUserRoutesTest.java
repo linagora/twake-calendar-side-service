@@ -191,6 +191,51 @@ class CalendarUserRoutesTest {
     }
 
     @Test
+    void postUserShouldReturn400WhenEmailHasNoDomain() {
+        given()
+            .body("{\"email\":\"not-an-email\",\"firstname\":\"James\",\"lastname\":\"Bond\"}")
+        .when()
+            .post()
+        .then()
+            .statusCode(400)
+            .contentType(ContentType.JSON)
+            .body("statusCode", is(HttpStatus.BAD_REQUEST_400))
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid arguments supplied in the user request"))
+            .body("details", is("Email 'not-an-email' must contain a domain"));
+
+        when()
+            .get()
+        .then()
+            .statusCode(200)
+            .body("size()", equalTo(0));
+    }
+
+    @Test
+    void patchUserShouldReturn400WhenEmailHasNoDomain() {
+        OpenPaaSUser user = userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("id", user.id().value())
+            .body("{\"email\":\"not-an-email\",\"firstname\":\"James\",\"lastname\":\"Bond\"}")
+        .when()
+            .patch()
+        .then()
+            .statusCode(400)
+            .contentType(ContentType.JSON)
+            .body("statusCode", is(HttpStatus.BAD_REQUEST_400))
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid arguments supplied in the user request"))
+            .body("details", is("Email 'not-an-email' must contain a domain"));
+
+        when()
+            .get()
+        .then()
+            .statusCode(200)
+            .body("[0].email", equalTo("james@linagora.com"));
+    }
+
+    @Test
     void getUsersShouldSucceedWhenUserHasEmptyFirstname() {
         userDAO.add(Username.of("james@linagora.com"), "", "Bond").block();
 

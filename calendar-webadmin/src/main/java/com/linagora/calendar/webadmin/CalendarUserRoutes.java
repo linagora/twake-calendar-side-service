@@ -60,7 +60,12 @@ public class CalendarUserRoutes implements Routes {
         public CalendarUserDTO validateForWrite() {
             Preconditions.checkArgument(!StringUtils.isEmpty(firstname), "Missing firstname");
             Preconditions.checkArgument(!StringUtils.isEmpty(lastname), "Missing lastname");
+            Preconditions.checkArgument(username().getDomainPart().isPresent(), "Email '%s' must contain a domain", email);
             return this;
+        }
+
+        public Username username() {
+            return Username.of(email);
         }
 
         public static CalendarUserDTO fromDomainObject(OpenPaaSUser user) {
@@ -187,8 +192,7 @@ public class CalendarUserRoutes implements Routes {
         CalendarUserDTO dto = jsonExtractor.parse(request.body()).validateForWrite();
 
         try {
-            Username username = Username.of(dto.email());
-            userDAO.add(username, dto.firstname(), dto.lastname()).block();
+            userDAO.add(dto.username(), dto.firstname(), dto.lastname()).block();
             response.status(HttpStatus.CREATED_201);
             return Constants.EMPTY_BODY;
         } catch (DomainNotFoundException e) {
@@ -255,7 +259,7 @@ public class CalendarUserRoutes implements Routes {
 
         try {
             OpenPaaSId openPaaSId = new OpenPaaSId(id);
-            userDAO.update(openPaaSId, Username.of(dto.email()), dto.firstname(), dto.lastname()).block();
+            userDAO.update(openPaaSId, dto.username(), dto.firstname(), dto.lastname()).block();
             response.status(HttpStatus.NO_CONTENT_204);
             return Constants.EMPTY_BODY;
         } catch (DomainNotFoundException | UserNotFoundException e) {
