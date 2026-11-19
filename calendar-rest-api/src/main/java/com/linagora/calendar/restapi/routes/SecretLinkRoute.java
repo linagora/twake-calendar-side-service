@@ -18,86 +18,54 @@
 
 package com.linagora.calendar.restapi.routes;
 
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.util.Collections;
 import java.util.List;
 
 import jakarta.inject.Inject;
 
-import org.apache.commons.lang3.Strings;
-import org.apache.http.client.utils.URIBuilder;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.mailbox.MailboxSession;
 import org.apache.james.metrics.api.MetricFactory;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.RestApiConfiguration;
 import com.linagora.calendar.storage.CalendarURL;
-import com.linagora.calendar.storage.OpenPaaSId;
-import com.linagora.calendar.storage.secretlink.SecretLinkPermissionException;
 import com.linagora.calendar.storage.secretlink.SecretLinkStore;
 import com.linagora.calendar.storage.secretlink.SecretLinkToken;
 
 import io.netty.handler.codec.http.HttpMethod;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
-import reactor.netty.http.server.HttpServerResponse;
 
-public class SecretLinkRoute extends CalendarRoute {
+public class SecretLinkRoute extends AbstractSecretLinkRoute {
 
     public static final boolean SHOULD_RESET_LINK_DEFAULT = false;
-    public static final String CALENDAR_HOME_ID_PARAM = "calendarHomeId";
-    public static final String CALENDAR_ID_PARAM = "calendarId";
+    /**
+     * @deprecated resetting the secret link is a state change: use {@link SecretLinkResetRoute} (POST) instead.
+     * Kept until clients stop calling GET with this parameter.
+     */
+    @Deprecated
     public static final String SHOULD_RESET_LINK_PARAM = "shouldResetLink";
-
-    private final ObjectMapper objectMapper;
-
-    private final SecretLinkStore secretLinkStore;
-    private final URL secretLinkBaseUrl;
 
     @Inject
     public SecretLinkRoute(Authenticator authenticator,
                            MetricFactory metricFactory,
                            SecretLinkStore secretLinkStore,
                            RestApiConfiguration configuration) {
-        super(authenticator, metricFactory);
-        this.objectMapper = new ObjectMapper();
-        this.secretLinkStore = secretLinkStore;
-        this.secretLinkBaseUrl = configuration.getSelfUrl();
+        super(authenticator, metricFactory, secretLinkStore, configuration);
     }
 
     @Override
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.GET, "/calendar/api/calendars/{calendarHomeId}/{calendarId}/secret-link");
+        return new Endpoint(HttpMethod.GET, SECRET_LINK_PATH);
     }
 
     @Override
-    Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
-        OpenPaaSId calendarHomeId = new OpenPaaSId(request.param(CALENDAR_HOME_ID_PARAM));
-        OpenPaaSId calendarId = new OpenPaaSId(request.param(CALENDAR_ID_PARAM));
-        CalendarURL calendarURL = new CalendarURL(calendarHomeId, calendarId);
-        boolean shouldResetLink = extractShouldResetLink(request);
-
-        return fetchOrGenerateSecretLink(shouldResetLink, calendarURL, session)
-            .onErrorMap(SecretLinkPermissionException.class, e -> new ForbiddenException(e.getMessage()))
-            .flatMap(token -> response.status(HttpResponseStatus.OK)
-                .header("Content-Type", "application/json;charset=utf-8")
-                .sendByteArray(buildResponseBody(token, calendarURL))
-                .then());
-    }
-
-    private Mono<SecretLinkToken> fetchOrGenerateSecretLink(boolean shouldResetLink, CalendarURL calendarURL, MailboxSession session) {
-        if (shouldResetLink) {
+    Mono<SecretLinkToken> secretLinkToken(HttpServerRequest request, CalendarURL calendarURL, MailboxSession session) {
+        if (extractShouldResetLink(request)) {
             return secretLinkStore.generateSecretLink(calendarURL, session);
-        } else {
-            return secretLinkStore.getSecretLink(calendarURL, session);
         }
+        return secretLinkStore.getSecretLink(calendarURL, session);
     }
 
     private boolean extractShouldResetLink(HttpServerRequest request) {
@@ -106,16 +74,5 @@ public class SecretLinkRoute extends CalendarRoute {
             .findAny()
             .map("true"::equalsIgnoreCase)
             .orElse(SHOULD_RESET_LINK_DEFAULT);
-    }
-
-    private URI buildSecretLinkURL(SecretLinkToken token, CalendarURL calendarURL) throws URISyntaxException {
-        return new URIBuilder(secretLinkBaseUrl.toURI())
-            .setPath(Strings.CS.removeEnd(secretLinkBaseUrl.getPath(), "/") + "/api" + calendarURL.asUri() + "/calendar.ics")
-            .addParameter("token", token.value())
-            .build();
-    }
-
-    private Mono<byte[]> buildResponseBody(SecretLinkToken token, CalendarURL calendarURL) {
-        return Mono.fromCallable(() -> objectMapper.writeValueAsBytes(Collections.singletonMap("secretLink", buildSecretLinkURL(token, calendarURL).toString())));
     }
 }

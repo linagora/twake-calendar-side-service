@@ -407,11 +407,32 @@ untouched.
 GET /calendar/api/calendars/{calendarHomeId}/{calendarId}/secret-link
 ```
 
-Allows to retrieve the secret link associated with a calendar.
+Allows to retrieve the secret link associated with a calendar. The link is created on first access.
 
 Secret links are authenticated with a random string stored and thus the URL is self supportive.
 
-The `shouldResetLink` query parameter (boolean default to false) control if the existing secret link shall be overridden.
+Response:
+
+```json
+{ "secretLink": "https://calendar.example.com/api/calendars/{calendarHomeId}/{calendarId}/calendar.ics?token=xyz" }
+```
+
+Returns `403` if the user is not allowed to read the calendar.
+
+**Deprecated:** the `shouldResetLink` query parameter (boolean default to false) still overrides the existing secret link,
+for compatibility with older clients. It will be removed: use `POST .../secret-link` below to reset the link.
+
+### POST /calendar/api/calendars/{calendarHomeId}/{calendarId}/secret-link
+
+```
+POST /calendar/api/calendars/{calendarHomeId}/{calendarId}/secret-link
+```
+
+Regenerates the secret link of a calendar. No request body is needed. The previous link stops working.
+
+Response: `200` with the same body as the `GET` above, holding the new link.
+
+Returns `403` if the user is not allowed to read the calendar (the link is left unchanged), `401` if unauthenticated.
 
 Example of generated secret link:
 

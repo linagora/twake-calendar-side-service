@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.app.restapi.routes;
 
+import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.when;
 import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
@@ -199,6 +200,118 @@ class SecretLinkRouteTest {
             assertThat(secretLinkSupplier.get())
                 .isEqualTo(secretLinkFirst);
         }
+    }
+
+    @Test
+    void postShouldReturnNewSecretLink() {
+        String initialSecretLink = getSecretLink(openPaaSId);
+
+        String resetSecretLink = resetSecretLink(openPaaSId);
+
+        assertThat(resetSecretLink).isNotEqualTo(initialSecretLink);
+    }
+
+    @Test
+    void getShouldReturnSecretLinkGeneratedByPost() {
+        String resetSecretLink = resetSecretLink(openPaaSId);
+
+        assertThat(getSecretLink(openPaaSId)).isEqualTo(resetSecretLink);
+    }
+
+    @Test
+    void postShouldReturnSecretLinkWithExpectedFormat() {
+        assertThat(resetSecretLink(openPaaSId))
+            .startsWith(SECRET_LINK_BASE_URL + "/api/calendars/" + openPaaSId.value() + "/" + openPaaSId.value() + "/calendar.ics?token=");
+    }
+
+    @Test
+    void postShouldReturnForbiddenWhenCalendarIsNotOwned(TwakeCalendarGuiceServer server) {
+        OpenPaaSUser otherUser = sabreDavExtension.newTestUser();
+        server.getProbe(CalendarDataProbe.class).addUserToRepository(otherUser.username(), PASSWORD);
+        String otherUserSecretLink = getSecretLink(otherUser.id(), otherUser);
+
+        when()
+            .post(getPath(otherUser.id().value()))
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+
+        assertThat(getSecretLink(otherUser.id(), otherUser)).isEqualTo(otherUserSecretLink);
+    }
+
+    @Test
+    void postShouldReturnUnauthorizedWhenNotAuthenticated() {
+        given()
+            .auth().none()
+        .when()
+            .post(getPath(openPaaSId.value()))
+        .then()
+            .statusCode(HttpStatus.SC_UNAUTHORIZED);
+    }
+
+    @Test
+    void postShouldInvalidatePreviousIcsLink(TwakeCalendarGuiceServer server) {
+        int port = server.getProbe(RestApiServerProbe.class).getPort().getValue();
+        String initialSecretLink = getSecretLink(openPaaSId);
+
+        resetSecretLink(openPaaSId);
+
+        given()
+            .auth().none()
+        .when()
+            .get(asLocalUrl(initialSecretLink, port))
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+    }
+
+    @Test
+    void postShouldGenerateWorkingIcsLink(TwakeCalendarGuiceServer server) {
+        int port = server.getProbe(RestApiServerProbe.class).getPort().getValue();
+
+        String resetSecretLink = resetSecretLink(openPaaSId);
+
+        given()
+            .auth().none()
+        .when()
+            .get(asLocalUrl(resetSecretLink, port))
+        .then()
+            .statusCode(HttpStatus.SC_OK);
+    }
+
+    private String asLocalUrl(String secretLink, int port) {
+        return secretLink.replace(SECRET_LINK_BASE_URL, "http://localhost:" + port);
+    }
+
+    private String getSecretLink(OpenPaaSId calendarId) {
+        return when()
+            .get(getPath(calendarId.value()))
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .jsonPath()
+            .getString("secretLink");
+    }
+
+    private String getSecretLink(OpenPaaSId calendarId, OpenPaaSUser user) {
+        return given()
+            .auth().preemptive().basic(user.username().asString(), PASSWORD)
+        .when()
+            .get(getPath(calendarId.value()))
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .jsonPath()
+            .getString("secretLink");
+    }
+
+    private String resetSecretLink(OpenPaaSId calendarId) {
+        return when()
+            .post(getPath(calendarId.value()))
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .contentType(JSON)
+            .extract()
+            .jsonPath()
+            .getString("secretLink");
     }
 
     @Test
