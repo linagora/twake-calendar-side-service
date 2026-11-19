@@ -19,6 +19,7 @@
 package com.linagora.calendar.amqp;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
@@ -1853,5 +1854,49 @@ public class EventFieldConverterTest {
             softly.assertThat(fields.uid()).isEqualTo(new EventUid("event-1"));
             softly.assertThat(fields.recurrenceId()).isEmpty();
         });
+    }
+
+    private static Instant dtStart(String tzidParameter, String value) {
+        String json = """
+            {"eventPath":"/calendars/base1/calendar1/event1.ics",
+             "event":["vcalendar",[],[["vevent",[
+                ["uid",{},"text","event-1"],
+                ["dtstart",%s,"date-time","%s"]],[]]]],
+             "import":false}""".formatted(tzidParameter, value);
+
+        CalendarEventMessage message = CalendarEventMessage.CreatedOrUpdated.deserialize(json.getBytes(StandardCharsets.UTF_8));
+
+        return EventFieldConverter.from(message).events().iterator().next().start();
+    }
+
+    @Test
+    void dateTimeWithTzidShouldBeReadInThatZone() {
+        assertThat(dtStart("{\"tzid\":\"Europe/Paris\"}", "2026-11-18T10:00:00"))
+            .isEqualTo(Instant.parse("2026-11-18T09:00:00Z"));
+    }
+
+    @Test
+    void dateTimeWithoutTzidNorOffsetShouldBeReadAsUtc() {
+        assertThat(dtStart("{}", "2026-11-18T10:00:00"))
+            .isEqualTo(Instant.parse("2026-11-18T10:00:00Z"));
+    }
+
+    @Test
+    void dateTimeOffsetShouldWinOverTzid() {
+        assertThat(dtStart("{\"tzid\":\"Europe/Paris\"}", "2026-11-18T10:00:00+05:00"))
+            .isEqualTo(Instant.parse("2026-11-18T05:00:00Z"));
+    }
+
+    @Test
+    void dateTimeWithUnknownTzidShouldBeReadAsGmt() {
+        assertThat(dtStart("{\"tzid\":\"Not/AZone\"}", "2026-11-18T10:00:00"))
+            .isEqualTo(Instant.parse("2026-11-18T10:00:00Z"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"not-a-date", "2026-11-18", "2026-02-30T10:00:00", "2026-11-18T10:00:00+25:00"})
+    void invalidDateTimeShouldBeRejected(String value) {
+        assertThatThrownBy(() -> dtStart("{}", value))
+            .isInstanceOf(CalendarEventDeserializeException.class);
     }
 }
