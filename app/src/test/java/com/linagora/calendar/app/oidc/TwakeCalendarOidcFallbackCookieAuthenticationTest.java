@@ -34,6 +34,7 @@ import java.time.Duration;
 import java.util.Optional;
 
 import org.apache.http.HttpStatus;
+import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.james.backends.rabbitmq.RabbitMQExtension;
 import org.apache.james.backends.redis.RedisConfiguration;
 import org.apache.james.backends.redis.StandaloneRedisConfiguration;
@@ -60,6 +61,7 @@ import com.linagora.calendar.app.TwakeCalendarConfiguration;
 import com.linagora.calendar.app.TwakeCalendarExtension;
 import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
+import com.linagora.calendar.dav.DavConfiguration;
 import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.restapi.RestApiServerProbe;
 import com.linagora.calendar.restapi.auth.LemonCookieAuthenticationStrategy;
@@ -87,6 +89,16 @@ public class TwakeCalendarOidcFallbackCookieAuthenticationTest {
         return Throwing.supplier(() -> URI.create(String.format("http://127.0.0.1:%s%s", mockServer.getLocalPort(), INTROSPECT_TOKEN_URI_PATH)).toURL()).get();
     }
 
+    // DAV requests are proxied to the mock server, so that what reaches the DAV backend can be asserted
+    private static DavConfiguration davConfiguration() {
+        return new DavConfiguration(
+            new UsernamePasswordCredentials("dummy", "dummy"),
+            URI.create(String.format("http://127.0.0.1:%s", mockServer.getLocalPort())),
+            Optional.of(true),
+            Optional.of(Duration.ofMillis(500)),
+            Optional.of(Duration.ofSeconds(10)));
+    }
+
     @Order(1)
     @RegisterExtension
     static DockerRedisExtension dockerExtension = new DockerRedisExtension();
@@ -110,7 +122,7 @@ public class TwakeCalendarOidcFallbackCookieAuthenticationTest {
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MEMORY)
             .enableRedis(),
-        DavModuleTestHelper.BY_PASS_MODULE,
+        binder -> binder.bind(DavConfiguration.class).toProvider(TwakeCalendarOidcFallbackCookieAuthenticationTest::davConfiguration),
         DavModuleTestHelper.RABBITMQ_MODULE.apply(rabbitMQExtension),
         AppTestHelper.LEMON_COOKIE_AUTHENTICATION_STRATEGY_MODULE.apply(getResolutionConfiguration()),
         binder -> binder.bind(URL.class).annotatedWith(Names.named("userInfo"))
@@ -439,6 +451,60 @@ public class TwakeCalendarOidcFallbackCookieAuthenticationTest {
             .post("/dav/calendars/abc/abc.json")
         .then()
             .statusCode(HttpStatus.SC_FORBIDDEN);
+    }
+
+    private static final String ITIP_COUNTER_BODY = """
+        {
+          "uid": "event-uid",
+          "sender": "%s",
+          "recipient": "organizer@open-paas.ltd",
+          "ical": "BEGIN:VCALENDAR\\r\\nMETHOD:COUNTER\\r\\nEND:VCALENDAR\\r\\n",
+          "method": "COUNTER"
+        }""".formatted(USERNAME.asString());
+
+    private HttpRequest itipRequestToDav(String userId) {
+        return HttpRequest.request()
+            .withMethod("POST")
+            .withPath("/calendars/" + userId)
+            .withHeader("X-Http-Method-Override", "ITIP");
+    }
+
+    @Test
+    void cookieAuthenticatedItipCounterShouldBeProxiedFromTrustedOrigin(TwakeCalendarGuiceServer server) {
+        mockValidLemonCookie("123");
+        String userId = server.getProbe(CalendarDataProbe.class).userId(USERNAME).value();
+        mockServer.when(itipRequestToDav(userId))
+            .respond(HttpResponse.response().withStatusCode(HttpStatus.SC_NO_CONTENT));
+
+        given()
+            .cookie("lemonldap", "123")
+            .header("Origin", TRUSTED_ORIGIN)
+            .header("X-Http-Method-Override", "ITIP")
+            .body(ITIP_COUNTER_BODY)
+        .when()
+            .post("/dav/calendars/" + userId)
+        .then()
+            .statusCode(HttpStatus.SC_NO_CONTENT);
+
+        mockServer.verify(itipRequestToDav(userId), exactly(1));
+    }
+
+    @Test
+    void cookieAuthenticatedItipCounterShouldBeRejectedFromUntrustedOrigin(TwakeCalendarGuiceServer server) {
+        mockValidLemonCookie("123");
+        String userId = server.getProbe(CalendarDataProbe.class).userId(USERNAME).value();
+
+        given()
+            .cookie("lemonldap", "123")
+            .header("Origin", UNTRUSTED_ORIGIN)
+            .header("X-Http-Method-Override", "ITIP")
+            .body(ITIP_COUNTER_BODY)
+        .when()
+            .post("/dav/calendars/" + userId)
+        .then()
+            .statusCode(HttpStatus.SC_FORBIDDEN);
+
+        mockServer.verify(itipRequestToDav(userId), exactly(0));
     }
 
     @Test
