@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
  - ISSUE-1173 Mail templates: every email now carries a `text/plain` alternative to its (preferred) `text/html` body, as `multipart/alternative`. It is rendered from an optional `text.pug` template next to `html.pug`; custom template directories lacking it keep sending HTML only.
  - ISSUE-1118 Webadmin: `DELETE /domains/{domain}/addressbooks/{addressBookId}/contacts[?sourceDomain=]` plans a task clearing the contacts of a domain address book (`domain-members` excluded), optionally only those having a mail address within `sourceDomain`
  - ISSUE-1119 Webadmin: `POST /domains/{domain}/addressbooks/{addressBookId}?action=copyFrom&sourceDomain=...[&ldapFilter=...]` plans a task copying the LDAP users of `sourceDomain` into a domain address book (`domain-members` excluded), e.g. letting teachers auto-complete students but not the other way around
+ - ISSUE-1578 CalDAV / CardDAV discovery: `/.well-known/caldav` and `/.well-known/carddav` (`GET`, `HEAD`, `PROPFIND`) answer `307 Temporary Redirect` to the configured `dav.url`
 
 ### Fixes
 
