@@ -33,12 +33,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.base.Splitter;
 import com.linagora.calendar.amqp.EventProperty.AttendeeProperty;
@@ -54,9 +51,6 @@ import com.linagora.calendar.storage.eventsearch.CalendarEvents;
 
 public class EventFieldConverter {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventFieldConverter.class);
-
-    private static final ObjectMapper MAPPER = new ObjectMapper()
-        .registerModule(new SimpleModule().addDeserializer(EventProperty.class, new EventPropertyDeserializer()));
 
     public static CalendarEvents from(CalendarEventMessage eventMessage) {
         List<String> paths = splitEventPath(eventMessage.eventPath);
@@ -176,8 +170,8 @@ public class EventFieldConverter {
 
     private static Optional<EventProperty> deserializeEventProperty(JsonNode node) {
         try {
-            return Optional.of(MAPPER.treeToValue(node, EventProperty.class));
-        } catch (JsonProcessingException | RuntimeException e) {
+            return Optional.of(EventPropertyDeserializer.fromNode(node));
+        } catch (RuntimeException e) {
             if (isEventProperty(node, EventProperty.ORGANIZER_PROPERTY)) {
                 LOGGER.warn("Skipping invalid organizer event property: {}", node, e);
                 return Optional.empty();
@@ -213,7 +207,7 @@ public class EventFieldConverter {
             EventProperty.DURATION_PROPERTY, EventProperty.DurationProperty::new,
             EventProperty.SEQUENCE_PROPERTY, EventProperty.SequenceProperty::new);
 
-        private void validateNode(JsonNode node) {
+        private static void validateNode(JsonNode node) {
             if (!node.isArray()) {
                 throw new CalendarEventDeserializeException("Expected an array for EventProperty but got " + node.getNodeType() + ": " + node.toPrettyString());
             }
@@ -221,8 +215,14 @@ public class EventFieldConverter {
 
         @Override
         public EventProperty deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
-            JsonNode node = p.getCodec().readTree(p);
+            return fromNode(p.getCodec().readTree(p));
+        }
 
+        /**
+         * Reads the property from the jCal node itself: binding it through Jackson would copy the whole node first.
+         * The attributes node is shared with the given tree, which {@link EventProperty} only reads.
+         */
+        public static EventProperty fromNode(JsonNode node) {
             validateNode(node);
 
             String name = node.get(0).asText();
