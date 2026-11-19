@@ -880,9 +880,9 @@ public class CalendarRoutesTest {
         // Then the task reports the failure and still indexes both valid events
         given()
             .basePath(TasksRoutes.BASE)
-            .when()
+        .when()
             .get(taskId + "/await")
-            .then()
+        .then()
             .body("status", is("failed"))
             .body("additionalInformation.processedEventCount", is(2))
             .body("additionalInformation.failedEventCount", is(1));
