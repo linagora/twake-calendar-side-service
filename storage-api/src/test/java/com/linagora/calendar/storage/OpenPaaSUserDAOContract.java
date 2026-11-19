@@ -305,6 +305,73 @@ public interface OpenPaaSUserDAOContract {
     }
 
     @Test
+    default void searchShouldReturnOnlyUsersMatchingEveryWordOfTheQuery() {
+        // Given Jean Dupont, and two users sharing only his firstname or only his lastname
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser jeanDupont = testee().add(USERNAME, "Jean", "Dupont").block();
+        testee().add(Username.of("jmartin@domain.tld"), "Jean", "Martin").block();
+        testee().add(Username.of("pdupont@domain.tld"), "Paul", "Dupont").block();
+
+        // When searching for the beginning of both his firstname and his lastname
+        List<OpenPaaSUser> result = testee().search(domain, "Jea Dupo", 10).collectList().block();
+
+        // Then only Jean Dupont is found
+        assertThat(result).containsExactly(jeanDupont);
+    }
+
+    @Test
+    default void searchShouldMatchTheWordsOfTheQueryInAnyOrder() {
+        // Given Jean Dupont
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser jeanDupont = testee().add(USERNAME, "Jean", "Dupont").block();
+
+        // When searching for his lastname before his firstname
+        List<OpenPaaSUser> result = testee().search(domain, "Dupont Jean", 10).collectList().block();
+
+        // Then Jean Dupont is found
+        assertThat(result).containsExactly(jeanDupont);
+    }
+
+    @Test
+    default void searchShouldReturnEmptyWhenAWordOfTheQueryMatchesNoField() {
+        // Given Jean Dupont
+        Domain domain = Domain.of("domain.tld");
+        testee().add(USERNAME, "Jean", "Dupont").block();
+
+        // When searching for his firstname followed by a word none of his fields holds
+        List<OpenPaaSUser> result = testee().search(domain, "Jean Xyz", 10).collectList().block();
+
+        // Then nobody is found
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    default void searchShouldMatchEveryWordOfAComposedFirstnameFollowedByTheLastname() {
+        // Given Jean Pierre Dupont, whose firstname holds two words
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser jeanPierreDupont = testee().add(USERNAME, "Jean Pierre", "Dupont").block();
+
+        // When searching for his full name
+        List<OpenPaaSUser> result = testee().search(domain, "Jean Pierre Dupont", 10).collectList().block();
+
+        // Then Jean Pierre Dupont is found
+        assertThat(result).containsExactly(jeanPierreDupont);
+    }
+
+    @Test
+    default void searchShouldIgnoreExtraWhitespacesAroundTheWordsOfTheQuery() {
+        // Given Jean Dupont
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser jeanDupont = testee().add(USERNAME, "Jean", "Dupont").block();
+
+        // When searching for his full name surrounded and separated by several whitespaces
+        List<OpenPaaSUser> result = testee().search(domain, "  Jean \t Dupont ", 10).collectList().block();
+
+        // Then Jean Dupont is found
+        assertThat(result).containsExactly(jeanDupont);
+    }
+
+    @Test
     default void addMissingFieldsShouldReturnEmptyWhenNoUsers() {
         MigrationResult result = testee().addMissingFields().block();
         assertThat(result.processedUsers()).isEqualTo(0);

@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
@@ -34,6 +35,7 @@ import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.CharMatcher;
 import com.google.common.base.Splitter;
 import com.linagora.calendar.storage.MigrationResult;
 import com.linagora.calendar.storage.OpenPaaSId;
@@ -58,6 +60,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
     private static final List<String> SEARCH_SCALAR_FIELDS = List.of("firstname", "lastname");
     private static final List<String> SEARCH_ARRAY_FIELDS = List.of("accounts.emails", "firstnames");
     private static final Duration SEARCH_MAX_TIME = Duration.ofSeconds(10);
+    private static final Splitter QUERY_WORD_SPLITTER = Splitter.on(CharMatcher.whitespace()).omitEmptyStrings();
 
     private final MongoDatabase database;
     private final MongoDBOpenPaaSDomainDAO domainDAO;
@@ -175,17 +178,28 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
                     .map(this::toOpenPaaSUser));
     }
 
+    /**
+     * Each word of the query has to be the prefix of one of the searched fields: 'jea dupo' finds Jean Dupont.
+     * A word made only of what the collation ignores restricts nothing, hence is dropped.
+     */
     @Override
     public Flux<OpenPaaSUser> search(Domain domain, String query, int limit) {
-        if (!CollatedPrefixSearch.isSearchable(query)) {
+        List<String> words = QUERY_WORD_SPLITTER.splitToList(query);
+        List<String> searchableWords = words.stream()
+            .filter(CollatedPrefixSearch::isSearchable)
+            .toList();
+        if (searchableWords.isEmpty() && !words.isEmpty()) {
             return Flux.empty();
         }
 
         return domainDAO.retrieve(domain)
             .flatMapMany(openPaaSDomain ->
                 Flux.from(database.getCollection(COLLECTION)
-                        .find(Filters.and(Filters.eq("domains.domain_id", new ObjectId(openPaaSDomain.id().value())),
-                            CollatedPrefixSearch.filter(query, SEARCH_SCALAR_FIELDS, SEARCH_ARRAY_FIELDS)))
+                        .find(Filters.and(Stream.concat(
+                            Stream.of(Filters.eq("domains.domain_id", new ObjectId(openPaaSDomain.id().value()))),
+                            searchableWords.stream()
+                                .map(word -> CollatedPrefixSearch.filter(word, SEARCH_SCALAR_FIELDS, SEARCH_ARRAY_FIELDS)))
+                            .toList()))
                         .collation(CollatedPrefixSearch.COLLATION)
                         .maxTime(SEARCH_MAX_TIME.toMillis(), TimeUnit.MILLISECONDS)
                         .limit(limit))
