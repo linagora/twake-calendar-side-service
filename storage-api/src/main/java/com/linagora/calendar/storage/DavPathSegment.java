@@ -18,13 +18,11 @@
 
 package com.linagora.calendar.storage;
 
-import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.Set;
-import java.util.regex.MatchResult;
-import java.util.regex.Pattern;
 
 import com.google.common.base.Preconditions;
 
@@ -37,19 +35,20 @@ import com.google.common.base.Preconditions;
  * and the fragment, so they stay literal characters of a single segment.
  */
 public final class DavPathSegment {
-    // possessive: the alternatives start with distinct characters, so it matches the same language without
-    // the recursion per repetition that overflows the stack on a long segment
-    private static final Pattern PCHARS = Pattern.compile("(?:[A-Za-z0-9\\-._~!$&'()*+,;=:@]|%[0-9A-Fa-f]{2})++");
-    private static final Pattern DECODING_UNIT = Pattern.compile("%([0-9A-Fa-f]{2})|[^%]");
+    private static final String UNENCODED_PCHARS = "-._~!$&'()*+,;=:@";
     private static final Set<String> DOT_SEGMENTS = Set.of(".", "..");
     private static final String FORBIDDEN_DECODED_CHARS = "/\\";
 
     public static String validate(String value, String name) {
-        Preconditions.checkArgument(value != null && PCHARS.matcher(value).matches(),
+        Optional<String> decoded = Optional.ofNullable(value).flatMap(DavPathSegment::percentDecodePchars);
+        Preconditions.checkArgument(decoded.isPresent(),
             "%s must be a single path segment: %s", name, value);
         Preconditions.checkArgument(!DOT_SEGMENTS.contains(value),
             "%s must not be a dot segment: %s", name, value);
-        validateDecoded(percentDecode(value), value, name);
+        if (value.indexOf('%') >= 0) {
+            // without percent-encoding, the decoded value is the value: pchar characters, already checked
+            validateDecoded(decoded.get(), value, name);
+        }
         return value;
     }
 
@@ -68,20 +67,65 @@ public final class DavPathSegment {
         return Character.isISOControl(c) || FORBIDDEN_DECODED_CHARS.indexOf(c) >= 0;
     }
 
-    private static String percentDecode(String value) {
-        byte[] bytes = DECODING_UNIT.matcher(value).results()
-            .mapToInt(DavPathSegment::decodeUnit)
-            .collect(ByteArrayOutputStream::new, ByteArrayOutputStream::write, (left, right) -> left.writeBytes(right.toByteArray()))
-            .toByteArray();
+    /**
+     * Decodes a non-empty sequence of RFC 3986 'pchar': unreserved and sub-delims characters, ':', '@' and
+     * well formed percent-encoded triplets. Empty when the value is not such a sequence.
+     *
+     * @throws IllegalArgumentException when the decoded bytes are not valid UTF-8
+     */
+    private static Optional<String> percentDecodePchars(String value) {
+        if (value.isEmpty()) {
+            return Optional.empty();
+        }
+        if (value.indexOf('%') < 0) {
+            return value.chars().allMatch(DavPathSegment::isUnencodedPchar) ? Optional.of(value) : Optional.empty();
+        }
+        byte[] bytes = new byte[value.length()];
+        int length = 0;
+        int i = 0;
+        while (i < value.length()) {
+            char c = value.charAt(i);
+            if (c == '%') {
+                if (i + 2 >= value.length()) {
+                    return Optional.empty();
+                }
+                int high = hexDigit(value.charAt(i + 1));
+                int low = hexDigit(value.charAt(i + 2));
+                if (high < 0 || low < 0) {
+                    return Optional.empty();
+                }
+                bytes[length++] = (byte) (high << 4 | low);
+                i += 3;
+            } else if (isUnencodedPchar(c)) {
+                bytes[length++] = (byte) c;
+                i++;
+            } else {
+                return Optional.empty();
+            }
+        }
         try {
-            return StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();
+            return Optional.of(StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes, 0, length)).toString());
         } catch (CharacterCodingException e) {
             throw new IllegalArgumentException("Path segment must decode to valid UTF-8: " + value, e);
         }
     }
 
-    private static int decodeUnit(MatchResult unit) {
-        return unit.group(1) == null ? unit.group().charAt(0) : Integer.parseInt(unit.group(1), 16);
+    private static boolean isUnencodedPchar(int c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+            || UNENCODED_PCHARS.indexOf(c) >= 0;
+    }
+
+    private static int hexDigit(char c) {
+        if (c >= '0' && c <= '9') {
+            return c - '0';
+        }
+        if (c >= 'a' && c <= 'f') {
+            return c - 'a' + 10;
+        }
+        if (c >= 'A' && c <= 'F') {
+            return c - 'A' + 10;
+        }
+        return -1;
     }
 
     private DavPathSegment() {
