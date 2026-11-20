@@ -51,6 +51,7 @@ import reactor.netty.http.server.HttpServerResponse;
 
 public class PeopleSearchRoute extends CalendarRoute {
     public static final int MAX_RESULTS_LIMIT = 256;
+    public static final int MAX_QUERY_LENGTH = 256;
 
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -165,6 +166,8 @@ public class PeopleSearchRoute extends CalendarRoute {
         return requestDTO -> {
             Preconditions.checkArgument(requestDTO.limit > 0, "Limit must be greater than 0");
             Preconditions.checkArgument(requestDTO.limit <= MAX_RESULTS_LIMIT, "Maximum limit allowed: " + MAX_RESULTS_LIMIT + ", but got: " + requestDTO.limit);
+            Preconditions.checkArgument(requestDTO.query == null || requestDTO.query.length() <= MAX_QUERY_LENGTH,
+                "Maximum query length allowed: " + MAX_QUERY_LENGTH);
             return requestDTO;
         };
     }

@@ -29,6 +29,11 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 public interface OpenPaaSUserDAO {
+    /**
+     * Each word of a search query adds a clause to the search: words beyond this cap are ignored.
+     */
+    int MAX_SEARCH_QUERY_WORDS = 8;
+
     Mono<OpenPaaSUser> retrieve(OpenPaaSId id);
 
     Mono<OpenPaaSUser> retrieve(Username username);

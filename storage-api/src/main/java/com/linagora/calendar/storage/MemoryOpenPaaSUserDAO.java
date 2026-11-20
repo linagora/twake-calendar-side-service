@@ -20,6 +20,7 @@ package com.linagora.calendar.storage;
 
 import static org.apache.james.util.ReactorUtils.publishIfPresent;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -122,7 +123,10 @@ public class MemoryOpenPaaSUserDAO implements OpenPaaSUserDAO {
 
     @Override
     public Flux<OpenPaaSUser> search(Domain domain, String query, int limit) {
-        List<String> words = List.of(StringUtils.split(query));
+        List<String> words = Arrays.stream(StringUtils.split(query))
+            .distinct()
+            .limit(MAX_SEARCH_QUERY_WORDS)
+            .toList();
         return Flux.fromIterable(hashMap.values())
             .filter(user -> user.username().getDomainPart().map(domain::equals).orElse(false))
             .filter(user -> words.stream().allMatch(word ->
