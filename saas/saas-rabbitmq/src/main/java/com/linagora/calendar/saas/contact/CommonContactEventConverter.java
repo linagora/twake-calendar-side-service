@@ -39,14 +39,15 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
-import ezvcard.Ezvcard;
 import ezvcard.VCard;
+import ezvcard.property.DateOrTimeProperty;
 import ezvcard.property.FormattedName;
 import it.cnr.iit.jscontact.tools.dto.Card;
 import it.cnr.iit.jscontact.tools.dto.Name;
 import it.cnr.iit.jscontact.tools.exceptions.CardException;
 import it.cnr.iit.jscontact.tools.vcard.converters.config.VCard2JSContactConfig;
 import it.cnr.iit.jscontact.tools.vcard.converters.vcard2jscontact.VCard2JSContact;
+import it.cnr.iit.jscontact.tools.vcard.extensions.utils.VCardParser;
 import reactor.core.publisher.Mono;
 
 public class CommonContactEventConverter {
@@ -97,12 +98,14 @@ public class CommonContactEventConverter {
 
     private ConvertedContact convertVCard(String cardData) {
         try {
+            VCard vCard = parseVCard(cardData);
+            removeTextDates(vCard);
             Card card = VCard2JSContact.builder()
                 .config(VCard2JSContactConfig.builder().build())
                 .build()
-                .convert(cardData)
+                .convert(vCard)
                 .getFirst();
-            restoreFormattedName(card, cardData);
+            restoreFormattedName(card, vCard);
             ContactUid uid = new ContactUid(Optional.ofNullable(card.getUid())
                 .filter(StringUtils::isNotBlank)
                 .orElseThrow(() -> new CommonContactEventConversionException("Missing required vCard UID in contact notification payload")));
@@ -113,12 +116,29 @@ public class CommonContactEventConverter {
         }
     }
 
+    // VCardParser registers the extended N / ADR scribes VCard2JSContact relies on to convert names and addresses
+    private VCard parseVCard(String cardData) {
+        return VCardParser.parse(cardData).stream()
+            .findFirst()
+            .orElseThrow(() -> new CommonContactEventConversionException("Unable to parse vCard in contact notification payload"));
+    }
+
+    // JSContact anniversaries require a date: jscontact-tools fails on free-text BDAY / ANNIVERSARY / DEATHDATE values
+    private void removeTextDates(VCard vCard) {
+        vCard.getProperties().stream()
+            .filter(DateOrTimeProperty.class::isInstance)
+            .map(DateOrTimeProperty.class::cast)
+            .filter(property -> property.getText() != null)
+            .toList()
+            .forEach(vCard::removeProperty);
+    }
+
     // jscontact-tools drops a FN equal to the UID, taking it for the placeholder it writes for nameless cards
-    private void restoreFormattedName(Card card, String cardData) {
+    private void restoreFormattedName(Card card, VCard vCard) {
         if (hasFullName(card)) {
             return;
         }
-        formattedName(cardData).ifPresent(fullName -> Optional.ofNullable(card.getName())
+        formattedName(vCard).ifPresent(fullName -> Optional.ofNullable(card.getName())
             .ifPresentOrElse(name -> name.setFull(fullName),
                 () -> card.setName(Name.builder().full(fullName).build())));
     }
@@ -130,9 +150,8 @@ public class CommonContactEventConverter {
             .isPresent();
     }
 
-    private Optional<String> formattedName(String cardData) {
-        return Optional.ofNullable(Ezvcard.parse(cardData).first())
-            .map(VCard::getFormattedName)
+    private Optional<String> formattedName(VCard vCard) {
+        return Optional.ofNullable(vCard.getFormattedName())
             .map(FormattedName::getValue)
             .filter(StringUtils::isNotBlank);
     }
