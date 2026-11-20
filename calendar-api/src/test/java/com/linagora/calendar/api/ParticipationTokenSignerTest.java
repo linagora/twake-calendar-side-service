@@ -40,10 +40,14 @@ import org.apache.james.metrics.tests.RecordingMetricFactory;
 import org.apache.james.server.core.filesystem.FileSystemImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.io.BaseEncoding;
+import com.linagora.calendar.api.Participation.ParticipantAction;
+import com.linagora.calendar.api.ParticipationTokenSigner.MissingParticipationActionException;
 import com.linagora.calendar.api.ParticipationTokenSigner.ParticipationTokenClaimException;
 
 public class ParticipationTokenSignerTest {
@@ -92,6 +96,62 @@ public class ParticipationTokenSignerTest {
         Participation participation = sampleParticipation();
         String jwt = testee.signAsJwt(participation).block();
         assertThat(testee.validateAndExtractParticipation(jwt).block())
+            .isEqualTo(participation);
+    }
+
+    @Test
+    void signGrantAsJwtShouldNotBindTheAction() throws Exception {
+        String jwtToken = testee.signAsJwt(sampleParticipation().grant()).block();
+
+        JsonNode payload = new ObjectMapper().readTree(decodeJWTPayloadPart(jwtToken));
+
+        assertThat(payload.has("action")).isFalse();
+        assertThat(payload.get("uid").asText()).isEqualTo("event-uid-123");
+        assertThat(payload.get("organizerEmail").asText()).isEqualTo("organizer@domain.tld");
+        assertThat(payload.get("attendeeEmail").asText()).isEqualTo("attendee@domain.tld");
+        assertThat(payload.get("calendarURI").asText()).isEqualTo("calendar-uri-xyz");
+    }
+
+    @ParameterizedTest
+    @EnumSource(ParticipantAction.class)
+    void grantTokenShouldAnswerTheRequestedAction(ParticipantAction action) throws Exception {
+        String jwt = testee.signAsJwt(sampleParticipation().grant()).block();
+
+        assertThat(testee.validateAndExtractParticipation(jwt, Optional.of(action)).block())
+            .isEqualTo(sampleParticipation().withAction(action));
+    }
+
+    @Test
+    void grantTokenShouldRoundTripTheRecurrenceId() throws Exception {
+        String jwt = testee.signAsJwt(occurrenceParticipation().grant()).block();
+
+        assertThat(testee.validateAndExtractParticipation(jwt, Optional.of(ParticipantAction.ACCEPTED)).block())
+            .isEqualTo(occurrenceParticipation());
+    }
+
+    @Test
+    void grantTokenShouldFailWithoutRequestedAction() throws Exception {
+        String jwt = testee.signAsJwt(sampleParticipation().grant()).block();
+
+        assertThatThrownBy(() -> testee.validateAndExtractParticipation(jwt, Optional.empty()).block())
+            .isInstanceOf(MissingParticipationActionException.class);
+    }
+
+    @Test
+    void tokenBoundToAnActionShouldStillBeValidWithoutRequestedAction() throws Exception {
+        Participation participation = sampleParticipation().withAction(ParticipantAction.TENTATIVE);
+        String jwt = testee.signAsJwt(participation).block();
+
+        assertThat(testee.validateAndExtractParticipation(jwt, Optional.empty()).block())
+            .isEqualTo(participation);
+    }
+
+    @Test
+    void actionBoundToTheTokenShouldPrevailOverTheRequestedOne() throws Exception {
+        Participation participation = sampleParticipation().withAction(ParticipantAction.TENTATIVE);
+        String jwt = testee.signAsJwt(participation).block();
+
+        assertThat(testee.validateAndExtractParticipation(jwt, Optional.of(ParticipantAction.REJECTED)).block())
             .isEqualTo(participation);
     }
 

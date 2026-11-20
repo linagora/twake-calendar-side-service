@@ -31,7 +31,6 @@ import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 
 import java.net.URI;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -2133,9 +2132,9 @@ class BookingLinkReservationRouteTest {
     }
 
     private String toParticipationEndpoint(String excalLink) {
-        String jwt = excalLink.substring("https://excal.linagora.com/excal/?jwt=".length());
-        return String.format("http://localhost:%d/calendar/api/calendars/event/participation?jwt=%s",
-            restApiPort, URLEncoder.encode(jwt, StandardCharsets.UTF_8));
+        String query = excalLink.replace("&amp;", "&")
+            .substring("https://excal.linagora.com/excal/?".length());
+        return String.format("http://localhost:%d/calendar/api/calendars/event/participation?%s", restApiPort, query);
     }
 
 }

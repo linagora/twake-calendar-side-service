@@ -733,27 +733,34 @@ This allows excal SPA to pilot the action clicked by the user.
 
 Don't trust the GET verb, this WILL trigger a side effect: update the remote user participation.
 
-It uses a `jwt` query parameter build in the emailed link.
+It uses the `jwt` and `action` query parameters of the emailed link (`<excal>/excal/?jwt=xxx&action=ACCEPTED`), which
+excal forwards as is.
 
 ```
-GET /calendar/api/calendars/event/participation?jwt=xxx
+GET /calendar/api/calendars/event/participation?jwt=xxx&action=ACCEPTED
 ```
 
 The same URL is also served on `POST`, without payload, with the exact same behaviour and response:
 
 ```
-POST /calendar/api/calendars/event/participation?jwt=xxx
+POST /calendar/api/calendars/event/participation?jwt=xxx&action=ACCEPTED
 ```
 
 Clients should prefer `POST` upon an explicit user action: mail link scanners (Safe Links, antivirus sandboxes)
 may load the excal page and thus trigger the `GET`, answering on behalf of the attendee.
+
+`action` is one of `ACCEPTED`, `REJECTED`, `TENTATIVE`. The three links of a mail (as well as the `links` of the
+response) share the same token: it grants the attendee any answer, the link carrying it. A missing or invalid `action`
+results in a `400`.
 
 A participation token need to have the following claims:
  - `attendeeEmail`
  - `organizerEmail`
  - `uid`
  - `calendarURI`
- - `action`: one of `ACCEPTED`, `REJECTED`, `TENTATIVE`
+ - `recurrenceId` (optional): the answer is then for this occurrence only
+ - `action` (optional): tokens of links emailed before the answer was carried by the link are bound to it. It then
+   prevails over the `action` query parameter, which can be omitted.
 
 ### POST /api/files
 

@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import static com.linagora.calendar.api.EventParticipationActionLinkFactory.ACTION_PARAM;
+import static com.linagora.calendar.api.EventParticipationActionLinkFactory.JWT_PARAM;
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 
 import java.util.List;
@@ -43,6 +45,7 @@ import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory.ActionLinks;
 import com.linagora.calendar.api.Participation;
+import com.linagora.calendar.api.Participation.ParticipantAction;
 import com.linagora.calendar.api.ParticipationTokenSigner;
 import com.linagora.calendar.dav.CalDavEventRepository;
 import com.linagora.calendar.dav.CalendarEventNotFoundException;
@@ -71,7 +74,6 @@ public class EventParticipationRoute extends PublicRoute {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EventParticipationRoute.class);
     private static final String PATH = "/calendar/api/calendars/event/participation";
-    private static final String JWT_PARAM = "jwt";
     private final ParticipationTokenSigner participationTokenSigner;
     private final CalDavEventRepository calDavEventRepository;
     private final SettingsBasedResolver settingsResolver;
@@ -131,6 +133,11 @@ public class EventParticipationRoute extends PublicRoute {
                     LOGGER.warn("Participation token refers to a non-existing event", exception);
                     return doNotFound(response, notFoundException);
                 }
+                if (exception instanceof ParticipationTokenSigner.MissingParticipationActionException
+                    || exception instanceof InvalidParticipationActionException) {
+                    LOGGER.warn("Participation request without a valid answer", exception);
+                    return doBadRequest(response, new IllegalArgumentException(exception.getMessage(), exception));
+                }
                 LOGGER.error("Unexpected error processing participation token", exception);
                 return doOnError(response, exception);
             });
@@ -149,7 +156,7 @@ public class EventParticipationRoute extends PublicRoute {
     private Mono<Participation> validateAndExtractParticipation(HttpServerRequest request) {
         return Mono.justOrEmpty(getJwtParameter(request))
             .switchIfEmpty(Mono.error(new IllegalArgumentException("Missing " + JWT_PARAM + " in request")))
-            .flatMap(participationTokenSigner::validateAndExtractParticipation);
+            .flatMap(jwt -> participationTokenSigner.validateAndExtractParticipation(jwt, getActionParameter(request)));
     }
 
     private Mono<Pair<VCalendarDto, Boolean>> updateParticipation(Participation participationRequest) {
@@ -279,9 +286,35 @@ public class EventParticipationRoute extends PublicRoute {
     }
 
     private Optional<String> getJwtParameter(HttpServerRequest request) {
-        return new QueryStringDecoder(request.uri()).parameters().getOrDefault(JWT_PARAM, List.of())
+        return getParameter(request, JWT_PARAM);
+    }
+
+    /**
+     * The answer is carried by the link, the token granting any answer. Links signed before carry it in their token.
+     */
+    private Optional<ParticipantAction> getActionParameter(HttpServerRequest request) {
+        return getParameter(request, ACTION_PARAM)
+            .map(this::parseAction);
+    }
+
+    private ParticipantAction parseAction(String action) {
+        try {
+            return ParticipantAction.valueOf(action);
+        } catch (IllegalArgumentException e) {
+            throw new InvalidParticipationActionException("Invalid " + ACTION_PARAM + ": " + action);
+        }
+    }
+
+    private Optional<String> getParameter(HttpServerRequest request, String name) {
+        return new QueryStringDecoder(request.uri()).parameters().getOrDefault(name, List.of())
             .stream()
             .filter(StringUtils::isNotBlank)
             .findAny();
+    }
+
+    private static class InvalidParticipationActionException extends RuntimeException {
+        InvalidParticipationActionException(String message) {
+            super(message);
+        }
     }
 }
