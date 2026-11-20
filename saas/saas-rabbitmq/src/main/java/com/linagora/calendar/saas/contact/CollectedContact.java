@@ -44,9 +44,7 @@ import it.cnr.iit.jscontact.tools.dto.OnlineService;
 import it.cnr.iit.jscontact.tools.dto.Phone;
 import it.cnr.iit.jscontact.tools.exceptions.CardException;
 import it.cnr.iit.jscontact.tools.vcard.converters.config.JSContact2VCardConfig;
-import it.cnr.iit.jscontact.tools.vcard.converters.config.VCard2JSContactConfig;
 import it.cnr.iit.jscontact.tools.vcard.converters.jscontact2vcard.JSContact2VCard;
-import it.cnr.iit.jscontact.tools.vcard.converters.vcard2jscontact.VCard2JSContact;
 import it.cnr.iit.jscontact.tools.vcard.extensions.io.scribe.ExtendedAddressScribe;
 import it.cnr.iit.jscontact.tools.vcard.extensions.io.scribe.ExtendedStructuredNameScribe;
 import it.cnr.iit.jscontact.tools.vcard.extensions.utils.VCardParser;
@@ -67,9 +65,6 @@ final class CollectedContact {
     private static final JSContact2VCard JSCONTACT_TO_VCARD = JSContact2VCard.builder()
         // Validation requires a Java EL implementation, which jscontact-tools does not declare as a dependency.
         .config(JSContact2VCardConfig.builder().validateCard(false).build())
-        .build();
-    private static final VCard2JSContact VCARD_TO_JSCONTACT = VCard2JSContact.builder()
-        .config(VCard2JSContactConfig.builder().build())
         .build();
 
     private final Card card;
@@ -249,7 +244,7 @@ final class CollectedContact {
      */
     private static Card readVCard(List<VCard> vCards) throws CardException {
         try {
-            return VCARD_TO_JSCONTACT.convert(vCards.toArray(VCard[]::new)).getFirst();
+            return VCardToJSContact.convert(vCards.toArray(VCard[]::new)).getFirst();
         } catch (CardException e) {
             if (!isUnreadableJSProp(e)) {
                 throw e;
@@ -262,7 +257,7 @@ final class CollectedContact {
         // A JSPROP written from a field holding only what JSContact does not define has nothing to attach to on reading
         vCards.forEach(vCard -> vCard.removeExtendedProperty(JSPROP));
         vCards.forEach(CollectedContact::dropUnreadableExtensionParameters);
-        return VCARD_TO_JSCONTACT.convert(vCards.toArray(VCard[]::new)).getFirst();
+        return VCardToJSContact.convert(vCards.toArray(VCard[]::new)).getFirst();
     }
 
     /**

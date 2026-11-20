@@ -47,16 +47,11 @@ import ezvcard.property.RawProperty;
 import it.cnr.iit.jscontact.tools.dto.Card;
 import it.cnr.iit.jscontact.tools.dto.Name;
 import it.cnr.iit.jscontact.tools.exceptions.CardException;
-import it.cnr.iit.jscontact.tools.vcard.converters.config.VCard2JSContactConfig;
-import it.cnr.iit.jscontact.tools.vcard.converters.vcard2jscontact.VCard2JSContact;
 import it.cnr.iit.jscontact.tools.vcard.extensions.utils.VCardParser;
 import reactor.core.publisher.Mono;
 
 public class CommonContactEventConverter {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final VCard2JSContact VCARD_TO_JSCONTACT = VCard2JSContact.builder()
-        .config(VCard2JSContactConfig.builder().build())
-        .build();
 
     private final AudienceResolver audienceResolver;
 
@@ -139,13 +134,13 @@ public class CommonContactEventConverter {
     // The converter cannot read text parameters of most extension properties: these are carried over by hand instead
     private ReadCard readVCard(VCard vCard) throws CardException {
         try {
-            return new ReadCard(VCARD_TO_JSCONTACT.convert(vCard).getFirst(), List.of());
+            return new ReadCard(VCardToJSContact.convert(vCard).getFirst(), List.of());
         } catch (RuntimeException e) {
             if (!UnreadableExtensionProperties.isCauseOf(e)) {
                 throw e;
             }
             List<RawProperty> unreadableProperties = UnreadableExtensionProperties.detach(vCard);
-            return new ReadCard(VCARD_TO_JSCONTACT.convert(vCard).getFirst(), unreadableProperties);
+            return new ReadCard(VCardToJSContact.convert(vCard).getFirst(), unreadableProperties);
         }
     }
 

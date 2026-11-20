@@ -37,8 +37,6 @@ import ezvcard.VCardVersion;
 import ezvcard.property.RawProperty;
 import ezvcard.property.Uid;
 import it.cnr.iit.jscontact.tools.exceptions.CardException;
-import it.cnr.iit.jscontact.tools.vcard.converters.config.VCard2JSContactConfig;
-import it.cnr.iit.jscontact.tools.vcard.converters.vcard2jscontact.VCard2JSContact;
 
 /**
  * jscontact-tools 2.1.0 reads every parameter of an extension property as a number, and throws on any other value
@@ -47,9 +45,6 @@ import it.cnr.iit.jscontact.tools.vcard.converters.vcard2jscontact.VCard2JSConta
  * parameters: only the ones it cannot read are concerned, hence this is tried rather than described.
  */
 final class UnreadableExtensionProperties {
-    private static final VCard2JSContact VCARD_TO_JSCONTACT = VCard2JSContact.builder()
-        .config(VCard2JSContactConfig.builder().build())
-        .build();
     private static final JsonNodeFactory JSON = JsonNodeFactory.instance;
     private static final String V_CARD_PROPS = "vCardProps";
     private static final String GROUP = "group";
@@ -66,7 +61,7 @@ final class UnreadableExtensionProperties {
         probe.setFormattedName("probe");
         probe.addProperty(property);
         try {
-            VCARD_TO_JSCONTACT.convert(probe);
+            VCardToJSContact.convert(probe);
             return false;
         } catch (CardException | RuntimeException e) {
             return isCauseOf(e);

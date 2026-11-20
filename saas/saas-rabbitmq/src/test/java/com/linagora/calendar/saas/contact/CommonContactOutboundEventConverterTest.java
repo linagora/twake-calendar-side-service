@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Optional;
 
 import org.apache.james.core.Domain;
@@ -39,10 +40,14 @@ import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSUser;
 
+import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
+
 class CommonContactOutboundEventConverterTest {
     private static final String CONTACT_PATH = "addressbooks/principal/collected/contact-resource.vcf";
     private static final long SYNC_TOKEN = 42L;
     private static final String ETAG = "\"6b1c3d2e9f0a4b5c8d7e6f5a4b3c2d1e\"";
+    private static final int CONCURRENT_CONVERSIONS = 2000;
 
     private CommonContactEventConverter testee;
     private MemoryOpenPaaSDomainDAO domainDAO;
@@ -362,6 +367,62 @@ class CommonContactOutboundEventConverterTest {
                 """), json("""
                 ["x-other", {"x-index": 3}, "unknown", "also kept"]
                 """));
+    }
+
+    @Test
+    void shouldNotCarryCustomTimeZonesOverToTheNextContact() {
+        String contactWithCustomTimeZone = """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:contact-with-time-zone
+            FN:Alice
+            ADR;TZ=+0530:;;1 Main Road;Mumbai;;;India
+            END:VCARD
+            """;
+
+        CommonContactOutboundEvent.ContactChangedEvent firstEvent = testee.convert(Action.ADD, new CommonContactOutboundEvent.Audience.Unknown(),
+            CONTACT_PATH, contactWithCustomTimeZone, SYNC_TOKEN, ETAG);
+        CommonContactOutboundEvent.ContactChangedEvent secondEvent = testee.convert(Action.ADD, new CommonContactOutboundEvent.Audience.Unknown(),
+            CONTACT_PATH, contactWithCustomTimeZone, SYNC_TOKEN, ETAG);
+
+        assertThat(secondEvent.payload()).isEqualTo(firstEvent.payload());
+    }
+
+    @Test
+    void shouldSelectTheNameInTheLanguageOfEachContactWhenConvertedConcurrently() {
+        String englishContact = """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:english-contact
+            LANGUAGE:en
+            FN;ALTID=1;LANGUAGE=en:Alice English
+            FN;ALTID=1;LANGUAGE=fr:Alice Francais
+            END:VCARD
+            """;
+        String frenchContact = """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:french-contact
+            LANGUAGE:fr
+            FN;ALTID=1;LANGUAGE=en:Bob English
+            FN;ALTID=1;LANGUAGE=fr:Bob Francais
+            END:VCARD
+            """;
+
+        List<String> englishContactNames = Flux.range(0, CONCURRENT_CONVERSIONS)
+            .parallel()
+            .runOn(Schedulers.parallel())
+            .map(i -> i % 2 == 0 ? englishContact : frenchContact)
+            .map(cardData -> testee.convert(Action.ADD, new CommonContactOutboundEvent.Audience.Unknown(), CONTACT_PATH, cardData, SYNC_TOKEN, ETAG))
+            .filter(event -> event.uid().value().equals("english-contact"))
+            .map(event -> event.payload().path("name").path("full").asText(null))
+            .sequential()
+            .collectList()
+            .block();
+
+        assertThat(englishContactNames)
+            .hasSize(CONCURRENT_CONVERSIONS / 2)
+            .containsOnly("Alice English");
     }
 
     @Test
