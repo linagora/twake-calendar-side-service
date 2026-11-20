@@ -20,6 +20,7 @@ package com.linagora.calendar.saas.contact;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.List;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
@@ -42,11 +43,10 @@ import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import ezvcard.VCard;
 import ezvcard.property.DateOrTimeProperty;
 import ezvcard.property.FormattedName;
+import ezvcard.property.RawProperty;
 import it.cnr.iit.jscontact.tools.dto.Card;
 import it.cnr.iit.jscontact.tools.dto.Name;
 import it.cnr.iit.jscontact.tools.exceptions.CardException;
-import it.cnr.iit.jscontact.tools.vcard.converters.config.VCard2JSContactConfig;
-import it.cnr.iit.jscontact.tools.vcard.converters.vcard2jscontact.VCard2JSContact;
 import it.cnr.iit.jscontact.tools.vcard.extensions.utils.VCardParser;
 import reactor.core.publisher.Mono;
 
@@ -100,16 +100,14 @@ public class CommonContactEventConverter {
         try {
             VCard vCard = parseVCard(cardData);
             removeTextDates(vCard);
-            Card card = VCard2JSContact.builder()
-                .config(VCard2JSContactConfig.builder().build())
-                .build()
-                .convert(vCard)
-                .getFirst();
+            ReadCard readCard = readVCard(vCard);
+            Card card = readCard.card();
             restoreFormattedName(card, vCard);
             ContactUid uid = new ContactUid(Optional.ofNullable(card.getUid())
                 .filter(StringUtils::isNotBlank)
                 .orElseThrow(() -> new CommonContactEventConversionException("Missing required vCard UID in contact notification payload")));
             ObjectNode payload = OBJECT_MAPPER.readValue(Card.toJson(card), ObjectNode.class);
+            UnreadableExtensionProperties.appendAsVCardProps(payload, readCard.unreadableProperties());
             return new ConvertedContact(uid, payload);
         } catch (CardException | IOException e) {
             throw new CommonContactEventConversionException("Unable to convert vCard to JSContact", e);
@@ -131,6 +129,19 @@ public class CommonContactEventConverter {
             .filter(property -> property.getText() != null)
             .toList()
             .forEach(vCard::removeProperty);
+    }
+
+    // The converter cannot read text parameters of most extension properties: these are carried over by hand instead
+    private ReadCard readVCard(VCard vCard) throws CardException {
+        try {
+            return new ReadCard(VCardToJSContact.convert(vCard).getFirst(), List.of());
+        } catch (RuntimeException e) {
+            if (!UnreadableExtensionProperties.isCauseOf(e)) {
+                throw e;
+            }
+            List<RawProperty> unreadableProperties = UnreadableExtensionProperties.detach(vCard);
+            return new ReadCard(VCardToJSContact.convert(vCard).getFirst(), unreadableProperties);
+        }
     }
 
     // jscontact-tools drops a FN equal to the UID, taking it for the placeholder it writes for nameless cards
@@ -157,6 +168,9 @@ public class CommonContactEventConverter {
     }
 
     private record ConvertedContact(ContactUid uid, ObjectNode payload) {
+    }
+
+    private record ReadCard(Card card, List<RawProperty> unreadableProperties) {
     }
 
     private static class AudienceResolver {
