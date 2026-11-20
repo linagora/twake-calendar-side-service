@@ -306,6 +306,65 @@ class CommonContactOutboundEventConverterTest {
     }
 
     @Test
+    void shouldConvertExtensionPropertyWithTextParameter() {
+        CommonContactOutboundEvent.ContactChangedEvent event = testee.convert(Action.ADD, new CommonContactOutboundEvent.Audience.Unknown(), CONTACT_PATH, """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:contact-text-parameter
+            FN:Alice
+            EMAIL:alice@example.com
+            X-TEST;X-LABEL=Matrix:kept
+            END:VCARD
+            """, SYNC_TOKEN, ETAG);
+
+        assertThatJson(event.payload().toString())
+            .inPath("$.vCardProps")
+            .isArray()
+            .contains(json("""
+                ["x-test", {"x-label": "Matrix"}, "unknown", "kept"]
+                """));
+    }
+
+    @Test
+    void shouldKeepOtherDataOfAContactHoldingAnExtensionPropertyWithTextParameter() {
+        CommonContactOutboundEvent.ContactChangedEvent event = testee.convert(Action.ADD, new CommonContactOutboundEvent.Audience.Unknown(), CONTACT_PATH, """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:contact-text-parameter
+            FN:Alice
+            EMAIL:alice@example.com
+            X-TEST;X-LABEL=Matrix:kept
+            END:VCARD
+            """, SYNC_TOKEN, ETAG);
+
+        assertThat(event.uid().value()).isEqualTo("contact-text-parameter");
+        assertThat(event.payload().path("name").path("full").asText(null)).isEqualTo("Alice");
+        assertThat(event.payload().path("emails").toString()).contains("alice@example.com");
+    }
+
+    @Test
+    void shouldConvertExtensionPropertyWithGroupAndMultiValuedTextParameter() {
+        CommonContactOutboundEvent.ContactChangedEvent event = testee.convert(Action.ADD, new CommonContactOutboundEvent.Audience.Unknown(), CONTACT_PATH, """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:contact-text-parameter
+            FN:Alice
+            item1.X-TEST;TYPE=home,work;VALUE=text:kept
+            X-OTHER;X-INDEX=3:also kept
+            END:VCARD
+            """, SYNC_TOKEN, ETAG);
+
+        assertThatJson(event.payload().toString())
+            .inPath("$.vCardProps")
+            .isArray()
+            .contains(json("""
+                ["x-test", {"group": "item1", "type": ["home", "work"]}, "text", "kept"]
+                """), json("""
+                ["x-other", {"x-index": 3}, "unknown", "also kept"]
+                """));
+    }
+
+    @Test
     void shouldThrowWhenContactDataHasNoUid() {
         OpenPaaSUser owner = userDAO.add(Username.of("owner@linagora.com")).block();
 

@@ -32,16 +32,12 @@ import org.apache.commons.lang3.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Splitter;
-import com.google.common.base.Throwables;
 import com.google.common.hash.Hashing;
 import com.linagora.calendar.dav.ContactUid;
 import com.linagora.calendar.dav.importer.DavResourceName;
 
 import ezvcard.Ezvcard;
 import ezvcard.VCard;
-import ezvcard.VCardVersion;
-import ezvcard.property.RawProperty;
-import ezvcard.property.Uid;
 import it.cnr.iit.jscontact.tools.dto.Card;
 import it.cnr.iit.jscontact.tools.dto.EmailAddress;
 import it.cnr.iit.jscontact.tools.dto.OnlineService;
@@ -259,7 +255,7 @@ final class CollectedContact {
                 throw e;
             }
         } catch (RuntimeException e) {
-            if (!isUnreadableExtensionParameter(e)) {
+            if (!UnreadableExtensionProperties.isCauseOf(e)) {
                 throw e;
             }
         }
@@ -270,36 +266,17 @@ final class CollectedContact {
     }
 
     /**
-     * jscontact-tools 2.1.0 reads every parameter of an extension property as a number, and throws on any other value
-     * (VCardUtils#getVCardPropParams): such a card could never be read back. These parameters are dropped rather than the
-     * contact, so that cards already stored with one can be read too. Properties it reads otherwise, that it names in an
-     * internal list (SOCIALPROFILE, X-ABLABEL...), do have text parameters: only the ones it cannot read are concerned.
+     * Such a card could never be read back (see {@link UnreadableExtensionProperties}). These parameters are dropped
+     * rather than the contact, so that cards already stored with one can be read too.
      */
     private static void dropUnreadableExtensionParameters(VCard vCard) {
         vCard.getExtendedProperties().stream()
-            .filter(CollectedContact::hasUnreadableParameters)
+            .filter(UnreadableExtensionProperties::hasUnreadableParameters)
             .forEach(property -> property.getParameters().clear());
-    }
-
-    private static boolean hasUnreadableParameters(RawProperty property) {
-        VCard probe = new VCard(VCardVersion.V4_0);
-        probe.setUid(new Uid("probe"));
-        probe.setFormattedName("probe");
-        probe.addProperty(property);
-        try {
-            VCARD_TO_JSCONTACT.convert(probe);
-            return false;
-        } catch (CardException | RuntimeException e) {
-            return isUnreadableExtensionParameter(e);
-        }
     }
 
     private static boolean isUnreadableJSProp(CardException e) {
         return Strings.CS.contains(e.getMessage(), JSPROP);
-    }
-
-    private static boolean isUnreadableExtensionParameter(Exception e) {
-        return Throwables.getRootCause(e) instanceof NumberFormatException;
     }
 
     private static Card copyWithUid(Card card, ContactUid uid) {
