@@ -28,6 +28,7 @@ import java.util.Optional;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
+import org.assertj.core.api.SoftAssertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -253,6 +254,26 @@ class CommonContactOutboundEventConverterTest {
             .inPath("$.anniversaries")
             .isObject()
             .hasSize(1);
+    }
+
+    @Test
+    void shouldKeepStructuredNameAndAddresses() {
+        CommonContactOutboundEvent.ContactChangedEvent event = testee.convert(Action.ADD, new CommonContactOutboundEvent.Audience.Unknown(), CONTACT_PATH, """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:parser-regression
+            FN:Alice Martin
+            N:Martin;Alice;;;
+            ADR;TYPE=work:;;1 Main St;Paris;;75001;France
+            END:VCARD
+            """, SYNC_TOKEN, ETAG);
+
+        SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(event.payload().path("name").path("components").size())
+                .isEqualTo(2);
+            softly.assertThat(event.payload().path("addresses").size())
+                .isEqualTo(1);
+        });
     }
 
     @Test

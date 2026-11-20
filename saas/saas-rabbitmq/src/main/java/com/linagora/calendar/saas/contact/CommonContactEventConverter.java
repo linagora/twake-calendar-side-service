@@ -39,7 +39,6 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 
-import ezvcard.Ezvcard;
 import ezvcard.VCard;
 import ezvcard.property.DateOrTimeProperty;
 import ezvcard.property.FormattedName;
@@ -48,6 +47,7 @@ import it.cnr.iit.jscontact.tools.dto.Name;
 import it.cnr.iit.jscontact.tools.exceptions.CardException;
 import it.cnr.iit.jscontact.tools.vcard.converters.config.VCard2JSContactConfig;
 import it.cnr.iit.jscontact.tools.vcard.converters.vcard2jscontact.VCard2JSContact;
+import it.cnr.iit.jscontact.tools.vcard.extensions.utils.VCardParser;
 import reactor.core.publisher.Mono;
 
 public class CommonContactEventConverter {
@@ -116,8 +116,10 @@ public class CommonContactEventConverter {
         }
     }
 
+    // VCardParser registers the extended N / ADR scribes VCard2JSContact relies on to convert names and addresses
     private VCard parseVCard(String cardData) {
-        return Optional.ofNullable(Ezvcard.parse(cardData).first())
+        return VCardParser.parse(cardData).stream()
+            .findFirst()
             .orElseThrow(() -> new CommonContactEventConversionException("Unable to parse vCard in contact notification payload"));
     }
 
