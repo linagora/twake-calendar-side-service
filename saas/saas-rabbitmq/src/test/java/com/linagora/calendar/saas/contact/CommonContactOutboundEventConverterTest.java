@@ -222,6 +222,40 @@ class CommonContactOutboundEventConverterTest {
     }
 
     @Test
+    void shouldConvertContactDataWithTextBirthday() {
+        CommonContactOutboundEvent.ContactChangedEvent event = testee.convert(Action.ADD, new CommonContactOutboundEvent.Audience.Unknown(), CONTACT_PATH, """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:contact-text-birthday
+            FN:Alice
+            EMAIL:alice@example.com
+            BDAY;VALUE=text:circa 1980
+            END:VCARD
+            """, SYNC_TOKEN, ETAG);
+
+        assertThat(event.payload().path("name").path("full").asText(null))
+            .isEqualTo("Alice");
+    }
+
+    @Test
+    void shouldKeepDateAnniversariesAlongsideTextBirthday() {
+        CommonContactOutboundEvent.ContactChangedEvent event = testee.convert(Action.ADD, new CommonContactOutboundEvent.Audience.Unknown(), CONTACT_PATH, """
+            BEGIN:VCARD
+            VERSION:4.0
+            UID:contact-text-birthday
+            FN:Alice
+            BDAY;VALUE=text:circa 1980
+            ANNIVERSARY:20100605
+            END:VCARD
+            """, SYNC_TOKEN, ETAG);
+
+        assertThatJson(event.payload().toString())
+            .inPath("$.anniversaries")
+            .isObject()
+            .hasSize(1);
+    }
+
+    @Test
     void shouldKeepFormattedNameEqualToUid() {
         CommonContactOutboundEvent.ContactChangedEvent event = testee.convert(Action.ADD, new CommonContactOutboundEvent.Audience.Unknown(), CONTACT_PATH, """
             BEGIN:VCARD
