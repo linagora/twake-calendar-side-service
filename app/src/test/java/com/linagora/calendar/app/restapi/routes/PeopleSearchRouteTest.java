@@ -54,6 +54,7 @@ import com.linagora.calendar.app.TwakeCalendarGuiceServer;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
 import com.linagora.calendar.app.modules.MemoryAutoCompleteModule;
 import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.restapi.routes.PeopleSearchRoute;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
@@ -481,6 +482,24 @@ class PeopleSearchRouteTest {
                   "limit": 999
                 }
                 """)
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenQueryExceedsMaxLength(TwakeCalendarGuiceServer server) {
+        addUser(server, Username.fromLocalPartWithDomain("naruto", DOMAIN), "naruto", "hokage");
+
+        given()
+            .body("""
+                {
+                  "q": "%s",
+                  "objectTypes": ["user"],
+                  "limit": 10
+                }
+                """.formatted("a ".repeat(PeopleSearchRoute.MAX_QUERY_LENGTH)))
         .when()
             .post()
         .then()

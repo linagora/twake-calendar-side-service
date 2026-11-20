@@ -21,6 +21,7 @@ package com.linagora.calendar.storage;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Collections;
 import java.util.List;
 
 import org.apache.james.core.Domain;
@@ -368,6 +369,36 @@ public interface OpenPaaSUserDAOContract {
         List<OpenPaaSUser> result = testee().search(domain, "  Jean \t Dupont ", 10).collectList().block();
 
         // Then Jean Dupont is found
+        assertThat(result).containsExactly(jeanDupont);
+    }
+
+    @Test
+    default void searchShouldIgnoreDuplicatedWordsOfTheQuery() {
+        // Given Jean Dupont
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser jeanDupont = testee().add(USERNAME, "Jean", "Dupont").block();
+
+        // When searching for his firstname repeated many times
+        String query = String.join(" ", Collections.nCopies(10_000, "Jea"));
+        List<OpenPaaSUser> result = testee().search(domain, query, 10).collectList().block();
+
+        // Then Jean Dupont is found
+        assertThat(result).containsExactly(jeanDupont);
+    }
+
+    @Test
+    default void searchShouldIgnoreTheWordsBeyondTheMaximumNumberOfWords() {
+        // Given Jean Dupont
+        Domain domain = Domain.of("domain.tld");
+        OpenPaaSUser jeanDupont = testee().add(USERNAME, "Jean", "Dupont").block();
+
+        // When searching for as many distinct prefixes of his name as allowed, followed by a word matching nothing
+        List<String> matchingWords = List.of("J", "Je", "Jea", "Jean", "D", "Du", "Dup", "Dupo");
+        assertThat(matchingWords).hasSize(OpenPaaSUserDAO.MAX_SEARCH_QUERY_WORDS);
+        String query = String.join(" ", matchingWords) + " Xyz";
+        List<OpenPaaSUser> result = testee().search(domain, query, 10).collectList().block();
+
+        // Then the extra word is ignored and Jean Dupont is found
         assertThat(result).containsExactly(jeanDupont);
     }
 

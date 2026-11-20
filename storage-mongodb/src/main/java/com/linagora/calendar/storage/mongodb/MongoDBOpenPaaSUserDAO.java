@@ -181,12 +181,15 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
     /**
      * Each word of the query has to be the prefix of one of the searched fields: 'jea dupo' finds Jean Dupont.
      * A word made only of what the collation ignores restricts nothing, hence is dropped.
+     * Duplicated words are dropped, and only the first {@link #MAX_SEARCH_QUERY_WORDS} words are used.
      */
     @Override
     public Flux<OpenPaaSUser> search(Domain domain, String query, int limit) {
         List<String> words = QUERY_WORD_SPLITTER.splitToList(query);
         List<String> searchableWords = words.stream()
             .filter(CollatedPrefixSearch::isSearchable)
+            .distinct()
+            .limit(MAX_SEARCH_QUERY_WORDS)
             .toList();
         if (searchableWords.isEmpty() && !words.isEmpty()) {
             return Flux.empty();
