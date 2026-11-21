@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.restapi.routes.people.search;
 
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Set;
@@ -27,7 +28,6 @@ import jakarta.inject.Inject;
 import org.apache.james.mailbox.MailboxSession;
 
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Sets;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute.ObjectType;
 import com.linagora.calendar.restapi.routes.PeopleSearchRoute.ResponseDTO;
 
@@ -53,12 +53,9 @@ public class PeopleSearchService {
 
     public Flux<ResponseDTO> search(MailboxSession session, String query, Set<ObjectType> objectTypesFilter, int limit) {
         return Flux.fromIterable(searchProviders)
-            .filter(provider -> objectTypesFilter.isEmpty() || !Sets.intersection(
-                objectTypesFilter,
-                provider.supportedTypes()).isEmpty())
+            .filter(provider -> objectTypesFilter.isEmpty() || !Collections.disjoint(objectTypesFilter, provider.supportedTypes()))
             .flatMap(provider -> provider.search(session, query, objectTypesFilter, limit))
-            .collectSortedList(RESULT_COMPARATOR)
-            .flatMapIterable(results -> results)
+            .sort(RESULT_COMPARATOR)
             .take(limit);
     }
 }

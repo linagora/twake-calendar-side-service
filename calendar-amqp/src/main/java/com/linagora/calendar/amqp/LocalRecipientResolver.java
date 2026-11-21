@@ -70,7 +70,7 @@ public class LocalRecipientResolver {
         return resolveAsUser(openPaaSUserDAO.retrieve(username))
             .switchIfEmpty(resolveAsResource(username))
             .switchIfEmpty(resolveAsUser(userProvisioner.provisionIfExists(username)))
-            .switchIfEmpty(Mono.just(Optional.empty()));
+            .defaultIfEmpty(Optional.empty());
     }
 
     private Mono<Optional<ResolvedRecipient>> resolveAsUser(Mono<OpenPaaSUser> user) {

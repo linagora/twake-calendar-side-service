@@ -20,7 +20,6 @@ package com.linagora.calendar.restapi.routes;
 
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -44,7 +43,6 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.TechnicalTokenService;
 import com.linagora.calendar.storage.TechnicalTokenService.JwtToken;
 
-import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import reactor.core.publisher.Mono;
@@ -114,8 +112,6 @@ public class CheckTechnicalUserTokenRoute implements JMAPRoutes {
     }
 
     private Optional<String> getToken(HttpServerRequest request) {
-        HttpHeaders httpHeaders = request.requestHeaders();
-        return Optional.ofNullable(httpHeaders.get(TOKEN_HEADER_NAME))
-            .or(() -> Optional.ofNullable(httpHeaders.get(TOKEN_HEADER_NAME.toLowerCase(Locale.US))));
+        return Optional.ofNullable(request.requestHeaders().get(TOKEN_HEADER_NAME));
     }
 }

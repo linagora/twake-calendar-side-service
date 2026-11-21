@@ -153,8 +153,8 @@ public class CalendarEventIndexMappingFactory {
 
     public IndexSettings indexSettings(CalendarEventOpensearchConfiguration configuration) {
         return new IndexSettings.Builder()
-            .numberOfShards(Integer.toString(configuration.nbShards()))
-            .numberOfReplicas(Integer.toString(configuration.nbReplicas()))
+            .numberOfShards(configuration.nbShards())
+            .numberOfReplicas(configuration.nbReplicas())
             .index(new IndexSettings.Builder()
                 .maxNgramDiff(configuration.maxNgramDiff())
                 .build())
@@ -182,23 +182,23 @@ public class CalendarEventIndexMappingFactory {
         Property indexedIntegerProperty = new Property(new IntegerNumberProperty.Builder().index(true).build());
         Property indexedKeywordProperty = new Property(new KeywordProperty.Builder().index(true).build());
 
-        Property emailTextProperty = new TextProperty.Builder()
+        Property emailTextProperty = new Property(new TextProperty.Builder()
             .analyzer(CalendarAnalyzers.STANDARD)
             .fields(RAW, new Property.Builder()
                 .keyword(new KeywordProperty.Builder().normalizer(CASE_INSENSITIVE).build())
                 .build())
-            .build()._toProperty();
+            .build());
 
-        Property cnNameTextProperty = new TextProperty.Builder()
+        Property cnNameTextProperty = new Property(new TextProperty.Builder()
             .analyzer(CalendarAnalyzers.CN_NAME_ANALYZER)
             .searchAnalyzer(CalendarAnalyzers.CN_NAME_SEARCH_ANALYZER)
-            .build()._toProperty();
+            .build());
 
-        Property emailCNObjectProperty = new ObjectProperty.Builder()
+        Property emailCNObjectProperty = new Property(new ObjectProperty.Builder()
             .properties(ImmutableMap.of(
                 CalendarFields.EMAIL, emailTextProperty,
                 CalendarFields.CN, cnNameTextProperty))
-            .build()._toProperty();
+            .build());
 
         Property sortableDateProperty = new Property(new DateProperty.Builder().index(true).build());
 

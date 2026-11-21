@@ -91,7 +91,7 @@ public class UserConfigurationPatchRoute extends CalendarRoute {
     private Mono<Set<ConfigurationEntry>> mergeWithExistingConfiguration(Set<ConfigurationEntry> patchEntries, MailboxSession session) {
         return userConfigurationDAO.retrieveConfiguration(session)
             .collect(Collectors.toUnmodifiableSet())
-            .switchIfEmpty(Mono.just(EMPTY_CONFIGURATION_ENTRIES))
+            .defaultIfEmpty(EMPTY_CONFIGURATION_ENTRIES)
             .map(existingEntries -> ConfigurationEntryUtils.mergeIncomingWithExistingConfiguration(patchEntries, existingEntries));
     }
 

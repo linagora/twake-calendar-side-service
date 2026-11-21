@@ -23,7 +23,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -39,6 +38,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
+import com.google.common.collect.Streams;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.configuration.ConfigurationEntry;
 import com.linagora.calendar.storage.configuration.ConfigurationKey;
@@ -242,7 +242,7 @@ public class MongoDBUserConfigurationDAO implements UserConfigurationDAO {
             case BOOLEAN -> node.booleanValue();
             case NUMBER -> toBsonNumber(node);
             case NULL -> null;
-            case ARRAY -> StreamSupport.stream(node.spliterator(), false)
+            case ARRAY -> Streams.stream(node)
                 .map(MongoDBUserConfigurationDAO::toBsonValue)
                 .toList();
             case OBJECT -> toBsonDocument(node);

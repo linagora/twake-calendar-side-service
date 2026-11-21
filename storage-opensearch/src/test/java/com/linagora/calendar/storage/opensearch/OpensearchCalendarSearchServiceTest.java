@@ -34,10 +34,6 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
-import org.opensearch.client.RestClient;
-import org.opensearch.client.json.jackson.JacksonJsonpMapper;
-import org.opensearch.client.opensearch.OpenSearchAsyncClient;
-import org.opensearch.client.transport.rest_client.RestClientTransport;
 
 import com.linagora.calendar.storage.event.EventFields;
 import com.linagora.calendar.storage.event.EventFields.Person;
@@ -69,11 +65,7 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
             .createIndexAndAliases(client, Optional.of(calendarEventIndexMappingFactory.indexSettings(calendarEventOpensearchConfiguration)),
                 Optional.of(calendarEventIndexMappingFactory.createTypeMapping()));
 
-        RestClient lowLevelClient = client.getLowLevelClient();
-        RestClientTransport transport = new RestClientTransport(lowLevelClient, new JacksonJsonpMapper());
-        OpenSearchAsyncClient openSearchAsyncClient = new OpenSearchAsyncClient(transport);
-
-        calendarSearchService = new OpensearchCalendarSearchService(client, openSearchAsyncClient, calendarEventOpensearchConfiguration);
+        calendarSearchService = new OpensearchCalendarSearchService(client, calendarEventOpensearchConfiguration);
     }
 
     @Override

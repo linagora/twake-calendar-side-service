@@ -19,7 +19,6 @@
 package com.linagora.calendar.twakespace;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Optional;
 
 import jakarta.inject.Inject;
@@ -47,7 +46,7 @@ public class SpaceTeamCalendars {
     // 12 bytes, as the MongoDB storage keeps team calendar ids as ObjectIds.
     public static TeamCalendarId teamCalendarId(SpaceId spaceId) {
         byte[] hash = Hashing.sha256().hashString(spaceId.value(), StandardCharsets.UTF_8).asBytes();
-        return new TeamCalendarId(BaseEncoding.base16().lowerCase().encode(Arrays.copyOf(hash, OBJECT_ID_BYTES)));
+        return new TeamCalendarId(BaseEncoding.base16().lowerCase().encode(hash, 0, OBJECT_ID_BYTES));
     }
 
     private final OpenPaaSDomainDAO domainDAO;

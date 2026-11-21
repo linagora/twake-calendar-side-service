@@ -26,6 +26,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,7 +34,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 import jakarta.inject.Inject;
 
@@ -66,7 +66,7 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Sets;
+import com.google.common.collect.Streams;
 import com.linagora.calendar.dav.AddressBookNotFoundException;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.CalendarNotFoundException;
@@ -474,7 +474,7 @@ public class WebsocketRoute extends CalendarRoute {
                 return Set.of();
             }
 
-            return StreamSupport.stream(node.spliterator(), false)
+            return Streams.stream(node)
                 .filter(JsonNode::isTextual)
                 .map(JsonNode::asText)
                 .map(ClientSubscribeRequest::toSubscriptionKey)
@@ -496,8 +496,7 @@ public class WebsocketRoute extends CalendarRoute {
         }
 
         void validate() {
-            Set<SubscriptionKey> intersection = Sets.intersection(register, unregister);
-            if (!intersection.isEmpty()) {
+            if (!Collections.disjoint(register, unregister)) {
                 throw new CalendarSubscribeException(ResponseMessage.ERROR_DUPLICATED_ENTRIES);
             }
         }

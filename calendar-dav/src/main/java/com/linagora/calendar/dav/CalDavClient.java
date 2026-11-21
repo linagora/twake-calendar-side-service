@@ -254,7 +254,7 @@ public class CalDavClient extends DavClient {
                         return ReactorUtils.logAsMono(() -> LOGGER.info("Calendar object '{}' imported successfully.", uri));
                     default:
                         return responseContent.asString(StandardCharsets.UTF_8)
-                            .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                            .defaultIfEmpty(StringUtils.EMPTY)
                             .flatMap(responseBody -> Mono.error(new DavClientException("""
                                 Unexpected status code: %d when create calendar object '%s'
                                 %s
@@ -280,7 +280,7 @@ public class CalDavClient extends DavClient {
                 case HttpStatus.SC_CREATED -> Mono.just(true);
                 case HttpStatus.SC_PRECONDITION_FAILED -> Mono.just(false);
                 default -> responseContent.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(responseBody -> Mono.error(new DavClientException("""
                         Unexpected status code: %d when creating calendar object '%s'
                         %s
@@ -395,7 +395,7 @@ public class CalDavClient extends DavClient {
                         return responseContent.asByteArray();
                     } else {
                         return responseContent.asString(StandardCharsets.UTF_8)
-                            .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                            .defaultIfEmpty(StringUtils.EMPTY)
                             .flatMap(errorBody -> Mono.error(new DavClientException("""
                                 Unexpected status code: %d when finding user calendar event ids in calendar '%s'
                                 %s
@@ -423,7 +423,7 @@ public class CalDavClient extends DavClient {
                     case 204 -> Mono.empty();
                     case 404 -> ReactorUtils.logAsMono(() -> LOGGER.info("Calendar object '{}' not found, nothing to delete.", uri));
                     default -> responseContent.asString(StandardCharsets.UTF_8)
-                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .defaultIfEmpty(StringUtils.EMPTY)
                         .flatMap(responseBody -> Mono.error(new DavClientException("""
                             Unexpected status code: %d when deleting calendar object '%s'
                             %s
@@ -446,7 +446,7 @@ public class CalDavClient extends DavClient {
                         return Mono.empty();
                     }
                     return responseContent.asString(StandardCharsets.UTF_8)
-                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .defaultIfEmpty(StringUtils.EMPTY)
                         .flatMap(responseBody -> Mono.error(new DavResponseException(response.status().code(),
                             "deleting calendar '%s'".formatted(uri), responseBody)));
                 }
@@ -475,7 +475,7 @@ public class CalDavClient extends DavClient {
                         return Mono.empty();
                     }
                     return responseContent.asString(StandardCharsets.UTF_8)
-                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .defaultIfEmpty(StringUtils.EMPTY)
                         .flatMap(responseBody -> Mono.error(new DavClientException("""
                                 Unexpected status code: %d when deleting calendar home '%s'
                                 %s
@@ -497,7 +497,7 @@ public class CalDavClient extends DavClient {
                     return Mono.empty();
                 } else {
                     return responseContent.asString(StandardCharsets.UTF_8)
-                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .defaultIfEmpty(StringUtils.EMPTY)
                         .flatMap(responseBody -> Mono.error(new DavResponseException(response.status().code(),
                             "create new calendar directory '%s' in '%s'".formatted(newCalendar.id(), uri), responseBody)));
                 }
@@ -523,7 +523,7 @@ public class CalDavClient extends DavClient {
                 int statusCode = response.status().code();
 
                 return content.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(responseAsString -> {
                         if (statusCode == HttpStatus.SC_OK) {
                             if (StringUtils.isBlank(responseAsString)) {
@@ -644,7 +644,7 @@ public class CalDavClient extends DavClient {
                     }
 
                     return content.asString(StandardCharsets.UTF_8)
-                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .defaultIfEmpty(StringUtils.EMPTY)
                         .flatMap(body -> Mono.error(new DavClientException(String.format(
                             "Unexpected response when getting calendar event for calendarHref '%s'. " +
                                 "Status code: %d, response body: %s",
@@ -664,7 +664,7 @@ public class CalDavClient extends DavClient {
                 int statusCode = response.status().code();
 
                 return content.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(body -> {
                         if (statusCode == HttpStatus.SC_OK) {
                             return Mono.fromCallable(() -> OBJECT_MAPPER.readTree(body))
@@ -718,7 +718,7 @@ public class CalDavClient extends DavClient {
                     return Mono.empty();
                 }
                 return responseContent.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
                         "updating ACL for calendar '%s'".formatted(uri), errorBody)));
             }));
@@ -831,7 +831,7 @@ public class CalDavClient extends DavClient {
                     return Mono.just(false);
                 }
                 return responseContent.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(body -> Mono.error(new DavClientException("""
                         Unexpected status %d from POST /itip for uid '%s' recipient '%s'
                         %s
@@ -906,7 +906,7 @@ public class CalDavClient extends DavClient {
                         return Mono.empty();
                     } else {
                         return responseContent.asString(StandardCharsets.UTF_8)
-                            .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                            .defaultIfEmpty(StringUtils.EMPTY)
                             .flatMap(body -> Mono.error(new DavClientException("Failed to patch read/write delegations. Status: " + status + ", body: " + body)));
                     }
                 })
@@ -933,7 +933,7 @@ public class CalDavClient extends DavClient {
             .responseSingle((response, content) -> {
                 int status = response.status().code();
                 return content.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(body -> switch (status) {
                         case HttpStatus.SC_OK -> parseSyncToken(body, uri);
                         case HttpStatus.SC_NOT_FOUND -> Mono.error(new CalendarNotFoundException(calendarUrl));
@@ -960,7 +960,7 @@ public class CalDavClient extends DavClient {
             .responseSingle((response, content) -> {
                 int status = response.status().code();
                 return content.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(body -> switch (status) {
                         case HttpStatus.SC_OK -> Mono.fromCallable(() -> {
                             JsonNode jsonNode = OBJECT_MAPPER.readTree(body);
@@ -1036,7 +1036,7 @@ public class CalDavClient extends DavClient {
             .responseSingle((response, content) -> {
                 int status = response.status().code();
                 return content.asByteArray()
-                    .switchIfEmpty(Mono.just(new byte[0]))
+                    .defaultIfEmpty(new byte[0])
                     .flatMap(bytes -> switch (status) {
                         case 207 -> Mono.fromCallable(() -> XMLUtil.hasWritePrivilege(bytes)
                             ? CalendarAccess.WRITABLE
@@ -1092,7 +1092,7 @@ public class CalDavClient extends DavClient {
                     }
 
                     return body.asString(StandardCharsets.UTF_8)
-                        .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                        .defaultIfEmpty(StringUtils.EMPTY)
                         .flatMap(errorBody -> Mono.error(new DavClientException("""
                             Unexpected status code: %d when executing RFC 4791 calendar-query REPORT on '%s'
                             %s
@@ -1191,7 +1191,7 @@ public class CalDavClient extends DavClient {
 
     private Mono<String> responseBodyAsString(ByteBufMono byteBufMono) {
         return byteBufMono.asString(StandardCharsets.UTF_8)
-            .switchIfEmpty(Mono.just(StringUtils.EMPTY));
+            .defaultIfEmpty(StringUtils.EMPTY);
     }
 
 }
