@@ -19,11 +19,11 @@
 package com.linagora.calendar.amqp;
 
 import java.util.Optional;
-import java.util.stream.StreamSupport;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.Streams;
 import com.linagora.calendar.storage.CalendarURL;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -37,13 +37,13 @@ public record CalendarAlarmMessageDTO(@JsonProperty("eventPath") String eventPat
             return false;
         }
         if (node.isArray()) {
-            return StreamSupport.stream(node.spliterator(), false)
+            return Streams.stream(node)
                 .anyMatch(child -> ("valarm".equalsIgnoreCase(child.path(0).asText()))
                     || hasVALARMComponent(child));
         }
 
         if (node.isObject()) {
-            return StreamSupport.stream(node.spliterator(), false)
+            return Streams.stream(node)
                 .anyMatch(CalendarAlarmMessageDTO::hasVALARMComponent);
         }
         return false;

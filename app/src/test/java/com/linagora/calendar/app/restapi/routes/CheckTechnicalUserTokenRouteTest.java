@@ -38,6 +38,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.inject.Inject;
 import com.google.inject.multibindings.Multibinder;
@@ -115,14 +117,15 @@ class CheckTechnicalUserTokenRouteTest {
             .build();
     }
 
-    @Test
-    void validTokenShouldReturnExpectedUserDetails(TwakeCalendarGuiceServer server) {
+    @ParameterizedTest
+    @ValueSource(strings = {"X-TECHNICAL-TOKEN", "x-technical-token", "X-Technical-Token"})
+    void validTokenShouldReturnExpectedUserDetails(String headerName, TwakeCalendarGuiceServer server) {
         String token = server.getProbe(TechnicalTokenProbe.class)
             .generateToken(DOMAIN);
 
         String response = RestAssured
             .given()
-            .header("X-TECHNICAL-TOKEN", token)
+            .header(headerName, token)
         .when()
             .get(TECHNICAL_TOKEN_INTROSPECT_PATH)
         .then()

@@ -117,7 +117,7 @@ public class LemonCookieAuthenticationStrategy implements AuthenticationStrategy
                         return responseContent.asByteArray().flatMap(this::extractUsernameFromResponse);
                     } else {
                         return responseContent.asString(StandardCharsets.UTF_8)
-                            .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                            .defaultIfEmpty(StringUtils.EMPTY)
                             .flatMap(responseBody -> Mono.error(new UnauthorizedException(
                                 "Failed to resolve Lemon user. Status: " + response.status().code() +
                                     ", Response: " + responseBody)));

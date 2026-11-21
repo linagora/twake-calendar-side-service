@@ -240,7 +240,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
     public Mono<MigrationResult> addMissingFields() {
         return Flux.from(database.getCollection(COLLECTION).find())
             .flatMap(document -> addMissingFields(document)
-                .switchIfEmpty(Mono.just(new MigrationResult(1, 0, 0))))
+                .defaultIfEmpty(new MigrationResult(1, 0, 0)))
             .reduce(MigrationResult.empty(),
                 (acc, result) -> new MigrationResult(
                     acc.processedUsers() + result.processedUsers(),

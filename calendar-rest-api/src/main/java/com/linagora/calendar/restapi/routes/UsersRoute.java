@@ -101,7 +101,7 @@ public class UsersRoute extends CalendarRoute {
                 }))
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsString))
             .map(s -> "[" + s + "]")
-            .switchIfEmpty(Mono.just(EMPTY_JSON_ARRAY))
+            .defaultIfEmpty(EMPTY_JSON_ARRAY)
             .flatMap(bytes -> response.status(HttpResponseStatus.OK)
                 .header("Content-Type", "application/json;charset=utf-8")
                 .header("Cache-Control", "max-age=60, public")

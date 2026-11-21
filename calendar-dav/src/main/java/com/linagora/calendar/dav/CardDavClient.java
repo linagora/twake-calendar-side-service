@@ -474,7 +474,7 @@ public class CardDavClient extends DavClient {
                             "Failed to parse address book list JSON for user %s".formatted(userId.value()), e)));
                 }
                 return buf.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(errorBody -> Mono.error(new DavClientException(
                         "Unexpected status code %d when listing address books for user %s\n%s"
                             .formatted(response.status().code(), userId.value(), errorBody))));
@@ -522,7 +522,7 @@ public class CardDavClient extends DavClient {
                             "Failed to parse address book list JSON for %s".formatted(baseId.value()), e)));
                 }
                 return buf.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(errorBody -> Mono.error(new DavClientException(
                         "Unexpected status code %d when listing address books for %s\n%s"
                             .formatted(response.status().code(), baseId.value(), errorBody))));
@@ -564,7 +564,7 @@ public class CardDavClient extends DavClient {
                     return Mono.error(new SystemAddressBookException(addressBookURL));
                 }
                 return buf.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
                         "deleting address book %s".formatted(addressBookURL.asUri().toASCIIString()), errorBody)));
             });
@@ -580,7 +580,7 @@ public class CardDavClient extends DavClient {
                     return Mono.empty();
                 }
                 return buf.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(errorBody -> Mono.error(new DavClientException(
                         "Unexpected status code: %d when deleting contact %s\n%s"
                             .formatted(response.status().code(),
@@ -626,7 +626,7 @@ public class CardDavClient extends DavClient {
                     return buf.asByteArray();
                 }
                 return buf.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(errorBody -> Mono.error(new DavClientException(
                         "Unexpected status code: %d when listing address books for %s\n%s"
                             .formatted(response.status().code(), baseId.value(), errorBody))));
@@ -643,7 +643,7 @@ public class CardDavClient extends DavClient {
                 case HttpStatus.SC_OK -> Mono.just(true);
                 case HttpStatus.SC_NOT_FOUND, HttpStatus.SC_UNAUTHORIZED, HttpStatus.SC_FORBIDDEN -> Mono.just(false);
                 default -> buf.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(errorBody -> Mono.error(new DavClientException(
                         "Unexpected status code: %d when checking existence of address book %s/%s\n%s"
                             .formatted(response.status().code(), userId.value(), addressBookId, errorBody))));
@@ -752,7 +752,7 @@ public class CardDavClient extends DavClient {
                     return Mono.empty();
                 }
                 return buf.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
                         "creating address book for user %s".formatted(userId.value()), errorBody)));
             });
@@ -796,7 +796,7 @@ public class CardDavClient extends DavClient {
             .responseSingle((response, buf) -> switch (response.status().code()) {
                 case HttpStatus.SC_OK, HttpStatus.SC_NO_CONTENT -> Mono.empty();
                 default -> buf.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
                         "updating public right of address book %s".formatted(uri), errorBody)));
             });
@@ -825,7 +825,7 @@ public class CardDavClient extends DavClient {
             .responseSingle((response, buf) -> switch (response.status().code()) {
                 case HttpStatus.SC_OK, HttpStatus.SC_NO_CONTENT -> Mono.empty();
                 default -> buf.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
                         "updating shares of address book %s".formatted(uri), errorBody)));
             });
@@ -853,7 +853,7 @@ public class CardDavClient extends DavClient {
                     return Mono.empty();
                 }
                 return buf.asString(StandardCharsets.UTF_8)
-                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .defaultIfEmpty(StringUtils.EMPTY)
                     .flatMap(errorBody -> Mono.error(new DavResponseException(response.status().code(),
                         "creating user address book for user %s".formatted(userId.value()), errorBody)));
             });
@@ -861,7 +861,7 @@ public class CardDavClient extends DavClient {
 
     private Mono<String> responseBodyAsString(ByteBufMono byteBufMono) {
         return byteBufMono.asString(StandardCharsets.UTF_8)
-            .switchIfEmpty(Mono.just(StringUtils.EMPTY));
+            .defaultIfEmpty(StringUtils.EMPTY);
     }
 
     public Mono<byte[]> exportAddressBook(Username userRequest, AddressBookURL url, Map<String, String> queryParams) {
@@ -903,7 +903,7 @@ public class CardDavClient extends DavClient {
             .get()
             .uri(uri)
             .responseSingle((response, content) -> content.asString(StandardCharsets.UTF_8)
-                .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                .defaultIfEmpty(StringUtils.EMPTY)
                 .flatMap(body -> switch (response.status().code()) {
                     case HttpStatus.SC_OK -> Mono.fromCallable(() -> parseSyncToken(body))
                         .flatMap(Mono::justOrEmpty)

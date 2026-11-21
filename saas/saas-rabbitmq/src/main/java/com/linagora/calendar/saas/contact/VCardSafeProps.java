@@ -22,7 +22,6 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
-import java.util.stream.StreamSupport;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +30,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.Streams;
 
 /**
  * vCardProps are written as is as vCard properties (validation being off), and one that a vCard cannot carry would cost
@@ -59,7 +59,7 @@ final class VCardSafeProps {
     static void dropUnsafeProps(ObjectNode card, Predicate<ObjectNode> goesThroughAVCard) {
         if (card.get(V_CARD_PROPS) instanceof ArrayNode properties) {
             ArrayNode safeProperties = properties.arrayNode();
-            StreamSupport.stream(properties.spliterator(), false)
+            Streams.stream(properties)
                 .filter(property -> isSafe(property, goesThroughAVCard))
                 .forEach(safeProperties::add);
             if (safeProperties.size() != properties.size()) {

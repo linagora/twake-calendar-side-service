@@ -20,11 +20,11 @@ package com.linagora.calendar.dav.dto;
 
 import java.util.Optional;
 import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 import org.apache.commons.lang3.Strings;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.Streams;
 
 public record VCalendarDto(JsonNode value) {
     private static final String VEVENT = "vevent";
@@ -66,6 +66,6 @@ public record VCalendarDto(JsonNode value) {
     }
 
     private static Stream<JsonNode> children(JsonNode node) {
-        return StreamSupport.stream(node.spliterator(), false);
+        return Streams.stream(node);
     }
 }

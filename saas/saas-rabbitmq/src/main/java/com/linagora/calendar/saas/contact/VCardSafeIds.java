@@ -26,13 +26,13 @@ import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
+import com.google.common.collect.Streams;
 
 /**
  * Labelled entries are written as vCard group "G-&lt;id&gt;", and group names only allow [A-Za-z0-9-] (RFC 6350).
@@ -54,7 +54,7 @@ final class VCardSafeIds {
     static void renameUnsafeIds(ObjectNode card) {
         VCardSafeIds safeIds = new VCardSafeIds(card);
         ID_KEYED_PROPERTIES.forEach(property -> safeIds.renameIdMap(property, card.get(property)));
-        StreamSupport.stream(card.path(LOCALIZATIONS).spliterator(), false)
+        Streams.stream(card.path(LOCALIZATIONS))
             .forEach(safeIds::renamePatches);
     }
 
