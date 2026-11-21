@@ -20,12 +20,10 @@ package com.linagora.calendar.storage.opensearch;
 
 import static org.apache.james.backends.opensearch.IndexCreationFactory.RAW;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -39,24 +37,27 @@ import org.apache.james.backends.opensearch.RoutingKey;
 import org.apache.james.core.MailAddress;
 import org.apache.james.util.ReactorUtils;
 import org.opensearch.client.json.JsonData;
-import org.opensearch.client.opensearch.OpenSearchAsyncClient;
+import org.opensearch.client.opensearch._types.BuiltinScriptLanguage;
 import org.opensearch.client.opensearch._types.Conflicts;
+import org.opensearch.client.opensearch._types.ErrorResponse;
 import org.opensearch.client.opensearch._types.FieldValue;
+import org.opensearch.client.opensearch._types.OpenSearchException;
+import org.opensearch.client.opensearch._types.Refresh;
 import org.opensearch.client.opensearch._types.Result;
 import org.opensearch.client.opensearch._types.Script;
 import org.opensearch.client.opensearch._types.SortOptions;
 import org.opensearch.client.opensearch._types.SortOrder;
-import org.opensearch.client.opensearch._types.WriteResponseBase;
 import org.opensearch.client.opensearch._types.query_dsl.BoolQuery;
 import org.opensearch.client.opensearch._types.query_dsl.MultiMatchQuery;
 import org.opensearch.client.opensearch._types.query_dsl.Operator;
 import org.opensearch.client.opensearch._types.query_dsl.Query;
 import org.opensearch.client.opensearch._types.query_dsl.QueryBuilders;
 import org.opensearch.client.opensearch._types.query_dsl.TermsQueryField;
+import org.opensearch.client.opensearch.core.BulkRequest;
 import org.opensearch.client.opensearch.core.DeleteByQueryRequest;
 import org.opensearch.client.opensearch.core.DeleteByQueryResponse;
 import org.opensearch.client.opensearch.core.SearchRequest;
-import org.opensearch.client.opensearch.core.UpdateRequest;
+import org.opensearch.client.opensearch.core.bulk.BulkResponseItem;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -81,14 +82,13 @@ import com.linagora.calendar.storage.opensearch.CalendarEventIndexMappingFactory
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 
 public class OpensearchCalendarSearchService implements CalendarSearchService {
 
     private static final BiFunction<Integer, ObjectNode, Script> UPSERT_WITH_SEQUENCE_SCRIPT =
         (seq, doc) -> new Script.Builder()
             .inline(i -> i
-                .lang("painless")
+                .lang(language -> language.builtin(BuiltinScriptLanguage.Painless))
                 .source("""
                         if (ctx._source.sequence == null || params.sequence > ctx._source.sequence) {
                             ctx._source.putAll(params.doc);
@@ -111,16 +111,13 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
 
     private final OpenSearchIndexer indexer;
     private final ReactorOpenSearchClient client;
-    private final OpenSearchAsyncClient opensearchAsyncClient;
     private final ObjectMapper mapper;
     private final CalendarEventOpensearchConfiguration configuration;
 
     @Inject
     public OpensearchCalendarSearchService(ReactorOpenSearchClient client,
-                                           OpenSearchAsyncClient opensearchAsyncClient,
                                            CalendarEventOpensearchConfiguration configuration) {
         this.client = client;
-        this.opensearchAsyncClient = opensearchAsyncClient;
         this.configuration = configuration;
         this.indexer = new OpenSearchIndexer(client, configuration.writeAliasName());
         this.mapper = new ObjectMapper()
@@ -206,13 +203,13 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .flatMap(event -> indexSingleEvent(event, checkSequence)
                     .onErrorResume(error -> Mono.error(CalendarSearchIndexingException.of("Failed to index calendar event",
                         fields.calendarURL(), fields.eventUid(), error)))
-                    .map(response -> new IndexOutcome(event, response.result())),
+                    .map(result -> new IndexOutcome(event, result)),
                 ReactorUtils.DEFAULT_CONCURRENCY)
             .collectList();
     }
 
-    private Mono<WriteResponseBase> indexSingleEvent(EventFields eventFields,
-                                                     boolean checkSequence) {
+    private Mono<Result> indexSingleEvent(EventFields eventFields,
+                                          boolean checkSequence) {
 
         CalendarURL sourceCalendarURL = eventFields.calendarURL();
         DocumentId documentId = buildDocumentIdForEvent(sourceCalendarURL, eventFields);
@@ -221,7 +218,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
         return Mono.fromCallable(() -> CalendarEventsDocument.fromEventFields(eventFields))
             .flatMap(eventsDocument -> {
                 if (checkSequence && eventFields.sequence().isPresent()) {
-                    return Throwing.supplier(() -> indexWithSequence(documentId, routingKey, eventFields.sequence().get(), eventsDocument)).get();
+                    return indexWithSequence(documentId, routingKey, eventFields.sequence().get(), eventsDocument);
                 }
                 return indexWithoutSequence(documentId, routingKey, eventsDocument);
             });
@@ -472,11 +469,12 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .toQuery();
     }
 
-    private Mono<WriteResponseBase> indexWithoutSequence(DocumentId documentId,
-                                                         RoutingKey routingKey,
-                                                         CalendarEventsDocument eventsDocument) {
+    private Mono<Result> indexWithoutSequence(DocumentId documentId,
+                                              RoutingKey routingKey,
+                                              CalendarEventsDocument eventsDocument) {
         return Mono.fromCallable(() -> mapper.writeValueAsString(eventsDocument))
-            .flatMap(content -> indexer.index(documentId, content, routingKey));
+            .flatMap(content -> indexer.index(documentId, content, routingKey))
+            .map(response -> response.result());
     }
 
     private boolean matchesQueryStringHeuristic(String query) {
@@ -487,24 +485,40 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .anyMatch(s -> s.startsWith("-"));
     }
 
-    public Mono<WriteResponseBase> indexWithSequence(DocumentId documentId,
-                                                     RoutingKey routingKey,
-                                                     Integer sequence,
-                                                     CalendarEventsDocument eventsDocument) throws IOException {
+    private Mono<Result> indexWithSequence(DocumentId documentId,
+                                           RoutingKey routingKey,
+                                           Integer sequence,
+                                           CalendarEventsDocument eventsDocument) {
         ObjectNode docMap = mapper.convertValue(eventsDocument, ObjectNode.class);
-        UpdateRequest<ObjectNode, ObjectNode> request =
-            new UpdateRequest.Builder<ObjectNode, ObjectNode>()
+        // James owns the transport; its reactive client exposes scripted updates through bulk requests.
+        BulkRequest request = new BulkRequest.Builder()
+            .operations(operation -> operation.update(update -> update
                 .index(configuration.writeAliasName().getValue())
                 .id(documentId.asString())
                 .routing(routingKey.asString())
                 .script(UPSERT_WITH_SEQUENCE_SCRIPT.apply(sequence, docMap))
                 .scriptedUpsert(false)
                 .upsert(docMap)
-                .retryOnConflict(MAX_RETRY_ON_CONFLICT)
-                .build();
+                .retryOnConflict(MAX_RETRY_ON_CONFLICT)))
+            .build();
 
-        return toReactor(opensearchAsyncClient.update(request, ObjectNode.class))
-            .map(updateResponse -> (WriteResponseBase) updateResponse);
+        return Mono.defer(Throwing.supplier(() -> client.bulk(request)))
+            .flatMap(response -> {
+                BulkResponseItem item = response.items().getFirst();
+                // Bulk can return HTTP 200 even when its update failed.
+                if (item.error() != null) {
+                    return Mono.error(new OpenSearchException(new ErrorResponse.Builder()
+                        .status(item.status())
+                        .error(item.error())
+                        .build()));
+                }
+                return Mono.just(switch (item.result()) {
+                    case "created" -> Result.Created;
+                    case "updated" -> Result.Updated;
+                    case "noop" -> Result.NoOp;
+                    default -> throw new IllegalStateException("Unexpected OpenSearch update result: " + item.result());
+                });
+            });
     }
 
     // A delete-by-query runs in two phases: it first snapshots the documents matching the query, then bulk
@@ -524,10 +538,10 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .query(query)
             .routing(routingKey.asString())
             .conflicts(Conflicts.Proceed)
-            .refresh(true)
+            .refresh(Refresh.True)
             .build();
 
-        return Mono.defer(Throwing.supplier(() -> toReactor(opensearchAsyncClient.deleteByQuery(request))))
+        return Mono.defer(Throwing.supplier(() -> client.deleteByQuery(request)))
             .flatMap(response -> {
                 if (hasVersionConflict(response) && remainingRetries > 0) {
                     return deleteByQuery(query, routingKey, remainingRetries - 1);
@@ -538,9 +552,5 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
 
     private boolean hasVersionConflict(DeleteByQueryResponse response) {
         return response.versionConflicts() != null && response.versionConflicts() > 0;
-    }
-
-    private static <T> Mono<T> toReactor(CompletableFuture<T> async) {
-        return Mono.fromFuture(async).publishOn(Schedulers.boundedElastic());
     }
 }
