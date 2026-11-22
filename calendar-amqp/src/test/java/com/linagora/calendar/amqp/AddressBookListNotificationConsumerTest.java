@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -76,9 +77,12 @@ import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.UsernameRegistrationKey;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
+import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
+import com.linagora.calendar.storage.model.ResourceId;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 import com.rabbitmq.client.Channel;
 
@@ -101,6 +105,7 @@ class AddressBookListNotificationConsumerTest {
     private AddressBookListNotificationHandler handler;
     private MongoDBOpenPaaSDomainDAO domainDAO;
     private OpenPaaSUserDAO userDAO;
+    private MongoDBResourceDAO resourceDAO;
 
     @BeforeAll
     static void beforeAll(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
@@ -138,7 +143,8 @@ class AddressBookListNotificationConsumerTest {
         MongoDatabase mongoDB = sabreDavExtension.dockerSabreDavSetup().getMongoDB();
         domainDAO = new MongoDBOpenPaaSDomainDAO(mongoDB);
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
-        handler = new AddressBookListNotificationHandler(eventBus, userDAO, domainDAO, cardDavClient);
+        resourceDAO = new MongoDBResourceDAO(mongoDB, Clock.systemUTC());
+        handler = new AddressBookListNotificationHandler(eventBus, userDAO, domainDAO, resourceDAO, cardDavClient);
 
         // Isolate deliveries and dead letters left by the previous test before starting the consumer.
         sabreDavExtension.deleteRabbitMQQueues(AddressBookListNotificationConsumer.QUEUE_NAME,
@@ -375,6 +381,25 @@ class AddressBookListNotificationConsumerTest {
 
         // WHEN: The handler processes a notification for the domain-members book.
         // THEN: The handler ignores the domain-owned book without failing.
+        assertThatCode(() -> handler.handle(exchange,
+                new AddressBookListChangesMessage(book.asUri().toString()))
+            .block())
+            .doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @EnumSource(AddressBookListExchange.class)
+    void shouldIgnoreResourceOwnedAddressBook(AddressBookListExchange exchange) {
+        // GIVEN: The book path belongs to an existing resource, not a user.
+        OpenPaaSUser creator = sabreDavExtension.newTestUser();
+        OpenPaaSDomain domain = domainDAO.retrieve(creator.username().getDomainPart().orElseThrow())
+            .block();
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(creator.id(), "description", domain.id(), "laptop", "room"))
+            .block();
+        AddressBookURL book = new AddressBookURL(new OpenPaaSId(resourceId.value()), "contacts");
+
+        // WHEN: The handler processes a notification for the resource book.
+        // THEN: The handler ignores the resource-owned book without failing.
         assertThatCode(() -> handler.handle(exchange,
                 new AddressBookListChangesMessage(book.asUri().toString()))
             .block())
