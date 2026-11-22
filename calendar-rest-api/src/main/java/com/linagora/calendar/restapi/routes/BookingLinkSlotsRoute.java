@@ -61,7 +61,7 @@ public class BookingLinkSlotsRoute extends PublicRoute {
     private static final String TIME_ZONE_QUERY_PARAM = "timeZone";
     private static final ZoneId DEFAULT_ZONE = ZoneOffset.UTC;
     private static final CalendarUtil.CustomizedTimeZoneRegistry TIME_ZONE_REGISTRY = new CalendarUtil.CustomizedTimeZoneRegistry();
-    private static final Duration MAX_QUERY_RANGE = Duration.ofDays(60);
+    static final Duration MAX_QUERY_RANGE = Duration.ofDays(60);
 
     private final BookingLinkSlotsService bookingLinkSlotsService;
     private final ResourcePhotoUrlFactory resourcePhotoUrlFactory;

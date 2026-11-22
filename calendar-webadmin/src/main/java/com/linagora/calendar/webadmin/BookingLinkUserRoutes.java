@@ -47,13 +47,14 @@ import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.routes.BookingLinkCreateRoute.CreateBookingLinkRequestDTO;
 import com.linagora.calendar.restapi.routes.BookingLinkExtraAttendeeResolver;
 import com.linagora.calendar.restapi.routes.BookingLinkPatchRoute.PatchDto;
+import com.linagora.calendar.restapi.routes.BookingLinkRequestConstraints;
+import com.linagora.calendar.restapi.routes.BookingLinkRequestConstraints.TextField;
 import com.linagora.calendar.restapi.routes.BookingLinkResourceResolver;
 import com.linagora.calendar.restapi.routes.dto.BookingLinkAlarmDTO;
 import com.linagora.calendar.restapi.routes.dto.BookingLinkDTO;
@@ -125,7 +126,7 @@ public class BookingLinkUserRoutes implements Routes {
     private static final String FIELD_PUBLIC_ID = "bookingLinkPublicId";
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("UTC");
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
+    private static final ObjectMapper OBJECT_MAPPER = BookingLinkRequestConstraints.STRICT_OBJECT_MAPPER;
 
     private final OpenPaaSUserDAO userDAO;
     private final BookingLinkDAO bookingLinkDAO;
@@ -343,10 +344,8 @@ public class BookingLinkUserRoutes implements Routes {
         if (!node.has(FIELD_DURATION_MINUTES)) {
             return ValuePatch.keep();
         }
-        return dto.durationMinutes().map(durationMinutes -> {
-                Preconditions.checkArgument(durationMinutes > 0, "'durationMinutes' must be positive");
-                return Duration.ofMinutes(durationMinutes);
-            }).map(ValuePatch::modifyTo)
+        return dto.durationMinutes().map(BookingLinkRequestConstraints::toDuration)
+            .map(ValuePatch::modifyTo)
             .orElseThrow(() -> new IllegalArgumentException("'durationMinutes' cannot be removed"));
     }
 
@@ -392,7 +391,7 @@ public class BookingLinkUserRoutes implements Routes {
         if (!node.has(FIELD_NAME)) {
             return ValuePatch.keep();
         }
-        return dto.name().map(StringUtils::trimToNull)
+        return TextField.NAME.normalize(dto.name())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }
@@ -401,7 +400,7 @@ public class BookingLinkUserRoutes implements Routes {
         if (!node.has(FIELD_DESCRIPTION)) {
             return ValuePatch.keep();
         }
-        return dto.description().map(StringUtils::trimToNull)
+        return TextField.DESCRIPTION.normalize(dto.description())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }
@@ -419,7 +418,7 @@ public class BookingLinkUserRoutes implements Routes {
         if (!node.has(FIELD_LOCATION)) {
             return ValuePatch.keep();
         }
-        return dto.location().map(StringUtils::trimToNull)
+        return TextField.LOCATION.normalize(dto.location())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }

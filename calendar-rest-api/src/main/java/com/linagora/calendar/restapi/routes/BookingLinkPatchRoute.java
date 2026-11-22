@@ -41,6 +41,7 @@ import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.ForbiddenException;
+import com.linagora.calendar.restapi.routes.BookingLinkRequestConstraints.TextField;
 import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.restapi.routes.dto.BookingLinkAlarmDTO;
 import com.linagora.calendar.storage.CalendarURL;
@@ -185,12 +186,9 @@ public class BookingLinkPatchRoute extends CalendarRoute {
 
     private PatchDto parseJSONtoPatchDto(byte[] body) {
         try {
-            return OBJECT_MAPPER_DEFAULT.readValue(body, PatchDto.class);
+            return BookingLinkRequestConstraints.STRICT_OBJECT_MAPPER.readValue(body, PatchDto.class);
         } catch (Exception e) {
-            if (e.getCause() instanceof IllegalArgumentException) {
-                throw (IllegalArgumentException) e.getCause();
-            }
-            throw new IllegalArgumentException("Invalid request body", e);
+            throw BookingLinkRequestConstraints.asInvalidBody(e);
         }
     }
 
@@ -207,10 +205,8 @@ public class BookingLinkPatchRoute extends CalendarRoute {
         if (!node.has(FIELD_DURATION_MINUTES)) {
             return ValuePatch.keep();
         }
-        return dto.durationMinutes.map(durationMinutes -> {
-                Preconditions.checkArgument(durationMinutes > 0, "'durationMinutes' must be positive");
-                return Duration.ofMinutes(durationMinutes);
-            }).map(ValuePatch::modifyTo)
+        return dto.durationMinutes.map(BookingLinkRequestConstraints::toDuration)
+            .map(ValuePatch::modifyTo)
             .orElseThrow(() -> new IllegalArgumentException("'durationMinutes' cannot be removed"));
     }
 
@@ -252,7 +248,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
         if (!node.has(FIELD_NAME)) {
             return ValuePatch.keep();
         }
-        return dto.name().map(String::trim).filter(name -> !name.isEmpty())
+        return TextField.NAME.normalize(dto.name())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }
@@ -261,7 +257,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
         if (!node.has(FIELD_DESCRIPTION)) {
             return ValuePatch.keep();
         }
-        return dto.description().map(String::trim).filter(description -> !description.isEmpty())
+        return TextField.DESCRIPTION.normalize(dto.description())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }
@@ -279,7 +275,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
         if (!node.has(FIELD_LOCATION)) {
             return ValuePatch.keep();
         }
-        return dto.location().map(String::trim).filter(location -> !location.isEmpty())
+        return TextField.LOCATION.normalize(dto.location())
             .map(ValuePatch::modifyTo)
             .orElseGet(ValuePatch::remove);
     }

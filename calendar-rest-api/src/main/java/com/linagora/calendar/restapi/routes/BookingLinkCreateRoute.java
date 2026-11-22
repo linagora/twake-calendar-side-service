@@ -53,6 +53,7 @@ import com.linagora.calendar.api.booking.AvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.ForbiddenException;
+import com.linagora.calendar.restapi.routes.BookingLinkRequestConstraints.TextField;
 import com.linagora.calendar.restapi.routes.dto.AvailabilityRuleDTO;
 import com.linagora.calendar.restapi.routes.dto.BookingLinkAlarmDTO;
 import com.linagora.calendar.storage.CalendarURL;
@@ -94,19 +95,19 @@ public class BookingLinkCreateRoute extends CalendarRoute {
                                                                           Optional<AvailabilityRules> defaultAvailabilityRules) {
             Preconditions.checkArgument(!Strings.isNullOrEmpty(request.calendarUrl), "'calendarUrl' is required");
             Preconditions.checkArgument(!Objects.isNull(request.durationMinutes), "'durationMinutes' is required");
-            Preconditions.checkArgument(request.durationMinutes > 0, "'durationMinutes' must be positive");
             Preconditions.checkArgument(!Objects.isNull(request.active), "'active' is required");
 
             CalendarURL calendarURL = CalendarURL.parse(request.calendarUrl);
-            Duration duration = Duration.ofMinutes(request.durationMinutes);
+            Duration duration = BookingLinkRequestConstraints.toDuration(request.durationMinutes);
 
             Optional<AvailabilityRules> availabilityRules = getAvailabilityRules(request, defaultZone).or(() -> defaultAvailabilityRules);
 
             return new BookingLinkInsertRequest(calendarURL, duration, request.active,
                 request.autoAccept.orElse(BookingLinkInsertRequest.AUTO_ACCEPT), availabilityRules,
                 BookingLinkExtraAttendeeUtil.parse(request.extraAttendees),
-                normalize(request.name), normalize(request.description), BookingLinkColorUtil.sanitize(request.color),
-                normalize(request.location),
+                TextField.NAME.normalize(request.name), TextField.DESCRIPTION.normalize(request.description),
+                BookingLinkColorUtil.sanitize(request.color),
+                TextField.LOCATION.normalize(request.location),
                 normalize(request.visibility).map(EventVisibility::fromString),
                 normalize(request.transparency).map(EventTransparency::fromString),
                 BookingLinkResourceUtil.parse(request.resources),
@@ -191,12 +192,9 @@ public class BookingLinkCreateRoute extends CalendarRoute {
     private CreateBookingLinkRequestDTO parseRequest(byte[] body) {
         CreateBookingLinkRequestDTO dto;
         try {
-            dto = OBJECT_MAPPER_DEFAULT.readValue(body, CreateBookingLinkRequestDTO.class);
+            dto = BookingLinkRequestConstraints.STRICT_OBJECT_MAPPER.readValue(body, CreateBookingLinkRequestDTO.class);
         } catch (Exception e) {
-            if (e.getCause() instanceof IllegalArgumentException) {
-                throw (IllegalArgumentException) e.getCause();
-            }
-            throw new IllegalArgumentException("Invalid request body", e);
+            throw BookingLinkRequestConstraints.asInvalidBody(e);
         }
         Preconditions.checkArgument(dto != null, "Invalid request body");
         return dto;
