@@ -88,29 +88,42 @@ class ItipEmailNotificationPublisher {
         this.clock = clock;
     }
 
+    /**
+     * @param newCalendar {@code localDelivery.message()} already parsed by the caller: it is only read, never modified.
+     */
     Mono<Void> send(ItipLocalDeliveryDTO localDelivery,
                     URI eventPath,
+                    Calendar newCalendar,
                     Optional<Calendar> oldEventCalendar) {
-        return sender.send(toOutboundMessages(localDelivery, eventPath, oldEventCalendar)).then();
+        return sender.send(toOutboundMessages(localDelivery, eventPath, newCalendar, oldEventCalendar)).then();
     }
 
     private Flux<OutboundMessage> toOutboundMessages(ItipLocalDeliveryDTO localDelivery,
                                                      URI eventPath,
+                                                     Calendar newCalendar,
                                                      Optional<Calendar> oldEventCalendar) {
-        return Mono.fromCallable(() -> buildNotificationMessages(localDelivery, eventPath, oldEventCalendar))
+        return Mono.fromCallable(() -> buildNotificationMessages(localDelivery, eventPath, newCalendar, oldEventCalendar))
             .flatMapMany(Flux::fromIterable)
             .flatMap(payload -> toOutboundMessage(payload, localDelivery.uid()));
     }
 
     @VisibleForTesting
-    public List<NotificationEmailDTO> buildNotificationMessages(ItipLocalDeliveryDTO localDelivery,
-                                                                URI eventPath,
-                                                                Optional<Calendar> oldEventCalendar) {
-        Calendar newCalendar = CalendarUtil.parseIcs(localDelivery.message());
+    List<NotificationEmailDTO> buildNotificationMessages(ItipLocalDeliveryDTO localDelivery,
+                                                         URI eventPath,
+                                                         Optional<Calendar> oldEventCalendar) {
+        return buildNotificationMessages(localDelivery, eventPath, CalendarUtil.parseIcs(localDelivery.message()), oldEventCalendar);
+    }
+
+    @VisibleForTesting
+    List<NotificationEmailDTO> buildNotificationMessages(ItipLocalDeliveryDTO localDelivery,
+                                                         URI eventPath,
+                                                         Calendar newCalendar,
+                                                         Optional<Calendar> oldEventCalendar) {
         return notificationStrategy(newCalendar)
             .handle(localDelivery, eventPath, newCalendar, oldEventCalendar)
             .stream()
             .filter(this::notExpired)
+            .map(Notification::payload)
             .toList();
     }
 
@@ -120,9 +133,8 @@ class ItipEmailNotificationPublisher {
      * notification, which always reflects the new (rescheduled) time: rescheduling a past event to
      * a future slot therefore still notifies attendees.
      */
-    private boolean notExpired(NotificationEmailDTO notification) {
-        Calendar calendar = CalendarUtil.parseIcs(notification.event());
-        return !CalendarEventUtils.vEventExpired(EventParseUtils.getFirstEvent(calendar), clock);
+    private boolean notExpired(Notification notification) {
+        return !CalendarEventUtils.vEventExpired(EventParseUtils.getFirstEvent(notification.eventCalendar()), clock);
     }
 
     private NotificationStrategy notificationStrategy(Calendar newCalendar) {
@@ -134,14 +146,13 @@ class ItipEmailNotificationPublisher {
 
     private interface NotificationStrategy {
 
-        List<NotificationEmailDTO> handle(ItipLocalDeliveryDTO localDelivery,
-                                          URI eventPath,
-                                          Calendar newCalendar,
-                                          Optional<Calendar> oldCalendar);
+        List<Notification> handle(ItipLocalDeliveryDTO localDelivery,
+                                  URI eventPath,
+                                  Calendar newCalendar,
+                                  Optional<Calendar> oldCalendar);
 
-        default List<NotificationEmailDTO> handleCounter(ItipLocalDeliveryDTO localDelivery, URI eventPath) {
-            return List.of(NotificationEmailDTO.builder(localDelivery)
-                .withEvent(localDelivery.message())
+        default List<Notification> handleCounter(ItipLocalDeliveryDTO localDelivery, URI eventPath, Calendar newCalendar) {
+            return List.of(NotificationEmailDTO.builder(localDelivery, newCalendar)
                 .withEventPath(eventPath)
                 .withOldEvent(localDelivery.oldMessage())
                 .build());
@@ -150,11 +161,11 @@ class ItipEmailNotificationPublisher {
 
     private static class SingleEventNotificationStrategy implements NotificationStrategy {
         @Override
-        public List<NotificationEmailDTO> handle(ItipLocalDeliveryDTO localDelivery,
-                                                 URI eventPath,
-                                                 Calendar newCalendar,
-                                                 Optional<Calendar> oldCalendar) {
-            NotificationEmailDTO.Builder builderTemplate = NotificationEmailDTO.builder(localDelivery)
+        public List<Notification> handle(ItipLocalDeliveryDTO localDelivery,
+                                         URI eventPath,
+                                         Calendar newCalendar,
+                                         Optional<Calendar> oldCalendar) {
+            NotificationEmailDTO.Builder builderTemplate = NotificationEmailDTO.builder(localDelivery, newCalendar)
                 .withEventPath(eventPath);
 
             return switch (StringUtils.upperCase(localDelivery.method())) {
@@ -169,7 +180,7 @@ class ItipEmailNotificationPublisher {
             };
         }
 
-        private List<NotificationEmailDTO> buildEventDiffNotifications(ItipLocalDeliveryDTO localDelivery, Calendar newCalendar, Calendar old, Builder builderTemplate) {
+        private List<Notification> buildEventDiffNotifications(ItipLocalDeliveryDTO localDelivery, Calendar newCalendar, Calendar old, Builder builderTemplate) {
             return CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, old)
                 .stream()
                 .map(diff -> builderTemplate
@@ -181,12 +192,12 @@ class ItipEmailNotificationPublisher {
 
     private static class RecurringEventNotificationStrategy implements NotificationStrategy {
         @Override
-        public List<NotificationEmailDTO> handle(ItipLocalDeliveryDTO localDelivery,
-                                                 URI eventPath,
-                                                 Calendar newCalendar,
-                                                 Optional<Calendar> oldCalendar) {
+        public List<Notification> handle(ItipLocalDeliveryDTO localDelivery,
+                                         URI eventPath,
+                                         Calendar newCalendar,
+                                         Optional<Calendar> oldCalendar) {
             return switch (StringUtils.upperCase(localDelivery.method())) {
-                case Method.VALUE_COUNTER -> handleCounter(localDelivery, eventPath);
+                case Method.VALUE_COUNTER -> handleCounter(localDelivery, eventPath, newCalendar);
                 case Method.VALUE_REPLY ->
                     buildNotificationsByOccurrence(localDelivery, eventPath, newCalendar, !MARK_AS_NEW_EVENT);
                 case Method.VALUE_REQUEST -> oldCalendar
@@ -198,10 +209,10 @@ class ItipEmailNotificationPublisher {
             };
         }
 
-        private List<NotificationEmailDTO> buildDiffWithCancellations(ItipLocalDeliveryDTO localDelivery,
-                                                                      URI eventPath,
-                                                                      Calendar newCalendar,
-                                                                      Calendar oldCalendar) {
+        private List<Notification> buildDiffWithCancellations(ItipLocalDeliveryDTO localDelivery,
+                                                              URI eventPath,
+                                                              Calendar newCalendar,
+                                                              Calendar oldCalendar) {
             Optional<ExDateChanges> exDateChanges = computeExDateChanges(newCalendar, oldCalendar);
             Map<Temporal, Calendar> cancelCalendarsByRecurrence = exDateChanges
                 .map(changes -> computeCancelledCalendars(changes, newCalendar))
@@ -210,26 +221,26 @@ class ItipEmailNotificationPublisher {
                 exDateChanges.map(ExDateChanges::removedExDates).orElseGet(Set::of));
             ZoneId floatingZone = EventParseUtils.floatingZone(newCalendar);
 
-            List<NotificationEmailDTO> requestNotifications = CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
+            List<Notification> requestNotifications = CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
                 .stream()
                 .filter(diff -> shouldSendRequest(diff, recurrencesNotifiedSeparately, floatingZone))
-                .map(diff -> buildChangedOccurrenceNotification(NotificationEmailDTO.builder(localDelivery).withEventPath(eventPath),
+                .map(diff -> buildChangedOccurrenceNotification(NotificationEmailDTO.builder(localDelivery, newCalendar).withEventPath(eventPath),
                     newCalendar, diff))
                 .toList();
 
-            List<NotificationEmailDTO> cancelNotifications = List.copyOf(cancelCalendarsByRecurrence.values()).stream()
-                .map(cancelCalendar -> NotificationEmailDTO.builder(localDelivery)
+            List<Notification> cancelNotifications = List.copyOf(cancelCalendarsByRecurrence.values()).stream()
+                .map(cancelCalendar -> NotificationEmailDTO.builder(localDelivery, newCalendar)
                     .withEventPath(eventPath)
                     .withMethod(Method.VALUE_CANCEL)
-                    .withEvent(renderPayload(cancelCalendar))
+                    .withEvent(renderablePayload(cancelCalendar))
                     .build())
                 .toList();
 
-            List<NotificationEmailDTO> restoredNotifications = exDateChanges.stream()
+            List<Notification> restoredNotifications = exDateChanges.stream()
                 .flatMap(changes -> computeRestoredCalendars(changes, newCalendar))
-                .map(restoredCalendar -> NotificationEmailDTO.builder(localDelivery)
+                .map(restoredCalendar -> NotificationEmailDTO.builder(localDelivery, newCalendar)
                     .withEventPath(eventPath)
-                    .withEvent(renderPayload(restoredCalendar))
+                    .withEvent(renderablePayload(restoredCalendar))
                     .isNewEvent(MARK_AS_NEW_EVENT)
                     .build())
                 .toList();
@@ -239,24 +250,24 @@ class ItipEmailNotificationPublisher {
                 .toList();
         }
 
-        private List<NotificationEmailDTO> buildDiffBasedNotifications(ItipLocalDeliveryDTO localDelivery,
-                                                                       URI eventPath,
-                                                                       Calendar newCalendar,
-                                                                       Calendar oldCalendar) {
+        private List<Notification> buildDiffBasedNotifications(ItipLocalDeliveryDTO localDelivery,
+                                                               URI eventPath,
+                                                               Calendar newCalendar,
+                                                               Calendar oldCalendar) {
             ZoneId floatingZone = EventParseUtils.floatingZone(newCalendar);
             return CalendarDiffCalculator.calculate(localDelivery.strippedRecipient(), newCalendar, oldCalendar)
                 .stream()
                 .filter(diff -> isNotifiable(diff, floatingZone))
                 .map(diff -> buildChangedOccurrenceNotification(
-                    NotificationEmailDTO.builder(localDelivery).withEventPath(eventPath), newCalendar, diff))
+                    NotificationEmailDTO.builder(localDelivery, newCalendar).withEventPath(eventPath), newCalendar, diff))
                 .toList();
         }
 
-        private List<NotificationEmailDTO> buildNotificationsByOccurrence(ItipLocalDeliveryDTO localDelivery,
-                                                                          URI eventPath,
-                                                                          Calendar newCalendar,
-                                                                          boolean markAsNewEvent) {
-            NotificationEmailDTO.Builder payloadBuilderTemplate = NotificationEmailDTO.builder(localDelivery)
+        private List<Notification> buildNotificationsByOccurrence(ItipLocalDeliveryDTO localDelivery,
+                                                                  URI eventPath,
+                                                                  Calendar newCalendar,
+                                                                  boolean markAsNewEvent) {
+            NotificationEmailDTO.Builder payloadBuilderTemplate = NotificationEmailDTO.builder(localDelivery, newCalendar)
                 .withEventPath(eventPath)
                 .isNewEvent(markAsNewEvent);
 
@@ -266,23 +277,21 @@ class ItipEmailNotificationPublisher {
                 .toList();
 
             if (vevents.size() == 1) {
-                return List.of(payloadBuilderTemplate.copy()
-                    .withEvent(localDelivery.message())
-                    .build());
+                return List.of(payloadBuilderTemplate.build());
             }
 
             return vevents.stream()
                 .map(vevent -> payloadBuilderTemplate.copy()
-                    .withEvent(renderPayload(CalendarUtil.withSingleVEvent(newCalendar, vevent)))
+                    .withEvent(renderablePayload(CalendarUtil.withSingleVEvent(newCalendar, vevent)))
                     .build())
                 .toList();
         }
 
-        private NotificationEmailDTO buildChangedOccurrenceNotification(NotificationEmailDTO.Builder payloadBuilderTemplate,
-                                                                        Calendar newCalendar,
-                                                                        EventDiff diff) {
+        private Notification buildChangedOccurrenceNotification(NotificationEmailDTO.Builder payloadBuilderTemplate,
+                                                                Calendar newCalendar,
+                                                                EventDiff diff) {
             NotificationEmailDTO.Builder payloadBuilder = payloadBuilderTemplate
-                .withEvent(renderPayload(CalendarUtil.withSingleVEvent(newCalendar, diff.vevent())))
+                .withEvent(renderablePayload(CalendarUtil.withSingleVEvent(newCalendar, diff.vevent())))
                 .isNewEvent(diff.isNewEvent());
             Optional<ObjectNode> serializedChanges = diff.serializeChanges();
             serializedChanges.ifPresent(payloadBuilder::withChanges);
@@ -292,8 +301,8 @@ class ItipEmailNotificationPublisher {
         /**
          * A calendar that parsed fine cannot always be rendered: unreadable date values are left out of the payload.
          */
-        private static String renderPayload(Calendar calendar) {
-            return CalendarEventUtils.withoutUnreadableDates(calendar).toString();
+        private static Calendar renderablePayload(Calendar calendar) {
+            return CalendarEventUtils.withoutUnreadableDates(calendar);
         }
 
         private record ExDateChanges(VEvent previousMaster, VEvent currentMaster,
@@ -482,6 +491,13 @@ class ItipEmailNotificationPublisher {
             .onErrorMap(error -> new RuntimeException("Failed to serialize email notification payload for uid " + uid, error));
     }
 
+    /**
+     * A payload to publish, along with the calendar its event was rendered from: the expiry check reads it
+     * instead of parsing the payload again.
+     */
+    private record Notification(NotificationEmailDTO payload, Calendar eventCalendar) {
+    }
+
     @JsonInclude(JsonInclude.Include.NON_ABSENT)
     record NotificationEmailDTO(@JsonProperty("senderEmail") String senderEmail,
                                 @JsonProperty("recipientEmail") String recipientEmail,
@@ -499,9 +515,12 @@ class ItipEmailNotificationPublisher {
             .registerModule(new Jdk8Module())
             .setSerializationInclusion(JsonInclude.Include.NON_ABSENT);
 
-        static Builder builder(ItipLocalDeliveryDTO dto) {
+        /**
+         * @param messageCalendar {@code dto.message()} parsed: the event of the payload unless another one is supplied
+         */
+        static Builder builder(ItipLocalDeliveryDTO dto, Calendar messageCalendar) {
             return new Builder(dto.strippedSender(), dto.strippedRecipient(),
-                dto.calendarId(), dto.method()).withEvent(dto.message());
+                dto.calendarId(), dto.method()).withEvent(dto.message(), messageCalendar);
         }
 
         ObjectNode serialize() {
@@ -514,6 +533,7 @@ class ItipEmailNotificationPublisher {
             private String method;
             private final String calendarURI;
             private String event;
+            private Calendar eventCalendar;
             private boolean isNewEvent;
             private Optional<URI> eventPath = Optional.empty();
             private Optional<String> oldEvent = Optional.empty();
@@ -527,8 +547,13 @@ class ItipEmailNotificationPublisher {
                 this.method = method;
             }
 
-            Builder withEvent(String eventIcs) {
+            Builder withEvent(Calendar renderableCalendar) {
+                return withEvent(renderableCalendar.toString(), renderableCalendar);
+            }
+
+            private Builder withEvent(String eventIcs, Calendar calendar) {
                 event = eventIcs;
+                eventCalendar = calendar;
                 return this;
             }
 
@@ -570,17 +595,17 @@ class ItipEmailNotificationPublisher {
 
             Builder copy() {
                 return new Builder(senderEmail, recipientEmail, calendarURI, method)
-                    .withEvent(event)
+                    .withEvent(event, eventCalendar)
                     .withEventPath(eventPath)
                     .withOldEvent(oldEvent)
                     .isNewEvent(isNewEvent)
                     .withChanges(changes.map(ObjectNode::deepCopy));
             }
 
-            NotificationEmailDTO build() {
-                return new NotificationEmailDTO(
+            Notification build() {
+                return new Notification(new NotificationEmailDTO(
                     senderEmail, recipientEmail, method, event, calendarURI,
-                    eventPath.map(URI::getPath), oldEvent, isNewEvent, changes);
+                    eventPath.map(URI::getPath), oldEvent, isNewEvent, changes), eventCalendar);
             }
         }
     }
