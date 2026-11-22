@@ -25,6 +25,7 @@ import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 
@@ -1146,6 +1147,19 @@ class TwakeCalendarGuiceServerTest  {
         .then()
             .statusCode(200)
             .body("preferredEmail", is(userDomainB.asString()));
+    }
+
+    @Test
+    void userByEmailEndpointShouldNameTheMissingEmailParameter(TwakeCalendarGuiceServer server) {
+        targetRestAPI(server);
+
+        given()
+            .auth().preemptive().basic(USERNAME.asString(), PASSWORD)
+        .when()
+            .get("/api/users")
+        .then()
+            .statusCode(400)
+            .body("error.details", equalTo("'email' query parameter is required"));
     }
 
     @Test

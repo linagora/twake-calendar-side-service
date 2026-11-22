@@ -72,9 +72,9 @@ public class MongoDBOpenPaaSDomainDAO implements OpenPaaSDomainDAO, OpenPaaSDoma
 
     @Override
     public Mono<OpenPaaSDomain> retrieve(OpenPaaSId id) {
-        return Mono.from(database.getCollection(COLLECTION)
-                .find(Filters.eq(FIELD_ID, new ObjectId(id.value())))
-                .first())
+        return Mono.defer(() -> Mono.from(database.getCollection(COLLECTION)
+                .find(Filters.eq(FIELD_ID, MongoIds.asObjectId(id)))
+                .first()))
             .map(document -> new OpenPaaSDomain(Domain.of(document.getString(FIELD_NAME)), id));
     }
 

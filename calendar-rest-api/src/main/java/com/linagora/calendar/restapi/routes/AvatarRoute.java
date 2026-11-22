@@ -89,7 +89,7 @@ public class AvatarRoute implements JMAPRoutes {
             .getOrDefault("email", List.of())
             .stream()
             .findAny()
-            .orElseThrow(() -> new IllegalArgumentException("Request for avatar is missing email query parameter"));
+            .orElseThrow(() -> new IllegalArgumentException("'email' query parameter is required"));
     }
 
     public static byte[] generateLetterImage(char letter) {
