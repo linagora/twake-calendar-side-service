@@ -42,7 +42,6 @@ import org.opensearch.client.opensearch._types.Conflicts;
 import org.opensearch.client.opensearch._types.ErrorResponse;
 import org.opensearch.client.opensearch._types.FieldValue;
 import org.opensearch.client.opensearch._types.OpenSearchException;
-import org.opensearch.client.opensearch._types.Refresh;
 import org.opensearch.client.opensearch._types.Result;
 import org.opensearch.client.opensearch._types.Script;
 import org.opensearch.client.opensearch._types.SortOptions;
@@ -528,6 +527,7 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
     // We ask OpenSearch to proceed past conflicts rather than abort, then retry so the documents that were
     // concurrently rewritten are still removed. Retries are bounded; residual conflicts are left for a later
     // message to clean up rather than looping indefinitely against a document under sustained writes.
+    // Like indexing, a deletion does not force a refresh: the periodic refresh makes it visible (see issue #1627).
     private Mono<Void> deleteByQuery(Query query, RoutingKey routingKey) {
         return deleteByQuery(query, routingKey, MAX_RETRY_ON_CONFLICT);
     }
@@ -538,7 +538,6 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
             .query(query)
             .routing(routingKey.asString())
             .conflicts(Conflicts.Proceed)
-            .refresh(Refresh.True)
             .build();
 
         return Mono.defer(Throwing.supplier(() -> client.deleteByQuery(request)))
