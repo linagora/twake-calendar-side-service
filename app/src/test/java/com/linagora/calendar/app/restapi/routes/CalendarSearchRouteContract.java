@@ -653,6 +653,45 @@ public interface CalendarSearchRouteContract {
     }
 
     @Test
+    default void shouldReturn400WhenCalendarRefIsNull(TwakeCalendarGuiceServer server) {
+        given()
+            .body("""
+                { "query": "x", "calendars": [null] }
+                """)
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.details", equalTo("Invalid request body: 'calendars[0]' must be a JSON object"));
+    }
+
+    @Test
+    default void shouldReturn400WhenOrganizerIsNull(TwakeCalendarGuiceServer server) {
+        given()
+            .body("""
+                { "query": "x", "organizers": [null] }
+                """)
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.details", equalTo("Invalid request body: 'organizers[0]' must be a string"));
+    }
+
+    @Test
+    default void shouldReturn400WhenAttendeeIsNull(TwakeCalendarGuiceServer server) {
+        given()
+            .body("""
+                { "query": "x", "attendees": ["alice@domain.tld", null] }
+                """)
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.details", equalTo("Invalid request body: 'attendees[1]' must be a string"));
+    }
+
+    @Test
     default void shouldReturn400WithoutInternalsWhenFieldIsUnknown(TwakeCalendarGuiceServer server) {
         given()
             .body("""

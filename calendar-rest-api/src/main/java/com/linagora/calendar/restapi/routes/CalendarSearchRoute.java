@@ -37,6 +37,8 @@ import org.apache.james.metrics.api.MetricFactory;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -235,6 +237,7 @@ public class CalendarSearchRoute extends CalendarRoute {
 
     private static final ObjectMapper OBJECT_MAPPER = JsonMapper.builder()
         .addModule(new Jdk8Module())
+        .defaultSetterInfo(JsonSetter.Value.forContentNulls(Nulls.FAIL))
         .withCoercionConfig(LogicalType.Textual, config -> config
             .setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)
             .setCoercion(CoercionInputShape.Float, CoercionAction.Fail)
