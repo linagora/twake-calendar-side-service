@@ -122,7 +122,8 @@ class DomainSettingsRouteTest {
             .statusCode(HttpStatus.SC_OK)
             .body("userSearchMode", equalTo("enabled"))
             .body("resourceSearchEnabled", equalTo(true))
-            .body("defaultCalendarPublicVisibility", equalTo("private"));
+            .body("defaultCalendarPublicVisibility", equalTo("private"))
+            .body("calendarPublicVisibilitySettingEnabled", equalTo(true));
     }
 
     @Test
@@ -141,6 +142,7 @@ class DomainSettingsRouteTest {
             .userSearchMode(UserSearchMode.LIMITED)
             .resourceSearchEnabled(false)
             .defaultCalendarPublicVisibility(DefaultCalendarPublicVisibility.READ)
+            .calendarPublicVisibilitySettingEnabled(false)
             .build();
         server.getProbe(DomainSettingsProbe.class).save(Domain.of(DOMAIN), settings);
 
@@ -151,6 +153,7 @@ class DomainSettingsRouteTest {
             .statusCode(HttpStatus.SC_OK)
             .body("userSearchMode", equalTo("limited"))
             .body("resourceSearchEnabled", equalTo(false))
-            .body("defaultCalendarPublicVisibility", equalTo("read"));
+            .body("defaultCalendarPublicVisibility", equalTo("read"))
+            .body("calendarPublicVisibilitySettingEnabled", equalTo(false));
     }
 }

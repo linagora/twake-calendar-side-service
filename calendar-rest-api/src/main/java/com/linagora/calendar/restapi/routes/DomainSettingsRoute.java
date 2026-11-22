@@ -43,12 +43,14 @@ public class DomainSettingsRoute extends CalendarRoute {
 
     public record DomainSettingsDTO(@JsonProperty("userSearchMode") String userSearchMode,
                                     @JsonProperty("resourceSearchEnabled") boolean resourceSearchEnabled,
-                                    @JsonProperty("defaultCalendarPublicVisibility") String defaultCalendarPublicVisibility) {
+                                    @JsonProperty("defaultCalendarPublicVisibility") String defaultCalendarPublicVisibility,
+                                    @JsonProperty("calendarPublicVisibilitySettingEnabled") boolean calendarPublicVisibilitySettingEnabled) {
         static DomainSettingsDTO from(DomainSettings settings) {
             return new DomainSettingsDTO(
                 settings.userSearchMode().orElse(DomainSettings.DEFAULT_USER_SEARCH_MODE).serialize(),
                 settings.resourceSearchEnabled().orElse(DomainSettings.DEFAULT_RESOURCE_SEARCH_ENABLED),
-                settings.defaultCalendarPublicVisibility().orElse(DomainSettings.DEFAULT_CALENDAR_PUBLIC_VISIBILITY).serialize());
+                settings.defaultCalendarPublicVisibility().orElse(DomainSettings.DEFAULT_CALENDAR_PUBLIC_VISIBILITY).serialize(),
+                settings.calendarPublicVisibilitySettingEnabled().orElse(DomainSettings.DEFAULT_CALENDAR_PUBLIC_VISIBILITY_SETTING_ENABLED));
         }
     }
 
