@@ -18,10 +18,12 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.UnaryOperator;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
@@ -35,9 +37,16 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.cfg.CoercionAction;
+import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.type.LogicalType;
 import com.github.fge.lambdas.Throwing;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -54,6 +63,13 @@ public class PeopleSearchRoute extends CalendarRoute {
     public static final int MAX_QUERY_LENGTH = 256;
 
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final String INVALID_BODY_PREFIX = "Invalid request body: ";
+    private static final ObjectMapper REQUEST_MAPPER = JsonMapper.builder()
+        .withCoercionConfig(LogicalType.Textual, config -> config
+            .setCoercion(CoercionInputShape.Integer, CoercionAction.Fail)
+            .setCoercion(CoercionInputShape.Float, CoercionAction.Fail)
+            .setCoercion(CoercionInputShape.Boolean, CoercionAction.Fail))
+        .build();
 
     public enum ObjectType {
         USER, CONTACT, RESOURCE, TEAM_CALENDAR;
@@ -73,7 +89,7 @@ public class PeopleSearchRoute extends CalendarRoute {
     @JsonIgnoreProperties(ignoreUnknown = true)
     record SearchRequestDTO(@JsonProperty("q") String query,
                             @JsonProperty("objectTypes") List<String> objectTypes,
-                            @JsonProperty("limit") int limit) {
+                            @JsonProperty("limit") Integer limit) {
         @JsonIgnore
         public Set<ObjectType> parsedObjectTypes() {
             return objectTypes.stream()
@@ -151,7 +167,8 @@ public class PeopleSearchRoute extends CalendarRoute {
     @Override
     Mono<Void> handleRequest(HttpServerRequest req, HttpServerResponse res, MailboxSession session) {
         return req.receive().aggregate().asByteArray()
-            .map(Throwing.function(bytes -> OBJECT_MAPPER.readValue(bytes, SearchRequestDTO.class)))
+            .flatMap(PeopleSearchRoute::parseRequest)
+            .switchIfEmpty(Mono.error(() -> new IllegalArgumentException(INVALID_BODY_PREFIX + "a JSON body is required")))
             .map(validateRequest())
             .flatMapMany(requestDTO -> peopleSearchService.search(session, requestDTO.query, requestDTO.parsedObjectTypes(), requestDTO.limit))
             .collectList()
@@ -162,11 +179,52 @@ public class PeopleSearchRoute extends CalendarRoute {
                 .then());
     }
 
+    private static Mono<SearchRequestDTO> parseRequest(byte[] bytes) {
+        return Mono.fromCallable(() -> REQUEST_MAPPER.readValue(bytes, SearchRequestDTO.class))
+            .onErrorMap(JsonProcessingException.class, error -> new IllegalArgumentException(INVALID_BODY_PREFIX + describe(error), error));
+    }
+
+    private static String describe(JsonProcessingException error) {
+        if (error instanceof MismatchedInputException mismatchedInputError) {
+            String expectedType = describeExpectedType(mismatchedInputError.getTargetType());
+            if (mismatchedInputError.getPath().isEmpty()) {
+                return "the body must be " + expectedType;
+            }
+            return "'" + describePath(mismatchedInputError.getPath()) + "' must be " + expectedType;
+        }
+        return error.getOriginalMessage();
+    }
+
+    private static String describePath(List<JsonMappingException.Reference> path) {
+        return path.stream()
+            .map(reference -> Optional.ofNullable(reference.getFieldName())
+                .map(fieldName -> "." + fieldName)
+                .orElseGet(() -> "[" + reference.getIndex() + "]"))
+            .collect(Collectors.joining())
+            .replaceFirst("^\\.", "");
+    }
+
+    private static String describeExpectedType(Class<?> targetType) {
+        if (targetType != null && CharSequence.class.isAssignableFrom(targetType)) {
+            return "a string";
+        }
+        if (targetType != null && (Collection.class.isAssignableFrom(targetType) || targetType.isArray())) {
+            return "an array";
+        }
+        if (targetType != null && Number.class.isAssignableFrom(targetType)) {
+            return "a number";
+        }
+        return "a JSON object";
+    }
+
     private UnaryOperator<SearchRequestDTO> validateRequest() {
         return requestDTO -> {
+            Preconditions.checkArgument(requestDTO.query != null, INVALID_BODY_PREFIX + "'q' is required");
+            Preconditions.checkArgument(requestDTO.objectTypes != null, INVALID_BODY_PREFIX + "'objectTypes' is required");
+            Preconditions.checkArgument(requestDTO.limit != null, INVALID_BODY_PREFIX + "'limit' is required");
             Preconditions.checkArgument(requestDTO.limit > 0, "Limit must be greater than 0");
             Preconditions.checkArgument(requestDTO.limit <= MAX_RESULTS_LIMIT, "Maximum limit allowed: " + MAX_RESULTS_LIMIT + ", but got: " + requestDTO.limit);
-            Preconditions.checkArgument(requestDTO.query == null || requestDTO.query.length() <= MAX_QUERY_LENGTH,
+            Preconditions.checkArgument(requestDTO.query.length() <= MAX_QUERY_LENGTH,
                 "Maximum query length allowed: " + MAX_QUERY_LENGTH);
             return requestDTO;
         };
