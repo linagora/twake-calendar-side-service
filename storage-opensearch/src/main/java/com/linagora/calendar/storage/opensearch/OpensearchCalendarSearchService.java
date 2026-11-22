@@ -20,6 +20,7 @@ package com.linagora.calendar.storage.opensearch;
 
 import static org.apache.james.backends.opensearch.IndexCreationFactory.RAW;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -107,6 +108,8 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
     private static final int MAX_SOURCE_CALENDARS_PER_SEARCH = 256;
     // Retry optimistic concurrency conflicts when concurrent messages update the same event document.
     private static final int MAX_RETRY_ON_CONFLICT = 3;
+    // OpenSearch default index.refresh_interval: waiting that long lets a retry see a fresher snapshot.
+    private static final Duration INDEX_REFRESH_INTERVAL = Duration.ofSeconds(1);
 
     private final OpenSearchIndexer indexer;
     private final ReactorOpenSearchClient client;
@@ -528,6 +531,8 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
     // concurrently rewritten are still removed. Retries are bounded; residual conflicts are left for a later
     // message to clean up rather than looping indefinitely against a document under sustained writes.
     // Like indexing, a deletion does not force a refresh: the periodic refresh makes it visible (see issue #1627).
+    // The search phase only sees refreshed documents, so a retry, which is rare, waits one refresh interval to
+    // snapshot the documents rewritten concurrently: James' reactive client exposes no explicit index refresh.
     private Mono<Void> deleteByQuery(Query query, RoutingKey routingKey) {
         return deleteByQuery(query, routingKey, MAX_RETRY_ON_CONFLICT);
     }
@@ -543,7 +548,8 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
         return Mono.defer(Throwing.supplier(() -> client.deleteByQuery(request)))
             .flatMap(response -> {
                 if (hasVersionConflict(response) && remainingRetries > 0) {
-                    return deleteByQuery(query, routingKey, remainingRetries - 1);
+                    return Mono.delay(INDEX_REFRESH_INTERVAL)
+                        .then(deleteByQuery(query, routingKey, remainingRetries - 1));
                 }
                 return Mono.<Void>empty();
             });

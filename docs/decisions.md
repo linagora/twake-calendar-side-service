@@ -38,3 +38,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: agent (session 7717c82f-49cb-473b-9970-18a578db177b, PR qa-rest-batch), to be confirmed by Benoit Tellier (maintainer).
 - Why: a longer duration gives a public link that can never offer a slot; the text bounds are those of the reservation route (title 255, notes 2000).
 - Scope: `POST` and `PATCH /api/booking-links`, WebAdmin booking link routes.
+
+## 2026-11-22, [Tech] A conflicting event deletion in OpenSearch is retried after one refresh interval
+
+- Decision: completes "Search index writes never force an OpenSearch refresh" (issue #1627): a delete-by-query that met a version conflict is retried after one index refresh interval (1 s, OpenSearch default), so the retry snapshots the documents rewritten concurrently; an explicit refresh is not possible since the James-managed reactive client (main, #1612) exposes none.
+- Decided by: agent (session 7717c82f-49cb-473b-9970-18a578db177b, PR qa-rest-batch), to be confirmed by Benoit Tellier (maintainer).
+- Why: without a forced refresh, an immediate retry would snapshot the same stale documents and hit the same conflicts.
+- Scope: `OpensearchCalendarSearchService` delete of an event, stale occurrences of a series, and whole-calendar deletion.
