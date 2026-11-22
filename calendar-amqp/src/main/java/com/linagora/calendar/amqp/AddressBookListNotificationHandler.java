@@ -33,7 +33,9 @@ import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.UsernameRegistrationKey;
+import com.linagora.calendar.storage.model.ResourceId;
 
 import reactor.core.publisher.Mono;
 
@@ -46,14 +48,17 @@ public class AddressBookListNotificationHandler {
     private final EventBus eventBus;
     private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
+    private final ResourceDAO resourceDAO;
     private final CardDavClient cardDavClient;
 
     @Inject
     public AddressBookListNotificationHandler(EventBus eventBus, OpenPaaSUserDAO userDAO,
-                                              OpenPaaSDomainDAO domainDAO, CardDavClient cardDavClient) {
+                                              OpenPaaSDomainDAO domainDAO, ResourceDAO resourceDAO,
+                                              CardDavClient cardDavClient) {
         this.eventBus = eventBus;
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
+        this.resourceDAO = resourceDAO;
         this.cardDavClient = cardDavClient;
     }
 
@@ -84,11 +89,16 @@ public class AddressBookListNotificationHandler {
     }
 
     private Mono<OpenPaaSUser> ignoreNonUserOwner(AddressBookListExchange exchange, AddressBookURL addressBookURL) {
-        return domainDAO.retrieve(addressBookURL.baseId()).hasElement()
-            .flatMap(isDomain -> {
+        return Mono.zip(isDomain(addressBookURL), isResource(addressBookURL))
+            .flatMap(ownerKind -> {
                 // Domain books (including domain-members) are not a user's personal address book list.
-                if (isDomain) {
+                if (ownerKind.getT1()) {
                     LOGGER.debug("Ignore address book list notification for domain book {}", addressBookURL.asUri());
+                    return Mono.empty();
+                }
+                // Sabre provisions books under resource principals (e.g. when first invited): a resource has no list to push.
+                if (ownerKind.getT2()) {
+                    LOGGER.debug("Ignore address book list notification for resource book {}", addressBookURL.asUri());
                     return Mono.empty();
                 }
                 // The owner may be deleted before queued book or subscription deletions are consumed.
@@ -98,5 +108,13 @@ public class AddressBookListNotificationHandler {
                 }
                 return Mono.error(new IllegalStateException("Cannot resolve address book list owner " + addressBookURL.baseId().value()));
             });
+    }
+
+    private Mono<Boolean> isDomain(AddressBookURL addressBookURL) {
+        return domainDAO.retrieve(addressBookURL.baseId()).hasElement();
+    }
+
+    private Mono<Boolean> isResource(AddressBookURL addressBookURL) {
+        return resourceDAO.findById(ResourceId.from(addressBookURL.baseId())).hasElement();
     }
 }
