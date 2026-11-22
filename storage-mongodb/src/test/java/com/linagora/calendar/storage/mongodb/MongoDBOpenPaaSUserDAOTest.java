@@ -19,6 +19,7 @@
 package com.linagora.calendar.storage.mongodb;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 
@@ -35,6 +36,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import com.linagora.calendar.storage.MigrationResult;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.OpenPaaSUserDAOContract;
@@ -276,5 +278,12 @@ public class MongoDBOpenPaaSUserDAOTest implements OpenPaaSUserDAOContract {
             softly.assertThat(updatedUser.getString("email")).isEqualTo(USERNAME.asString());
             softly.assertThat(updatedUser.getList("firstnames", String.class)).containsExactly("Jean", "Paul");
         });
+    }
+
+    @Test
+    void retrieveByIdShouldRejectAnIdThatIsNotAnObjectIdWithAClearMessage() {
+        assertThatThrownBy(() -> testee().retrieve(new OpenPaaSId("abc")).block())
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Invalid id 'abc': expected a 24-character hexadecimal id");
     }
 }

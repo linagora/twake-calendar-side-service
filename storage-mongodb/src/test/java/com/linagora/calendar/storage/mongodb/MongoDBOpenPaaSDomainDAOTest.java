@@ -18,10 +18,14 @@
 
 package com.linagora.calendar.storage.mongodb;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSDomainDAOContract;
+import com.linagora.calendar.storage.OpenPaaSId;
 
 public class MongoDBOpenPaaSDomainDAOTest implements OpenPaaSDomainDAOContract {
     @RegisterExtension
@@ -30,5 +34,12 @@ public class MongoDBOpenPaaSDomainDAOTest implements OpenPaaSDomainDAOContract {
     @Override
     public OpenPaaSDomainDAO testee() {
         return new MongoDBOpenPaaSDomainDAO(mongo.getDb());
+    }
+
+    @Test
+    void retrieveByIdShouldRejectAnIdThatIsNotAnObjectIdWithAClearMessage() {
+        assertThatThrownBy(() -> testee().retrieve(new OpenPaaSId("xyz")).block())
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessage("Invalid id 'xyz': expected a 24-character hexadecimal id");
     }
 }

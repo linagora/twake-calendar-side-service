@@ -73,9 +73,9 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
 
     @Override
     public Mono<OpenPaaSUser> retrieve(OpenPaaSId id) {
-        return Mono.from(database.getCollection(COLLECTION)
-                .find(Filters.eq("_id", new ObjectId(id.value())))
-                .first())
+        return Mono.defer(() -> Mono.from(database.getCollection(COLLECTION)
+                .find(Filters.eq("_id", MongoIds.asObjectId(id)))
+                .first()))
             .map(document -> new OpenPaaSUser(
                 Username.of(document.getList("accounts", Document.class).get(0).getList("emails", String.class).get(0)),
                 new OpenPaaSId(document.getObjectId("_id").toHexString()),
