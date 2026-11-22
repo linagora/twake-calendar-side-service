@@ -191,7 +191,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                     Optional<OpenPaaSId> localRecipientId = resolved.map(LocalRecipientResolver.ResolvedRecipient::id);
                     boolean isResource = resolved.map(recipient -> recipient instanceof LocalRecipientResolver.ResolvedRecipient.LocalResource).orElse(false);
                     return sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId, calendar)
-                        .then(isResource ? Mono.empty() : publishEmailNotification(localDelivery, recipientUsername, localRecipientId, oldEventCalendar));
+                        .then(isResource ? Mono.empty() : publishEmailNotification(localDelivery, recipientUsername, localRecipientId, calendar, oldEventCalendar));
                 }));
     }
 
@@ -300,9 +300,10 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
     private Mono<Void> publishEmailNotification(ItipLocalDeliveryDTO localDelivery,
                                                 Username recipientUsername,
                                                 Optional<OpenPaaSId> localRecipientId,
+                                                Calendar newEventCalendar,
                                                 Optional<Calendar> oldEventCalendar) {
         return resolveEventPath(localDelivery, recipientUsername, localRecipientId)
-            .flatMap(eventPath -> itipEmailNotificationPublisher.send(localDelivery, eventPath, oldEventCalendar))
+            .flatMap(eventPath -> itipEmailNotificationPublisher.send(localDelivery, eventPath, newEventCalendar, oldEventCalendar))
             .then(ReactorUtils.logAsMono(() ->
                 LOGGER.debug("Published email notifications for uid {} to {}", localDelivery.uid(), localDelivery.strippedRecipient())));
     }

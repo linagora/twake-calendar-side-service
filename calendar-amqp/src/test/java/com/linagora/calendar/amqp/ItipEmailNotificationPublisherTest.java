@@ -1043,6 +1043,47 @@ class ItipEmailNotificationPublisherTest {
         }
 
         @Test
+        void preParsedCalendarShouldYieldTheSameNotificationsAsParsingTheMessage() {
+            ItipLocalDeliveryDTO dto = dto(Method.VALUE_REQUEST, RECURRING_NEW_WITH_EXDATE, Optional.of(RECURRING_OLD_NO_EXDATE));
+
+            List<NotificationEmailDTO> fromPreParsed = testee.buildNotificationMessages(dto, EVENT_PATH,
+                parseIcs(RECURRING_NEW_WITH_EXDATE), Optional.of(parseIcs(RECURRING_OLD_NO_EXDATE)));
+            List<NotificationEmailDTO> fromMessage = testee.buildNotificationMessages(dto, EVENT_PATH,
+                Optional.of(parseIcs(RECURRING_OLD_NO_EXDATE)));
+
+            assertThat(fromPreParsed).isEqualTo(fromMessage);
+        }
+
+        @Test
+        void renderedOccurrencePayloadShouldBeSuppressedWhenAlreadyInThePast() {
+            Clock afterCancelledOccurrence = Clock.fixed(Instant.parse("2026-04-09T00:00:00Z"), ZoneOffset.UTC);
+            ItipLocalDeliveryDTO dto = dto(Method.VALUE_REQUEST, RECURRING_NEW_WITH_EXDATE, Optional.of(RECURRING_OLD_NO_EXDATE));
+
+            List<NotificationEmailDTO> notifications = publisherWithClock(afterCancelledOccurrence)
+                .buildNotificationMessages(dto, EVENT_PATH, parseIcs(RECURRING_NEW_WITH_EXDATE), Optional.of(parseIcs(RECURRING_OLD_NO_EXDATE)));
+
+            assertThat(notifications).isEmpty();
+        }
+
+        private static final String RECURRING_NEW_WITH_EXDATE = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Test//Calendar//EN
+            METHOD:REQUEST
+            BEGIN:VEVENT
+            UID:recurring-uid@test
+            DTSTART:20260401T100000Z
+            DTEND:20260401T110000Z
+            RRULE:FREQ=WEEKLY;COUNT=3
+            EXDATE:20260408T100000Z
+            SUMMARY:Weekly sync
+            ATTENDEE:mailto:alice@example.com
+            ORGANIZER:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        @Test
         void singleEventBecomingRecurringShouldInviteAttendeeToTheSeries() {
             String timezone = """
                 BEGIN:VTIMEZONE
