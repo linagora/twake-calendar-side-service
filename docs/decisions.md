@@ -17,3 +17,17 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: Benoit Tellier, [issue #1627](https://github.com/linagora/twake-calendar-side-service/issues/1627)
 - Why: a forced refresh made each deletion cost 25 ms (six times an indexing) and published a new segment per deletion, while the search index is written asynchronously by the AMQP consumers and gives no read-your-write guarantee anyway.
 - Scope: `storage-opensearch`, `OpensearchCalendarSearchService`.
+
+## 2026-11-22, [Architecture] Pending: verify the signature of back-channel logout tokens
+
+- Options: (a) add `oidc.jwks.url` (and optionally `oidc.issuer`) and validate the logout token as OpenID Connect Back-Channel Logout 1.0 section 2.6 requires (signature with the provider's JWKS, `alg: none` refused, `iss`, `aud`, `iat`, `events`, no `nonce`), refusing every token while the JWKS is not configured; (b) the same, but keep today's unverified behaviour with a startup warning when `oidc.jwks.url` is not configured; (c) keep `POST /add-revoked-token` as it is.
+- Today: the route only base64-decodes the token payload to read its `sid`. It is a WebAdmin route (not public in a usual deployment) and an attacker must know the victim's `sid`, which limits the exploitation. The same code is in james-project (`OidcBackchannelLogoutRoutes`, used by tmail-backend) and in webadmin-proxy (`BackchannelLogoutRoutes`).
+- To decide: Benoit Tellier (maintainer), who keeps the route as it is for now (session 7717c82f-49cb-473b-9970-18a578db177b, 2026-11-22).
+- Scope: WebAdmin `POST /add-revoked-token`, and the matching routes of james-project, tmail-backend and webadmin-proxy.
+
+## 2026-11-22, [Architecture] Concurrent imports of the same vCards are not serialised by the side service
+
+- Decision: the side service does not queue or serialise concurrent `POST /api/import` of the same cards; the duplicate rows they create are an esn-sabre storage issue (no uniqueness on address book and card URI).
+- Decided by: Benoit Tellier (maintainer), session 7717c82f-49cb-473b-9970-18a578db177b, 2026-11-22, on QA report "vcard-reimport-duplicates-contacts".
+- Why: a lock in the side service only covers one instance; the fix belongs to the DAV storage.
+- Scope: vCard and ICS imports (`ImportProcessor`), and other flows that PUT the same card URI concurrently.
