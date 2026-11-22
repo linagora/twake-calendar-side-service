@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.restapi.routes;
 
+import static com.linagora.calendar.restapi.routes.JsonRequestBodyParser.INVALID_BODY_PREFIX;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -54,6 +56,7 @@ public class PeopleSearchRoute extends CalendarRoute {
     public static final int MAX_QUERY_LENGTH = 256;
 
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final JsonRequestBodyParser BODY_PARSER = new JsonRequestBodyParser(OBJECT_MAPPER);
 
     public enum ObjectType {
         USER, CONTACT, RESOURCE, TEAM_CALENDAR;
@@ -73,7 +76,12 @@ public class PeopleSearchRoute extends CalendarRoute {
     @JsonIgnoreProperties(ignoreUnknown = true)
     record SearchRequestDTO(@JsonProperty("q") String query,
                             @JsonProperty("objectTypes") List<String> objectTypes,
-                            @JsonProperty("limit") int limit) {
+                            @JsonProperty("limit") Integer limit) {
+        @JsonIgnore
+        public String queryOrEmpty() {
+            return Optional.ofNullable(query).orElse("");
+        }
+
         @JsonIgnore
         public Set<ObjectType> parsedObjectTypes() {
             return objectTypes.stream()
@@ -150,10 +158,11 @@ public class PeopleSearchRoute extends CalendarRoute {
 
     @Override
     Mono<Void> handleRequest(HttpServerRequest req, HttpServerResponse res, MailboxSession session) {
-        return req.receive().aggregate().asByteArray()
-            .map(Throwing.function(bytes -> OBJECT_MAPPER.readValue(bytes, SearchRequestDTO.class)))
+        return req.receive().aggregate().asString()
+            .defaultIfEmpty("")
+            .flatMap(payload -> BODY_PARSER.parse(payload, SearchRequestDTO.class))
             .map(validateRequest())
-            .flatMapMany(requestDTO -> peopleSearchService.search(session, requestDTO.query, requestDTO.parsedObjectTypes(), requestDTO.limit))
+            .flatMapMany(requestDTO -> peopleSearchService.search(session, requestDTO.queryOrEmpty(), requestDTO.parsedObjectTypes(), requestDTO.limit))
             .collectList()
             .map(Throwing.function(OBJECT_MAPPER::writeValueAsBytes))
             .flatMap(bytes -> res.status(200)
@@ -164,6 +173,8 @@ public class PeopleSearchRoute extends CalendarRoute {
 
     private UnaryOperator<SearchRequestDTO> validateRequest() {
         return requestDTO -> {
+            Preconditions.checkArgument(requestDTO.objectTypes != null, INVALID_BODY_PREFIX + "'objectTypes' is required");
+            Preconditions.checkArgument(requestDTO.limit != null, INVALID_BODY_PREFIX + "'limit' is required");
             Preconditions.checkArgument(requestDTO.limit > 0, "Limit must be greater than 0");
             Preconditions.checkArgument(requestDTO.limit <= MAX_RESULTS_LIMIT, "Maximum limit allowed: " + MAX_RESULTS_LIMIT + ", but got: " + requestDTO.limit);
             Preconditions.checkArgument(requestDTO.query == null || requestDTO.query.length() <= MAX_QUERY_LENGTH,

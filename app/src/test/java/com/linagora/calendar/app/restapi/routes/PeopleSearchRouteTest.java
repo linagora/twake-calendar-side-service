@@ -26,9 +26,11 @@ import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPoli
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.startsWith;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
@@ -43,6 +45,8 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.inject.multibindings.Multibinder;
@@ -522,6 +526,49 @@ class PeopleSearchRouteTest {
             .post()
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    static Stream<Arguments> malformedBodies() {
+        return Stream.of(
+            Arguments.of("", "Invalid request body: a JSON body is required"),
+            Arguments.of("null", "Invalid request body: a JSON body is required"),
+            Arguments.of("[]", "Invalid request body: the body must be a JSON object"),
+            Arguments.of("{\"q\":", "Invalid request body: Unexpected end-of-input"),
+            Arguments.of("{\"q\":\"bob\",\"objectTypes\":\"user\",\"limit\":10}", "Invalid request body: 'objectTypes' must be an array"),
+            Arguments.of("{\"q\":{},\"objectTypes\":[\"user\"],\"limit\":10}", "Invalid request body: 'q' must be a string"),
+            Arguments.of("{\"q\":\"bob\",\"objectTypes\":[\"user\"],\"limit\":\"ten\"}", "Invalid request body: 'limit' must be a number"),
+            Arguments.of("{\"q\":\"bob\",\"limit\":10}", "Invalid request body: 'objectTypes' is required"),
+            Arguments.of("{\"q\":\"bob\",\"objectTypes\":[\"user\"]}", "Invalid request body: 'limit' is required"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("malformedBodies")
+    void shouldReturnBadRequestWhenBodyIsMalformed(String body, String expectedDetails) {
+        given()
+            .body(body)
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", startsWith(expectedDetails));
+    }
+
+    @Test
+    void shouldSearchWithAnEmptyQueryWhenQueryIsNull(TwakeCalendarGuiceServer server) {
+        addUser(server, Username.fromLocalPartWithDomain("naruto", DOMAIN), "naruto", "hokage");
+
+        given()
+            .body("""
+                {
+                  "q": null,
+                  "objectTypes": ["user"],
+                  "limit": 10
+                }
+                """)
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_OK);
     }
 
     @Test

@@ -20,7 +20,6 @@ package com.linagora.calendar.restapi.routes;
 
 import static java.time.format.DateTimeFormatter.ISO_INSTANT;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -37,13 +36,9 @@ import org.apache.james.metrics.api.MetricFactory;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.cfg.CoercionAction;
 import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
-import com.fasterxml.jackson.databind.exc.MismatchedInputException;
-import com.fasterxml.jackson.databind.exc.PropertyBindingException;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.type.LogicalType;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
@@ -230,8 +225,6 @@ public class CalendarSearchRoute extends CalendarRoute {
     public static final String OFFSET_PARAM = "offset";
     public static final int DEFAULT_LIMIT = 30;
     public static final int DEFAULT_OFFSET = 0;
-    private static final String INVALID_BODY_PREFIX = "Invalid request body: ";
-    private static final String MISSING_BODY_MESSAGE = INVALID_BODY_PREFIX + "a JSON body is required";
 
     private static final ObjectMapper OBJECT_MAPPER = JsonMapper.builder()
         .addModule(new Jdk8Module())
@@ -240,6 +233,7 @@ public class CalendarSearchRoute extends CalendarRoute {
             .setCoercion(CoercionInputShape.Float, CoercionAction.Fail)
             .setCoercion(CoercionInputShape.Boolean, CoercionAction.Fail))
         .build();
+    private static final JsonRequestBodyParser BODY_PARSER = new JsonRequestBodyParser(OBJECT_MAPPER);
 
     private final CalendarSearchService searchService;
     private final OpenPaaSUserDAO openPaaSUserDAO;
@@ -269,9 +263,8 @@ public class CalendarSearchRoute extends CalendarRoute {
         int offset = extractOffset(queryStringDecoder);
 
         return request.receive().aggregate().asString()
-            .filter(StringUtils::isNotBlank)
-            .flatMap(this::parseSearchRequest)
-            .switchIfEmpty(Mono.error(() -> new IllegalArgumentException(MISSING_BODY_MESSAGE)))
+            .defaultIfEmpty("")
+            .flatMap(payload -> BODY_PARSER.parse(payload, SearchRequest.class))
             .flatMap(searchRequest -> {
                 List<CalendarURL> requestedCalendars = extractCalendarUrls(searchRequest);
 
@@ -285,48 +278,6 @@ public class CalendarSearchRoute extends CalendarRoute {
                         .sendString(Mono.just(responseBody))
                         .then());
             });
-    }
-
-    private Mono<SearchRequest> parseSearchRequest(String payload) {
-        return Mono.fromCallable(() -> OBJECT_MAPPER.readValue(payload, SearchRequest.class))
-            .onErrorMap(JsonProcessingException.class, error -> new IllegalArgumentException(INVALID_BODY_PREFIX + describe(error), error));
-    }
-
-    private String describe(JsonProcessingException error) {
-        if (error instanceof PropertyBindingException propertyBindingError) {
-            return "unknown field '" + propertyBindingError.getPropertyName() + "'";
-        }
-        if (error instanceof MismatchedInputException mismatchedInputError) {
-            return describeMismatch(mismatchedInputError);
-        }
-        return error.getOriginalMessage();
-    }
-
-    private String describeMismatch(MismatchedInputException error) {
-        String expectedType = describeExpectedType(error.getTargetType());
-        if (error.getPath().isEmpty()) {
-            return "the body must be " + expectedType;
-        }
-        return "'" + describePath(error.getPath()) + "' must be " + expectedType;
-    }
-
-    private String describePath(List<JsonMappingException.Reference> path) {
-        return path.stream()
-            .map(reference -> Optional.ofNullable(reference.getFieldName())
-                .map(fieldName -> "." + fieldName)
-                .orElseGet(() -> "[" + reference.getIndex() + "]"))
-            .collect(Collectors.joining())
-            .replaceFirst("^\\.", "");
-    }
-
-    private String describeExpectedType(Class<?> targetType) {
-        if (targetType != null && CharSequence.class.isAssignableFrom(targetType)) {
-            return "a string";
-        }
-        if (targetType != null && (Collection.class.isAssignableFrom(targetType) || targetType.isArray())) {
-            return "an array";
-        }
-        return "a JSON object";
     }
 
     private Mono<List<CalendarSearchSourceResolver.SearchSource>> resolveSearchSourceCalendars(MailboxSession session, List<CalendarURL> requestedCalendars) {

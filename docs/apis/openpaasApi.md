@@ -517,6 +517,15 @@ Computes the user avatar by rendering first letter in a fixed color square.
 
 This badly named HTTP method allows looking up the following resources in an auto complete manner: `user`, `contact`, `resource`, `team-calendar`. 
 
+| Field | Required | Description |
+|-------|----------|-------------|
+| `q` | No | Searched text, at most 256 characters. Omitted or `null`: an empty string. |
+| `objectTypes` | Yes | Array of the searched types. Unknown types are ignored. |
+| `limit` | Yes | Maximum number of results. Between `1` and `256`. |
+
+A missing, `null` or malformed body, a field of the wrong type or a missing required field is rejected with
+`400 Bad Request`, the `error.details` naming the problem (`Invalid request body: 'objectTypes' must be an array`).
+
 Sample payloads:
 
 ```
