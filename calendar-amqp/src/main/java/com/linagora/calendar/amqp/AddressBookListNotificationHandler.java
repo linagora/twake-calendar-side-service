@@ -33,7 +33,9 @@ import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
+import com.linagora.calendar.storage.ResourceDAO;
 import com.linagora.calendar.storage.UsernameRegistrationKey;
+import com.linagora.calendar.storage.model.ResourceId;
 
 import reactor.core.publisher.Mono;
 
@@ -46,14 +48,17 @@ public class AddressBookListNotificationHandler {
     private final EventBus eventBus;
     private final OpenPaaSUserDAO userDAO;
     private final OpenPaaSDomainDAO domainDAO;
+    private final ResourceDAO resourceDAO;
     private final CardDavClient cardDavClient;
 
     @Inject
     public AddressBookListNotificationHandler(EventBus eventBus, OpenPaaSUserDAO userDAO,
-                                              OpenPaaSDomainDAO domainDAO, CardDavClient cardDavClient) {
+                                              OpenPaaSDomainDAO domainDAO, ResourceDAO resourceDAO,
+                                              CardDavClient cardDavClient) {
         this.eventBus = eventBus;
         this.userDAO = userDAO;
         this.domainDAO = domainDAO;
+        this.resourceDAO = resourceDAO;
         this.cardDavClient = cardDavClient;
     }
 
@@ -94,6 +99,19 @@ public class AddressBookListNotificationHandler {
                 // The owner may be deleted before queued book or subscription deletions are consumed.
                 if (exchange == AddressBookListExchange.ADDRESS_BOOK_DELETED || exchange == AddressBookListExchange.SUBSCRIPTION_DELETED) {
                     LOGGER.debug("Ignore deleted address book list notification for unknown owner {}", addressBookURL.asUri());
+                    return Mono.empty();
+                }
+                return ignoreResourceOwner(addressBookURL);
+            });
+    }
+
+    private Mono<OpenPaaSUser> ignoreResourceOwner(AddressBookURL addressBookURL) {
+        // Sabre creates address books under a resource principal when the resource is first invited:
+        // a resource has no address book list to push over WebSocket.
+        return resourceDAO.findById(new ResourceId(addressBookURL.baseId().value())).hasElement()
+            .flatMap(isResource -> {
+                if (isResource) {
+                    LOGGER.debug("Ignore address book list notification for resource book {}", addressBookURL.asUri());
                     return Mono.empty();
                 }
                 return Mono.error(new IllegalStateException("Cannot resolve address book list owner " + addressBookURL.baseId().value()));
