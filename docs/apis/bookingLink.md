@@ -140,15 +140,15 @@ Create a new booking link for the authenticated user.
 | Field               | Required | Description                                                                                                                                              |
 |---------------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `calendarUrl`       | yes      | Calendar URI (must be accessible by the user)                                                                                                            |
-| `durationMinutes`   | yes      | Slot duration in minutes, must be positive                                                                                                               |
+| `durationMinutes`   | yes      | Slot duration in minutes, between 1 and 86400 (60 days)                                                                                                               |
 | `active`            | yes      | Whether the booking link is active                                                                                                                       |
 | `autoAccept`        | no       | Whether bookings are auto-accepted by the organizer. Defaults to `false` when omitted.                                                                   |
 | `availabilityRules` | no       | List of availability rules. Defaults to business hours from user settings when omitted. Each rule may specify its own `timeZone` (see availability rule object above). |
 | `extraAttendees`    | no       | Tree of the registered users to invite on every booked event. Empty when omitted. See [Extra attendees](#extra-attendees).                                |
-| `name`              | no       | Display name of the booking link. Blank values are ignored.                                                                                              |
-| `description`       | no       | Description of the booking link. Blank values are ignored.                                                                                               |
+| `name`              | no       | Display name of the booking link. Blank values are ignored. At most 255 characters.                                                                                              |
+| `description`       | no       | Description of the booking link. Blank values are ignored. At most 2000 characters.                                                                                               |
 | `color`             | no       | Display color as a `#RRGGBB` hex string. Blank values are ignored. Defaults to `#6B4ECC` when omitted.                                                    |
-| `location`          | no       | Location of every booked event. Blank values are ignored.                                                                                                |
+| `location`          | no       | Location of every booked event. Blank values are ignored. At most 255 characters.                                                                                                |
 | `visibility`        | no       | One of `PUBLIC`, `PRIVATE`.                                                                                                                               |
 | `transparency`      | no       | One of `OPAQUE`, `TRANSPARENT`.                                                                                                                           |
 | `resources`         | no       | Array of resource ids. See [Resources](#resources).                                                                                                      |
@@ -303,15 +303,15 @@ All fields are optional. Include only the fields to update.
 | Field               | Description                                                                                                      |
 |---------------------|------------------------------------------------------------------------------------------------------------------|
 | `calendarUrl`       | New calendar URI                                                                                                 |
-| `durationMinutes`   | New slot duration in minutes, must be positive                                                                   |
+| `durationMinutes`   | New slot duration in minutes, between 1 and 86400 (60 days)                                                                   |
 | `active`            | New active state                                                                                                 |
 | `autoAccept`        | New auto-accept state                                                                                            |
 | `availabilityRules` | Replaces all existing rules. Set to `null` to remove all rules. Each rule may specify its own `timeZone`. |
 | `extraAttendees`    | Replaces all existing extra attendees. Set to `null` or `{"and": []}` to remove them all. See [Extra attendees](#extra-attendees). |
-| `name`              | New display name. Set to `null` or a blank value to remove it.                                                   |
-| `description`       | New description. Set to `null` or a blank value to remove it.                                                    |
+| `name`              | New display name. Set to `null` or a blank value to remove it. At most 255 characters.                                                   |
+| `description`       | New description. Set to `null` or a blank value to remove it. At most 2000 characters.                                                    |
 | `color`             | New display color as a `#RRGGBB` hex string. Set to `null` or a blank value to remove it (the default `#6B4ECC` then applies). |
-| `location`          | New location. Set to `null` or a blank value to remove it.                                                       |
+| `location`          | New location. Set to `null` or a blank value to remove it. At most 255 characters.                                                       |
 | `visibility`        | One of `PUBLIC`, `PRIVATE`. Set to `null` or a blank value to remove it.                                         |
 | `transparency`      | One of `OPAQUE`, `TRANSPARENT`. Set to `null` or a blank value to remove it.                                     |
 | `resources`         | Replaces all existing resources. Set to `null` or `[]` to remove them all. See [Resources](#resources).         |

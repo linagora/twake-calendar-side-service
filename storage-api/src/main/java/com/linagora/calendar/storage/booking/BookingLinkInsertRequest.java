@@ -60,6 +60,10 @@ public record BookingLinkInsertRequest(CalendarURL calendarUrl,
         Preconditions.checkNotNull(transparency, "'transparency' must not be null");
         Preconditions.checkNotNull(resources, "'resources' must not be null");
         Preconditions.checkNotNull(alarm, "'alarm' must not be null");
+        BookingLinkLimits.checkEventDuration(eventDuration);
+        BookingLinkLimits.checkName(name);
+        BookingLinkLimits.checkDescription(description);
+        BookingLinkLimits.checkLocation(location);
     }
 
     public static Builder builder() {

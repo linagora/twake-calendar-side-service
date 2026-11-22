@@ -64,7 +64,11 @@ public record BookingLinkPatchRequest(ValuePatch<CalendarURL> calendarUrl,
         if (duration.isModified()) {
             Duration value = duration.get();
             Preconditions.checkArgument(!value.isNegative() && !value.isZero(), "'eventDuration' must be positive");
+            BookingLinkLimits.checkEventDuration(value);
         }
+        BookingLinkLimits.checkName(name.toOptional());
+        BookingLinkLimits.checkDescription(description.toOptional());
+        BookingLinkLimits.checkLocation(location.toOptional());
 
         Preconditions.checkArgument(!calendarUrl.isKept()
             || !duration.isKept()
