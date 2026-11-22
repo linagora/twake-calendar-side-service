@@ -289,7 +289,26 @@ public class CalendarSearchRoute extends CalendarRoute {
 
     private Mono<SearchRequest> parseSearchRequest(String payload) {
         return Mono.fromCallable(() -> OBJECT_MAPPER.readValue(payload, SearchRequest.class))
-            .onErrorMap(JsonProcessingException.class, error -> new IllegalArgumentException(INVALID_BODY_PREFIX + describe(error), error));
+            .onErrorMap(JsonProcessingException.class, error -> new IllegalArgumentException(INVALID_BODY_PREFIX + describe(error), error))
+            .doOnNext(CalendarSearchRoute::rejectNullElements);
+    }
+
+    // Jackson accepts a JSON null as a list element: refuse it here, as the other malformed elements are.
+    private static void rejectNullElements(SearchRequest searchRequest) {
+        rejectNullElements(searchRequest.calendars, "calendars", "a JSON object");
+        rejectNullElements(searchRequest.organizers, "organizers", "a string");
+        rejectNullElements(searchRequest.attendees, "attendees", "a string");
+    }
+
+    private static void rejectNullElements(List<?> elements, String field, String expectedType) {
+        if (elements == null) {
+            return;
+        }
+        for (int index = 0; index < elements.size(); index++) {
+            if (elements.get(index) == null) {
+                throw new IllegalArgumentException(INVALID_BODY_PREFIX + "'" + field + "[" + index + "]' must be " + expectedType);
+            }
+        }
     }
 
     private String describe(JsonProcessingException error) {
