@@ -23,12 +23,14 @@ import static io.restassured.config.EncoderConfig.encoderConfig;
 import static io.restassured.config.RestAssuredConfig.newConfig;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.apache.james.backends.rabbitmq.RabbitMQExtension.IsolationPolicy.WEAK;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import jakarta.inject.Inject;
 
@@ -43,6 +45,8 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.inject.multibindings.Multibinder;
@@ -504,6 +508,49 @@ class PeopleSearchRouteTest {
             .post()
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    static Stream<Arguments> malformedBodies() {
+        return Stream.of(
+            Arguments.of("{\"q\":\"bob\",\"objectTypes\":\"user\",\"limit\":10}", "Invalid request body: 'objectTypes' must be an array"),
+            Arguments.of("{\"q\":\"bob\",\"limit\":10}", "Invalid request body: 'objectTypes' is required"),
+            Arguments.of("{\"q\":\"bob\",\"objectTypes\":[\"user\"]}", "Invalid request body: 'limit' is required"),
+            Arguments.of("{\"q\":null,\"objectTypes\":[\"user\"],\"limit\":10}", "Invalid request body: 'q' is required"),
+            Arguments.of("{\"q\":5,\"objectTypes\":[\"user\"],\"limit\":10}", "Invalid request body: 'q' must be a string"),
+            Arguments.of("null", "Invalid request body: a JSON body is required"),
+            Arguments.of("[]", "Invalid request body: the body must be a JSON object"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("malformedBodies")
+    void shouldReturnBadRequestWithAMessageWhenBodyIsMalformed(String body, String expectedDetails) {
+        given()
+            .body(body)
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo(expectedDetails));
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenBodyIsInvalidJson() {
+        given()
+            .body("{\"q\":")
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldReturnBadRequestWhenBodyIsMissing() {
+        given()
+        .when()
+            .post()
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("Invalid request body: a JSON body is required"));
     }
 
     @Test
