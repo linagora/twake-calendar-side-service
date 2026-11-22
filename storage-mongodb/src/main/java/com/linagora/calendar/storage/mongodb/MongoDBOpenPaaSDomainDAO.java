@@ -19,6 +19,7 @@
 package com.linagora.calendar.storage.mongodb;
 
 import static com.linagora.calendar.storage.mongodb.MongoConstants.MONGO_DUPLICATE_KEY_CODE;
+import static com.linagora.calendar.storage.mongodb.MongoObjectIds.toObjectId;
 
 import java.time.Instant;
 import java.util.Date;
@@ -73,7 +74,7 @@ public class MongoDBOpenPaaSDomainDAO implements OpenPaaSDomainDAO, OpenPaaSDoma
     @Override
     public Mono<OpenPaaSDomain> retrieve(OpenPaaSId id) {
         return Mono.from(database.getCollection(COLLECTION)
-                .find(Filters.eq(FIELD_ID, new ObjectId(id.value())))
+                .find(Filters.eq(FIELD_ID, toObjectId(id)))
                 .first())
             .map(document -> new OpenPaaSDomain(Domain.of(document.getString(FIELD_NAME)), id));
     }
@@ -118,7 +119,7 @@ public class MongoDBOpenPaaSDomainDAO implements OpenPaaSDomainDAO, OpenPaaSDoma
     @Override
     public Flux<DomainAdministrator> listAdmins(OpenPaaSId domainId) {
         return Mono.from(database.getCollection(COLLECTION)
-                .find(Filters.eq(FIELD_ID, new ObjectId(domainId.value())))
+                .find(Filters.eq(FIELD_ID, toObjectId(domainId)))
                 .first())
             .switchIfEmpty(Mono.error(new DomainNotFoundException(domainId)))
             .flatMapIterable(document -> document.getList(FIELD_ADMINISTRATORS, Document.class))
@@ -130,16 +131,16 @@ public class MongoDBOpenPaaSDomainDAO implements OpenPaaSDomainDAO, OpenPaaSDoma
     @Override
     public Mono<Void> revokeAdmin(OpenPaaSId domainId, OpenPaaSId userId) {
         return Mono.from(database.getCollection(COLLECTION).updateOne(
-                Filters.eq(FIELD_ID, new ObjectId(domainId.value())),
+                Filters.eq(FIELD_ID, toObjectId(domainId)),
                 Updates.pull(FIELD_ADMINISTRATORS,
-                    new Document(FIELD_USER_ID, new ObjectId(userId.value())))))
+                    new Document(FIELD_USER_ID, toObjectId(userId)))))
             .then();
     }
 
     @Override
     public Mono<Void> addAdmins(OpenPaaSId domainId, List<OpenPaaSId> userIdList) {
         return Mono.from(database.getCollection(COLLECTION)
-                .find(Filters.eq(FIELD_ID, new ObjectId(domainId.value())))
+                .find(Filters.eq(FIELD_ID, toObjectId(domainId)))
                 .first())
             .flatMap(document -> {
                 List<Document> newAdmins = computeNewAdmins(document, userIdList);
@@ -152,7 +153,7 @@ public class MongoDBOpenPaaSDomainDAO implements OpenPaaSDomainDAO, OpenPaaSDoma
 
     private Mono<Void> pushNewAdmins(OpenPaaSId domainId, List<Document> newAdmins) {
         return Mono.from(database.getCollection(COLLECTION).updateOne(
-                Filters.eq(FIELD_ID, new ObjectId(domainId.value())),
+                Filters.eq(FIELD_ID, toObjectId(domainId)),
                 Updates.pushEach(FIELD_ADMINISTRATORS, newAdmins)))
             .then();
     }

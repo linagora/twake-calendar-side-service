@@ -19,6 +19,7 @@
 package com.linagora.calendar.storage.mongodb;
 
 import static com.linagora.calendar.storage.mongodb.MongoConstants.MONGO_DUPLICATE_KEY_CODE;
+import static com.linagora.calendar.storage.mongodb.MongoObjectIds.toObjectId;
 
 import java.time.Duration;
 import java.util.List;
@@ -31,7 +32,6 @@ import jakarta.inject.Inject;
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
 import org.bson.Document;
-import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,7 +74,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
     @Override
     public Mono<OpenPaaSUser> retrieve(OpenPaaSId id) {
         return Mono.from(database.getCollection(COLLECTION)
-                .find(Filters.eq("_id", new ObjectId(id.value())))
+                .find(Filters.eq("_id", toObjectId(id)))
                 .first())
             .map(document -> new OpenPaaSUser(
                 Username.of(document.getList("accounts", Document.class).get(0).getList("emails", String.class).get(0)),
@@ -106,7 +106,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
                 .append("firstnames", computeFirstnames(firstName))
                 .append(PASSWORD_FIELD, generatePasswordPlaceholder())
                 .append("email", username.asString()) // not part of OpenPaaS datamodel but helps solve concurrency
-                .append("domains", List.of(new Document("domain_id", new ObjectId(domain.id().value()))))
+                .append("domains", List.of(new Document("domain_id", toObjectId(domain.id()))))
                 .append("accounts", List.of(new Document()
                     .append("type", "email")
                     .append("emails", List.of(username.asString())))))
@@ -126,13 +126,13 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
         return domainDAO.retrieve(newUsername.getDomainPart().get())
             .switchIfEmpty(Mono.error(() -> new DomainNotFoundException(newUsername.getDomainPart().get())))
             .flatMap(domain -> Mono.from(database.getCollection(COLLECTION).updateOne(
-                    Filters.eq("_id", new ObjectId(id.value())),
+                    Filters.eq("_id", toObjectId(id)),
                     Updates.combine(
                         Updates.set("firstname", newFirstname),
                         Updates.set("lastname", newLastname),
                         Updates.set("firstnames", computeFirstnames(newFirstname)),
                         Updates.set("email", newUsername.asString()),
-                        Updates.set("domains", List.of(new Document("domain_id", new ObjectId(domain.id().value())))),
+                        Updates.set("domains", List.of(new Document("domain_id", toObjectId(domain.id())))),
                         Updates.set("accounts", List.of(new Document()
                             .append("type", "email")
                             .append("emails", List.of(newUsername.asString()))))
@@ -174,7 +174,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
         return domainDAO.retrieve(domain)
             .flatMapMany(openPaaSDomain ->
                 Flux.from(database.getCollection(COLLECTION)
-                        .find(Filters.eq("domains.domain_id", new ObjectId(openPaaSDomain.id().value()))))
+                        .find(Filters.eq("domains.domain_id", toObjectId(openPaaSDomain.id()))))
                     .map(this::toOpenPaaSUser));
     }
 
@@ -199,7 +199,7 @@ public class MongoDBOpenPaaSUserDAO implements OpenPaaSUserDAO {
             .flatMapMany(openPaaSDomain ->
                 Flux.from(database.getCollection(COLLECTION)
                         .find(Filters.and(Stream.concat(
-                            Stream.of(Filters.eq("domains.domain_id", new ObjectId(openPaaSDomain.id().value()))),
+                            Stream.of(Filters.eq("domains.domain_id", toObjectId(openPaaSDomain.id()))),
                             searchableWords.stream()
                                 .map(word -> CollatedPrefixSearch.filter(word, SEARCH_SCALAR_FIELDS, SEARCH_ARRAY_FIELDS)))
                             .toList()))
