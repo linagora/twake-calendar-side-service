@@ -326,8 +326,8 @@ public class RestApiConfiguration {
 
     private static ArrayNode readWorkingHours(Configuration configuration) {
         try {
-            String defaultBusinessHoursStart = Optional.ofNullable(configuration.getString("default.business.hours.start", null)).orElse("8:0");
-            String defaultBusinessHoursEnd = Optional.ofNullable(configuration.getString("default.business.hours.end", null)).orElse("19:0");
+            String defaultBusinessHoursStart = configuration.getString("default.business.hours.start", "8:0");
+            String defaultBusinessHoursEnd = configuration.getString("default.business.hours.end", "19:0");
             JsonNode defaultBusinessWorkingDays = OBJECT_MAPPER.readTree(
                 Optional.ofNullable(configuration.getStringArray("default.business.hours.daysOfWeek"))
                     .map(array -> Joiner.on(',').join(array))

@@ -49,7 +49,7 @@ public class DomainSettingsResolver {
 
     public Mono<DomainSettings> resolve(Domain domain) {
         return domainSettingsDAO.retrieve(domain)
-            .switchIfEmpty(Mono.just(DomainSettings.DEFAULT_DOMAIN_SETTINGS))
+            .defaultIfEmpty(DomainSettings.DEFAULT_DOMAIN_SETTINGS)
             .map(settings -> applyFallbacks(domain, settings));
     }
 

@@ -298,8 +298,7 @@ public class EventParseUtils {
         for (String separator : EVENT_FOOTER_SEPARATORS) {
             withoutFooters = stripFooterBlocks(withoutFooters, separator);
         }
-        String trimmed = withoutFooters.trim();
-        return trimmed.isEmpty() ? null : trimmed;
+        return StringUtils.trimToNull(withoutFooters);
     }
 
     /**

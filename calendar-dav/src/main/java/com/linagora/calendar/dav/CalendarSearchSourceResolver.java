@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 import jakarta.inject.Inject;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Maps;
 import com.linagora.calendar.dav.dto.CalendarListResponse;
 import com.linagora.calendar.dav.dto.CalendarMirrorSource;
 import com.linagora.calendar.storage.CalendarURL;
@@ -132,12 +133,8 @@ public class CalendarSearchSourceResolver {
     }
 
     private static CalendarList calendarList(CalendarListResponse calendarListResponse) {
-        Map<CalendarURL, CalendarMirrorSource> mirrorSourceByCalendarListURL = calendarListResponse.calendars()
-            .entrySet()
-            .stream()
-            .collect(Collectors.toMap(Map.Entry::getKey,
-                entry -> CalendarMirrorSource.parse(entry.getValue()),
-                (first, _) -> first, LinkedHashMap::new));
+        Map<CalendarURL, CalendarMirrorSource> mirrorSourceByCalendarListURL = new LinkedHashMap<>(
+            Maps.transformValues(calendarListResponse.calendars(), CalendarMirrorSource::parse));
 
         // A subscription whose source esn-sabre lists for free/busy only grants no read access to its events.
         Map<CalendarURL, CalendarURL> searchSourceByCalendarListURL = mirrorSourceByCalendarListURL.entrySet()

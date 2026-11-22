@@ -22,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.stream.StreamSupport;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.util.ValuePatch;
@@ -33,6 +32,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Streams;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 
@@ -77,7 +77,7 @@ public class BookingLinkExtraAttendeeUtil {
         JsonNode and = raw.get(FIELD_AND);
         Preconditions.checkArgument(and.isArray(), "'extraAttendees.and' must be an array");
 
-        List<OpenPaaSId> participants = StreamSupport.stream(and.spliterator(), false)
+        List<OpenPaaSId> participants = Streams.stream(and)
             .map(BookingLinkExtraAttendeeUtil::parseParticipant)
             .distinct()
             .toList();

@@ -336,7 +336,7 @@ public class CalendarSearchRoute extends CalendarRoute {
 
         return openPaaSUserDAO.retrieve(session.getUser())
             .flatMap(requester -> calendarSearchSourceResolver.resolveSearchSources(requester, requestedCalendars))
-            .switchIfEmpty(Mono.just(List.of()));
+            .defaultIfEmpty(List.of());
     }
 
     private EventSearchQuery toEventSearchQuery(SearchRequest searchRequest,

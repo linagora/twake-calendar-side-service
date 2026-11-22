@@ -18,8 +18,6 @@
 
 package com.linagora.calendar.storage.configuration;
 
-import java.util.stream.StreamSupport;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.Streams;
 
@@ -40,7 +38,7 @@ public final class ConfigurationValueValidator {
         if (Streams.stream(node.fieldNames()).anyMatch(key -> key.indexOf(NUL) >= 0)) {
             throw new IllegalArgumentException("Unsupported NUL character in a key of a configuration value");
         }
-        StreamSupport.stream(node.spliterator(), false)
+        Streams.stream(node)
             .forEach(ConfigurationValueValidator::validate);
     }
 

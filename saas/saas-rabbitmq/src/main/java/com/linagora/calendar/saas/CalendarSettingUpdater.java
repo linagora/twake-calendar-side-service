@@ -114,7 +114,7 @@ public class CalendarSettingUpdater implements TWPSettingsUpdater {
     private Mono<Set<ConfigurationEntry>> getConfigurationEntries(MailboxSession session) {
         return userConfigurationDAO.retrieveConfiguration(session)
             .collect(Collectors.toUnmodifiableSet())
-            .switchIfEmpty(Mono.just(EMPTY_CONFIGURATION_ENTRIES));
+            .defaultIfEmpty(EMPTY_CONFIGURATION_ENTRIES);
     }
 
     private boolean shouldUpdate(Optional<Long> storedVersion, long incomingVersion) {

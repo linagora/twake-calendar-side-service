@@ -26,7 +26,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 import org.apache.commons.lang3.Strings;
 import org.slf4j.Logger;
@@ -38,6 +37,7 @@ import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.base.Splitter;
+import com.google.common.collect.Streams;
 import com.linagora.calendar.amqp.EventProperty.AttendeeProperty;
 import com.linagora.calendar.amqp.EventProperty.DateProperty;
 import com.linagora.calendar.amqp.EventProperty.DtStampProperty;
@@ -148,12 +148,12 @@ public class EventFieldConverter {
 
         ArrayNode components = (ArrayNode) calendarEvent.get(2);
 
-        return StreamSupport.stream(components.spliterator(), false)
+        return Streams.stream(components)
             .filter(component -> component.isArray() && component.size() >= 2
                 && "vevent".equalsIgnoreCase(component.get(0).asText()))
             .map(component -> {
                 ArrayNode veventProps = (ArrayNode) component.get(1);
-                return StreamSupport.stream(veventProps.spliterator(), false)
+                return Streams.stream(veventProps)
                     .filter(node -> shouldExtractEventProperty(node, propertyNames))
                     .map(EventFieldConverter::deserializeEventProperty)
                     .flatMap(Optional::stream)

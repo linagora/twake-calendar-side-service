@@ -65,7 +65,7 @@ public class DavProxy extends DavClient {
     public Mono<Void> forwardRequest(HttpServerRequest request, HttpServerResponse response) {
         LOGGER.debug("Proxying DAV request {} {}", request.method(), request.uri());
         return request.receive().aggregate().asByteArray()
-            .switchIfEmpty(Mono.just("".getBytes()))
+            .defaultIfEmpty("".getBytes())
             .flatMap(payload -> authenticator.authenticate(request)
                 .flatMap(session ->
                     Mono.from(metricFactory.decoratePublisherWithTimerMetric("davProxy",

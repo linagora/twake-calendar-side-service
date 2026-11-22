@@ -24,7 +24,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.stream.StreamSupport;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Strings;
@@ -32,6 +31,7 @@ import org.apache.commons.lang3.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Splitter;
+import com.google.common.collect.Streams;
 import com.google.common.hash.Hashing;
 import com.linagora.calendar.dav.ContactUid;
 import com.linagora.calendar.dav.importer.DavResourceName;
@@ -226,7 +226,7 @@ final class CollectedContact {
         if (node instanceof ObjectNode objectNode && objectNode.path(PREF).isIntegralNumber()) {
             objectNode.put(PREF, Math.clamp(objectNode.get(PREF).asLong(), MIN_PREF, MAX_PREF));
         }
-        StreamSupport.stream(node.spliterator(), false)
+        Streams.stream(node)
             .forEach(CollectedContact::clampPrefs);
     }
 
