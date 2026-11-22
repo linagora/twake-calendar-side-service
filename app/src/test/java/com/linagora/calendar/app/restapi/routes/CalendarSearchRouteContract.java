@@ -593,6 +593,48 @@ public interface CalendarSearchRouteContract {
     }
 
     @Test
+    default void shouldReturn400WhenCalendarsHoldsANullElement(TwakeCalendarGuiceServer server) {
+        given()
+            .body("""
+                { "query": "test", "calendars": [null] }
+                """)
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("Invalid request body: 'calendars[0]' must be a JSON object"));
+    }
+
+    @Test
+    default void shouldReturn400WhenOrganizersHoldsANullElement(TwakeCalendarGuiceServer server) {
+        given()
+            .body("""
+                { "query": "test", "organizers": [null] }
+                """)
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("Invalid request body: 'organizers[0]' must be a string"));
+    }
+
+    @Test
+    default void shouldReturn400WhenAttendeesHoldsANullElement(TwakeCalendarGuiceServer server) {
+        given()
+            .body("""
+                { "query": "test", "attendees": [null] }
+                """)
+            .post("/calendar/api/events/search?limit=30&offset=0")
+            .then()
+            .statusCode(400)
+            .body("error.code", equalTo(400))
+            .body("error.message", equalTo("Bad request"))
+            .body("error.details", equalTo("Invalid request body: 'attendees[0]' must be a string"));
+    }
+
+    @Test
     default void shouldReturn400WhenQueryIsNotAString(TwakeCalendarGuiceServer server) {
         given()
             .body("""
