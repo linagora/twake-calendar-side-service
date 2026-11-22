@@ -83,16 +83,26 @@ public class JsonRequestBodyParser {
     }
 
     private String describeExpectedType(Class<?> targetType) {
-        if (targetType != null && CharSequence.class.isAssignableFrom(targetType)) {
+        return Optional.ofNullable(targetType)
+            .map(this::describeKnownType)
+            .orElse("a JSON object");
+    }
+
+    private String describeKnownType(Class<?> targetType) {
+        if (CharSequence.class.isAssignableFrom(targetType)) {
             return "a string";
         }
-        if (targetType != null && (Collection.class.isAssignableFrom(targetType) || targetType.isArray())) {
+        if (isArray(targetType)) {
             return "an array";
         }
-        if (targetType != null && isNumber(targetType)) {
+        if (isNumber(targetType)) {
             return "a number";
         }
         return "a JSON object";
+    }
+
+    private boolean isArray(Class<?> targetType) {
+        return Collection.class.isAssignableFrom(targetType) || targetType.isArray();
     }
 
     private boolean isNumber(Class<?> targetType) {
