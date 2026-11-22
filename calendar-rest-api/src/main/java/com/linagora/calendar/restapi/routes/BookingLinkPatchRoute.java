@@ -19,6 +19,7 @@
 package com.linagora.calendar.restapi.routes;
 
 import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
+import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_STRICT_SCALARS;
 
 import java.time.Duration;
 import java.time.ZoneId;
@@ -185,7 +186,7 @@ public class BookingLinkPatchRoute extends CalendarRoute {
 
     private PatchDto parseJSONtoPatchDto(byte[] body) {
         try {
-            return OBJECT_MAPPER_DEFAULT.readValue(body, PatchDto.class);
+            return OBJECT_MAPPER_STRICT_SCALARS.readValue(body, PatchDto.class);
         } catch (Exception e) {
             if (e.getCause() instanceof IllegalArgumentException) {
                 throw (IllegalArgumentException) e.getCause();

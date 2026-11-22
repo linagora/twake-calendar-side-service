@@ -51,6 +51,7 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.base.Preconditions;
 import com.linagora.calendar.api.booking.AvailabilityRules;
 import com.linagora.calendar.dav.CalDavClient;
+import com.linagora.calendar.restapi.RestApiConstants;
 import com.linagora.calendar.restapi.routes.BookingLinkCreateRoute.CreateBookingLinkRequestDTO;
 import com.linagora.calendar.restapi.routes.BookingLinkExtraAttendeeResolver;
 import com.linagora.calendar.restapi.routes.BookingLinkPatchRoute.PatchDto;
@@ -125,7 +126,7 @@ public class BookingLinkUserRoutes implements Routes {
     private static final String FIELD_PUBLIC_ID = "bookingLinkPublicId";
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("UTC");
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
+    private static final ObjectMapper OBJECT_MAPPER = RestApiConstants.strictScalars(new ObjectMapper().registerModule(new Jdk8Module()));
 
     private final OpenPaaSUserDAO userDAO;
     private final BookingLinkDAO bookingLinkDAO;

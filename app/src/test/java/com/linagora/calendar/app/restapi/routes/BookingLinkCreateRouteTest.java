@@ -47,6 +47,7 @@ import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.inject.multibindings.Multibinder;
@@ -423,6 +424,59 @@ class BookingLinkCreateRouteTest {
         BookingLink stored = bookingLinkProbe.findBookingLink(openPaaSUser.username(), new BookingLinkPublicId(UUID.fromString(publicId)));
 
         assertThat(stored.color()).isEmpty();
+    }
+
+    @Test
+    void shouldReturn400WhenDurationExceedsTheLongestBookableRange() {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 100000,
+                    "active": true
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString()))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'durationMinutes' must not exceed 86400 minutes (60 days)"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"name, 256, 255", "location, 256, 255", "description, 2001, 2000"})
+    void shouldReturn400WhenATextFieldIsTooLong(String field, int length, int maxLength) {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    "active": true,
+                    "%s": "%s"
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString(), field, "a".repeat(length)))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'" + field + "' must not exceed " + maxLength + " characters"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"\"active\": 0", "\"active\": true, \"name\": 0", "\"active\": true, \"description\": true"})
+    void shouldReturn400WhenAFieldHasTheWrongJsonType(String fields) {
+        given()
+            .body("""
+                {
+                    "calendarUrl": "%s",
+                    "durationMinutes": 30,
+                    %s
+                }
+                """.formatted(CalendarURL.from(openPaaSUser.id()).asUri().toString(), fields))
+        .when()
+            .post("/api/booking-links")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
     }
 
     @Test

@@ -963,6 +963,53 @@ class BookingLinkPatchRouteTest {
     }
 
     @Test
+    void shouldReturn400WhenDurationMinutesExceedsTheLongestBookableRange() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
+
+        given()
+            .body("""
+                { "durationMinutes": 100000 }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'durationMinutes' must not exceed 86400 minutes (60 days)"));
+    }
+
+    @Test
+    void shouldReturn400WhenNameIsTooLong() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
+
+        given()
+            .body("""
+                { "name": "%s" }
+                """.formatted("a".repeat(256)))
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("'name' must not exceed 255 characters"));
+    }
+
+    @Test
+    void shouldReturn400WhenActiveIsANumber() {
+        BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
+            BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());
+
+        given()
+            .body("""
+                { "active": 0 }
+                """)
+        .when()
+            .patch("/api/booking-links/" + inserted.publicId().value())
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
     void shouldReturn400WhenTimezoneIsInvalid() {
         BookingLink inserted = bookingLinkProbe.insertBookingLink(openPaaSUser.username(),
             BookingLinkInsertRequest.builder().calendarUrl(CalendarURL.from(openPaaSUser.id())).eventDuration(Duration.ofMinutes(30)).build());

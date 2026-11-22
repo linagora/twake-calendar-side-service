@@ -31,3 +31,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: Benoit Tellier (maintainer), session 7717c82f-49cb-473b-9970-18a578db177b, 2026-11-22, on QA report "vcard-reimport-duplicates-contacts".
 - Why: a lock in the side service only covers one instance; the fix belongs to the DAV storage.
 - Scope: vCard and ICS imports (`ImportProcessor`), and other flows that PUT the same card URI concurrently.
+
+## 2026-11-22, [Product] Bounds of booking link fields
+
+- Decision: a booking link's `durationMinutes` is at most 86400 (60 days, the longest range the slots route accepts), `name` and `location` at most 255 characters, `description` at most 2000 characters, and a JSON number is refused for a boolean or a string field; on creation, PATCH and the WebAdmin routes alike.
+- Decided by: agent (session 7717c82f-49cb-473b-9970-18a578db177b, PR qa-rest-batch), to be confirmed by Benoit Tellier (maintainer).
+- Why: a longer duration gives a public link that can never offer a slot; the text bounds are those of the reservation route (title 255, notes 2000).
+- Scope: `POST` and `PATCH /api/booking-links`, WebAdmin booking link routes.

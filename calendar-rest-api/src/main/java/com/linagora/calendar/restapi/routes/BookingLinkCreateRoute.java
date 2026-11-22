@@ -20,6 +20,7 @@ package com.linagora.calendar.restapi.routes;
 
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
+import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_STRICT_SCALARS;
 import static com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader.BUSINESS_HOURS_IDENTIFIER;
 
 import java.time.DateTimeException;
@@ -191,7 +192,7 @@ public class BookingLinkCreateRoute extends CalendarRoute {
     private CreateBookingLinkRequestDTO parseRequest(byte[] body) {
         CreateBookingLinkRequestDTO dto;
         try {
-            dto = OBJECT_MAPPER_DEFAULT.readValue(body, CreateBookingLinkRequestDTO.class);
+            dto = OBJECT_MAPPER_STRICT_SCALARS.readValue(body, CreateBookingLinkRequestDTO.class);
         } catch (Exception e) {
             if (e.getCause() instanceof IllegalArgumentException) {
                 throw (IllegalArgumentException) e.getCause();
