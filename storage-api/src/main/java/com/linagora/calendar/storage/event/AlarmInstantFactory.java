@@ -417,7 +417,9 @@ public interface AlarmInstantFactory {
                         .filter(date -> !startTime(date).toInstant().isBefore(periodStart));
                 }
                 Temporal walkStart = toSeedType(periodStart);
-                return expand(walkStart, walkStart, periodEnd, -1)
+                // The stream is lazy: only the next occurrences are taken, unless periods without occurrence lie between
+                Temporal walkEnd = RecurSkipGuard.mayLeavePeriodsEmpty(recur) ? periodEnd : walkStart;
+                return expand(walkStart, walkEnd, periodEnd, -1)
                     .filter(this::isUpcoming);
             }
 

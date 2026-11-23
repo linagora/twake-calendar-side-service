@@ -73,3 +73,17 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: agent (session e2aca2a3-2d1e-4ac1-8ff0-43617824effd, PR ical4j-hardening), to be confirmed by Benoit Tellier (maintainer), on the twake-qa deep dependency review of ical4j 4.4.0 (SEV-4).
 - Why: ical4j writes a lone CR verbatim and its parser reads it as a line break, so a meeting title could add attendees, an organizer or alarms to the event as read back.
 - Scope: `calendar-api` `IcsText`, booking link events, Twake Space `MeetingRequest`.
+
+## 2026-11-23, [Tech] Recurrence expansion bounds weigh BYDAY, BYMONTHDAY and sparse rules
+
+- Decision: replaces the counting of "Recurrence expansions are bounded by the candidates ical4j builds" (same day): BYDAY counts 53 days per value in a YEARLY rule without BYMONTH nor BYWEEKNO, 5 in a MONTHLY or YEARLY one, BYMONTHDAY 12 per value in a YEARLY rule without BYMONTH, BYWEEKNO 7. COUNT bounds the walked periods only when every period holds an occurrence (no filtering BY* part, ordinal BYDAY, BYMONTHDAY, BYYEARDAY, BYWEEKNO nor BYSETPOS); and the next alarms of such a sparse rule are bounded over the whole year they are looked up in.
+- Decided by: agent (session e2aca2a3-2d1e-4ac1-8ff0-43617824effd, PR ical4j-hardening review), to be confirmed by Benoit Tellier (maintainer).
+- Why: counting BYDAY by its values let `FREQ=YEARLY;BYDAY=MO,...,SU;BYHOUR=0..23;BYMINUTE=0..59;BYSECOND=0..59` through at 604,800 candidates while ical4j builds 31.5 million dates in its first period.
+- Scope: `storage-api` `RecurSkipGuard`, `AlarmInstantFactory`.
+
+## 2026-11-23, [Tech] A Twake Space meeting UID with control characters is refused
+
+- Decision: replaces the UID part of "Text from outside an ICS is cleaned before ical4j writes it" (same day): a meeting request whose UID holds a control character or an unpaired surrogate is refused (unprocessable event) instead of being cleaned; title and description are still cleaned.
+- Decided by: agent (session e2aca2a3-2d1e-4ac1-8ff0-43617824effd, PR ical4j-hardening review), to be confirmed by Benoit Tellier (maintainer).
+- Why: the UID identifies the meeting for Twake Space and for the lookups of the side service: cleaning it could merge two distinct meetings into one event.
+- Scope: Twake Space `MeetingRequest`.

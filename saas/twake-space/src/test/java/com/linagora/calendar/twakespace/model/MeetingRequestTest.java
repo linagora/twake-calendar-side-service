@@ -125,7 +125,7 @@ class MeetingRequestTest {
     void asCalendarShouldNotLetALoneCarriageReturnInjectContentLines() throws Exception {
         String injection = "\rATTENDEE;PARTSTAT=ACCEPTED:mailto:mallory@evil.tld\rX-INJECTED:yes";
         MeetingRequest request = new MeetingRequest("01J9ZB2W5Q3H7K8M9N0P1R2S3T", new MailAddress("alice@space.tld"),
-            new TeamCalendarId("c41e9b07"), "6b0f6d1e" + injection, "Design review" + injection,
+            new TeamCalendarId("c41e9b07"), "6b0f6d1e", "Design review" + injection,
             ZonedDateTime.parse("2026-10-08T12:32:00+02:00[Europe/Paris]"), ZonedDateTime.parse("2026-10-08T13:02:00+02:00[Europe/Paris]"),
             Optional.of("Last pass" + injection));
 
@@ -138,7 +138,21 @@ class MeetingRequestTest {
         assertThat(event.getProperties(Property.SUMMARY)).hasSize(1);
         assertThat(event.getProperty(Property.SUMMARY).map(Property::getValue))
             .contains("Design review\nATTENDEE;PARTSTAT=ACCEPTED:mailto:mallory@evil.tld\nX-INJECTED:yes");
-        assertThat(event.getProperty(Property.UID).map(Property::getValue))
-            .contains("6b0f6d1eATTENDEE;PARTSTAT=ACCEPTED:mailto:mallory@evil.tldX-INJECTED:yes");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"6b0f6d1e\rEND:VEVENT", "6b0f6d1e\u0001", "6b0f6d1e\ud800"})
+    void constructorShouldRejectAUidWithControlCharacters(String uid) {
+        assertThatThrownBy(() -> new MeetingRequest("01J9ZB2W5Q3H7K8M9N0P1R2S3T", new MailAddress("alice@space.tld"),
+            new TeamCalendarId("c41e9b07"), uid, "Design review", ZonedDateTime.parse("2026-10-08T12:32:00+02:00[Europe/Paris]"),
+            ZonedDateTime.parse("2026-10-08T13:02:00+02:00[Europe/Paris]"), Optional.empty()))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void constructorShouldAcceptANullDescription() throws Exception {
+        assertThat(new MeetingRequest("01J9ZB2W5Q3H7K8M9N0P1R2S3T", new MailAddress("alice@space.tld"), new TeamCalendarId("c41e9b07"),
+            "6b0f6d1e", "Design review", ZonedDateTime.parse("2026-10-08T12:32:00+02:00[Europe/Paris]"),
+            ZonedDateTime.parse("2026-10-08T13:02:00+02:00[Europe/Paris]"), null).description()).isEmpty();
     }
 }

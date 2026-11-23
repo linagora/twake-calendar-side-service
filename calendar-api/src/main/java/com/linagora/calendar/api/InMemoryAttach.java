@@ -59,7 +59,7 @@ public final class InMemoryAttach {
         }
         try {
             byte[] decoded = DecoderFactory.getInstance().createBinaryDecoder(encoding.get())
-                .decode(value.getBytes(StandardCharsets.US_ASCII));
+                .decode(value.getBytes(StandardCharsets.UTF_8));
             return new Attach(parameters, ByteBuffer.wrap(decoded));
         } catch (UnsupportedEncodingException | DecoderException e) {
             return new Attach(parameters, value);
@@ -71,10 +71,15 @@ public final class InMemoryAttach {
      */
     public static Attach copy(Attach attach) {
         byte[] binary = attach.getBinaryData();
-        if (binary == null) {
-            return (Attach) attach.copy();
+        if (binary != null) {
+            return new Attach(new ParameterList(attach.getParameterList().getAll()), ByteBuffer.wrap(binary.clone()));
         }
-        return new Attach(new ParameterList(attach.getParameterList().getAll()), ByteBuffer.wrap(binary.clone()));
+        try {
+            return (Attach) attach.copy();
+        } catch (RuntimeException e) {
+            // Leniently parsed values (eg an undecodable inline value) can not be read back: share the original
+            return attach;
+        }
     }
 
     private InMemoryAttach() {

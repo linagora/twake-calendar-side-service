@@ -1096,6 +1096,50 @@ class CalendarUtilTest {
     }
 
     @Test
+    void copyingAComponentWhoseAlarmHoldsAnInlineAttachmentShouldLeaveNoTemporaryFile() throws Exception {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:x
+            BEGIN:VTODO
+            UID:b
+            BEGIN:VALARM
+            ACTION:AUDIO
+            TRIGGER:-PT5M
+            ATTACH;ENCODING=BASE64;VALUE=BINARY:aGVsbG8=
+            END:VALARM
+            END:VTODO
+            END:VCALENDAR
+            """;
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        List<Path> before = ical4jAttachFiles();
+
+        Calendar copy = CalendarUtil.copyOf(calendar);
+
+        assertThat(ical4jAttachFiles()).isEqualTo(before);
+        assertThat(copy.toString()).isEqualTo(calendar.toString());
+    }
+
+    @Test
+    void copyOfShouldKeepAnAttachmentItCannotDecode() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:x
+            BEGIN:VEVENT
+            UID:a
+            DTSTART:20260401T100000Z
+            ATTACH;ENCODING=8BIT:not decodable
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Calendar copy = CalendarUtil.copyOf(CalendarUtil.parseIcs(ics));
+
+        assertThat(copy.getComponent(Component.VEVENT).orElseThrow().getProperties(Property.ATTACH)).hasSize(1);
+    }
+
+    @Test
     void parsingAnAttachmentUriShouldKeepIt() {
         String ics = """
             BEGIN:VCALENDAR

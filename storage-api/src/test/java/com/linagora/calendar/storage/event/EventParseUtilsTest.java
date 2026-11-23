@@ -97,7 +97,11 @@ class EventParseUtilsTest {
             Arguments.of("DTEND widening the walk", "DTSTART:20000101T000000Z\nRRULE:FREQ=SECONDLY\nDTEND:20260101T000000Z"),
             Arguments.of("BY* lists product", "DTSTART:20260101T000000Z\nRRULE:FREQ=YEARLY;" + fullLists),
             Arguments.of("repeated BY* values", "DTSTART:20260101T000000Z\nRRULE:FREQ=YEARLY;" + repeated),
-            Arguments.of("BY* lists product of an EXRULE", "DTSTART:20260101T000000Z\nRRULE:FREQ=DAILY\nEXRULE:FREQ=YEARLY;" + fullLists));
+            Arguments.of("BY* lists product of an EXRULE", "DTSTART:20260101T000000Z\nRRULE:FREQ=DAILY\nEXRULE:FREQ=YEARLY;" + fullLists),
+            Arguments.of("BYDAY of a YEARLY rule", "DTSTART:20260101T000000Z\nRRULE:FREQ=YEARLY;BYDAY=MO,TU,WE,TH,FR,SA,SU;BYHOUR="
+                + range(0, 23) + ";BYMINUTE=" + range(0, 59) + ";BYSECOND=" + range(0, 59)),
+            Arguments.of("BYMONTHDAY of a YEARLY rule without BYMONTH", "DTSTART:20260101T000000Z\nRRULE:FREQ=YEARLY;BYMONTHDAY="
+                + range(1, 31) + ";BYHOUR=" + range(0, 23) + ";BYMINUTE=" + range(0, 59) + ";BYSECOND=" + range(0, 19)));
     }
 
     private static String range(int from, int to) {
