@@ -59,3 +59,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: agent (session e2aca2a3-2d1e-4ac1-8ff0-43617824effd, PR ical4j-hardening), to be confirmed by Benoit Tellier (maintainer), on the twake-qa deep dependency review of ical4j 4.4.0 (SEV-3).
 - Why: ical4j 4.4.0 decodes it into an `ical4j-attach*.tmp` file it only deletes on JVM exit, so each parse or copy of an ICS sent by a user or a remote iTIP sender left a file in `java.io.tmpdir`, and a path in the JVM wide delete-on-exit set. To drop once ical4j stops doing so.
 - Scope: `CalendarUtil.parseIcs` and `CalendarUtil.copyOf`, hence every ICS the side service reads.
+
+## 2026-11-23, [Tech] Recurrence expansions are bounded by the candidates ical4j builds
+
+- Decision: before ical4j expands an RRULE or EXRULE to find an occurrence (`EventParseUtils.createInstanceVEvent`, used by the calendar diff and iTIP notifications) or the next alarm (`AlarmInstantFactory`), `RecurSkipGuard.canExpand` bounds the walked periods times the product of the BY* list sizes (repeated values included) to 1,000,000 (`tcalendar.recur.max.expanded.candidates`). A rule with a COUNT is counted from DTSTART (at most COUNT periods), the lookup is widened by the span of the event (DURATION or DTEND minus DTSTART), and a rule over the bound gives no occurrence (an `IllegalArgumentException`) and no alarm.
+- Decided by: agent (session e2aca2a3-2d1e-4ac1-8ff0-43617824effd, PR ical4j-hardening), to be confirmed by Benoit Tellier (maintainer), on the twake-qa deep dependency review of ical4j 4.4.0 (SEV-1, SEV-2).
+- Why: ical4j builds the whole BY* product of a period in memory before filtering it, does not skip ahead for a COUNT rule, and walks every period of the span: a few hundred bytes of RRULE threw an `OutOfMemoryError` in the AMQP consumers serving every tenant. Refusing rather than truncating the rule, as `capCount` does for alarms, avoids a silently wrong diff.
+- Scope: `storage-api` `RecurSkipGuard`, `EventParseUtils`, `AlarmInstantFactory`. The expiry check of `CalendarEventUtils` keeps its own bounds.

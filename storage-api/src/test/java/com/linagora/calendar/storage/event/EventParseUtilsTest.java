@@ -34,6 +34,9 @@ import java.time.format.DateTimeParseException;
 import java.time.temporal.Temporal;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import jakarta.mail.internet.AddressException;
 
@@ -41,6 +44,8 @@ import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import com.linagora.calendar.api.CalendarUtil;
@@ -81,6 +86,61 @@ class EventParseUtilsTest {
                 .isInstanceOf(IllegalArgumentException.class));
     }
 
+
+    static Stream<Arguments> rulesTooCostlyToExpand() {
+        String fullLists = "BYMONTH=" + range(1, 12) + ";BYMONTHDAY=" + range(1, 31) + ";BYHOUR=" + range(0, 23)
+            + ";BYMINUTE=" + range(0, 59) + ";BYSECOND=" + range(0, 59);
+        String repeated = "BYHOUR=" + "0,".repeat(1000) + "0;BYMINUTE=" + "0,".repeat(1000) + "0;BYSECOND=" + "0,".repeat(1000) + "0";
+        return Stream.of(
+            Arguments.of("COUNT walked from DTSTART", "DTSTART:19900101T000000Z\nRRULE:FREQ=SECONDLY;COUNT=2000000000"),
+            Arguments.of("DURATION widening the walk", "DTSTART:20000101T000000Z\nRRULE:FREQ=SECONDLY\nDURATION:P1400W"),
+            Arguments.of("DTEND widening the walk", "DTSTART:20000101T000000Z\nRRULE:FREQ=SECONDLY\nDTEND:20260101T000000Z"),
+            Arguments.of("BY* lists product", "DTSTART:20260101T000000Z\nRRULE:FREQ=YEARLY;" + fullLists),
+            Arguments.of("repeated BY* values", "DTSTART:20260101T000000Z\nRRULE:FREQ=YEARLY;" + repeated),
+            Arguments.of("BY* lists product of an EXRULE", "DTSTART:20260101T000000Z\nRRULE:FREQ=DAILY\nEXRULE:FREQ=YEARLY;" + fullLists));
+    }
+
+    private static String range(int from, int to) {
+        return IntStream.rangeClosed(from, to).mapToObj(String::valueOf).collect(Collectors.joining(","));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("rulesTooCostlyToExpand")
+    void createInstanceVEventShouldRefuseARuleTooCostlyToExpand(String description, String rule) {
+        VEvent master = (VEvent) CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-uid@test
+            %s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(rule)).getComponents().getFirst();
+
+        assertTimeoutPreemptively(Duration.ofSeconds(5),
+            () -> assertThatThrownBy(() -> EventParseUtils.createInstanceVEvent(master, Instant.parse("2026-04-08T10:00:00Z")))
+                .isInstanceOf(IllegalArgumentException.class));
+    }
+
+    @Test
+    void createInstanceVEventShouldStillExpandALongCountedSeries() {
+        VEvent master = (VEvent) CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-uid@test
+            DTSTART:20200101T100000Z
+            DURATION:P2D
+            RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;COUNT=5000
+            END:VEVENT
+            END:VCALENDAR
+            """).getComponents().getFirst();
+
+        VEvent instance = assertTimeoutPreemptively(Duration.ofSeconds(5),
+            () -> EventParseUtils.createInstanceVEvent(master, Instant.parse("2026-04-08T10:00:00Z")));
+
+        assertThat(instance.getDateTimeStart().getValue()).isEqualTo("20260408T100000Z");
+    }
 
     @Test
     void getZoneIdFromStartDateShouldRejectMissingDtStart() {
