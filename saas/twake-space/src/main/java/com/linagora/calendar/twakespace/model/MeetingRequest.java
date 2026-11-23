@@ -36,6 +36,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.common.base.Preconditions;
+import com.linagora.calendar.api.IcsText;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 
 import net.fortuna.ical4j.model.Calendar;
@@ -92,7 +93,13 @@ public record MeetingRequest(String id, MailAddress organizer, TeamCalendarId te
         }
     }
 
+    /**
+     * The texts come from a JSON event, not from an ICS: see {@link IcsText}.
+     */
     public MeetingRequest {
+        uid = IcsText.sanitizeSingleLine(uid).orElse(null);
+        title = IcsText.sanitize(title).orElse(null);
+        description = description.flatMap(IcsText::sanitize).map(StringUtils::trimToNull);
         Preconditions.checkArgument(StringUtils.isNotBlank(uid), "uid must not be empty");
         Preconditions.checkArgument(StringUtils.isNotBlank(title), "title must not be empty");
         Preconditions.checkArgument(end.isAfter(start), "the meeting must end after it starts");

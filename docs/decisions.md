@@ -66,3 +66,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: agent (session e2aca2a3-2d1e-4ac1-8ff0-43617824effd, PR ical4j-hardening), to be confirmed by Benoit Tellier (maintainer), on the twake-qa deep dependency review of ical4j 4.4.0 (SEV-1, SEV-2).
 - Why: ical4j builds the whole BY* product of a period in memory before filtering it, does not skip ahead for a COUNT rule, and walks every period of the span: a few hundred bytes of RRULE threw an `OutOfMemoryError` in the AMQP consumers serving every tenant. Refusing rather than truncating the rule, as `capCount` does for alarms, avoids a silently wrong diff.
 - Scope: `storage-api` `RecurSkipGuard`, `EventParseUtils`, `AlarmInstantFactory`. The expiry check of `CalendarEventUtils` keeps its own bounds.
+
+## 2026-11-23, [Tech] Text from outside an ICS is cleaned before ical4j writes it
+
+- Decision: text written in a TEXT value that does not come from an ICS goes through `IcsText.sanitize` (line breaks to LF, other control characters but HTAB and unpaired surrogates dropped), and a single line value such as a UID through `IcsText.sanitizeSingleLine`; Twake Space meeting requests now do so for their title, description and UID, like booking links already did.
+- Decided by: agent (session e2aca2a3-2d1e-4ac1-8ff0-43617824effd, PR ical4j-hardening), to be confirmed by Benoit Tellier (maintainer), on the twake-qa deep dependency review of ical4j 4.4.0 (SEV-4).
+- Why: ical4j writes a lone CR verbatim and its parser reads it as a line break, so a meeting title could add attendees, an organizer or alarms to the event as read back.
+- Scope: `calendar-api` `IcsText`, booking link events, Twake Space `MeetingRequest`.

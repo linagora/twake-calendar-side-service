@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.storage.model.TeamCalendarId;
 
 import net.fortuna.ical4j.model.Calendar;
@@ -118,5 +119,26 @@ class MeetingRequestTest {
         assertThat(calendar.toString())
             .contains("DTSTART;TZID=Europe/Paris:20261008T123200")
             .contains("DTEND;TZID=Europe/Paris:20261008T130200");
+    }
+
+    @Test
+    void asCalendarShouldNotLetALoneCarriageReturnInjectContentLines() throws Exception {
+        String injection = "\rATTENDEE;PARTSTAT=ACCEPTED:mailto:mallory@evil.tld\rX-INJECTED:yes";
+        MeetingRequest request = new MeetingRequest("01J9ZB2W5Q3H7K8M9N0P1R2S3T", new MailAddress("alice@space.tld"),
+            new TeamCalendarId("c41e9b07"), "6b0f6d1e" + injection, "Design review" + injection,
+            ZonedDateTime.parse("2026-10-08T12:32:00+02:00[Europe/Paris]"), ZonedDateTime.parse("2026-10-08T13:02:00+02:00[Europe/Paris]"),
+            Optional.of("Last pass" + injection));
+
+        String ics = request.asCalendar(URI.create("https://meet.space.tld/abc-defg-hij"), Instant.parse("2026-10-08T10:02:12Z")).toString();
+        VEvent event = (VEvent) CalendarUtil.parseIcs(ics.getBytes(StandardCharsets.UTF_8)).getComponent(Component.VEVENT).orElseThrow();
+
+        assertThat(ics.replace("\r\n", "")).doesNotContain("\r");
+        assertThat(event.getProperties(Property.ATTENDEE)).isEmpty();
+        assertThat(event.getProperties("X-INJECTED")).isEmpty();
+        assertThat(event.getProperties(Property.SUMMARY)).hasSize(1);
+        assertThat(event.getProperty(Property.SUMMARY).map(Property::getValue))
+            .contains("Design review\nATTENDEE;PARTSTAT=ACCEPTED:mailto:mallory@evil.tld\nX-INJECTED:yes");
+        assertThat(event.getProperty(Property.UID).map(Property::getValue))
+            .contains("6b0f6d1eATTENDEE;PARTSTAT=ACCEPTED:mailto:mallory@evil.tldX-INJECTED:yes");
     }
 }
