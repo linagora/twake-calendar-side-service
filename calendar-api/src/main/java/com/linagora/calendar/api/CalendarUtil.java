@@ -459,15 +459,23 @@ public class CalendarUtil {
         if (component instanceof VEvent vEvent) {
             return copy(vEvent);
         }
-        if (!component.getProperties(Property.ATTACH).isEmpty()) {
-            // ical4j's copy would decode inline attachments into files: see InMemoryAttach
-            return (CalendarComponent) copy((Component) component);
-        }
         try {
+            if (holdsAttach(component)) {
+                // ical4j's copy would decode inline attachments into files: see InMemoryAttach
+                return (CalendarComponent) copy((Component) component);
+            }
             return (CalendarComponent) component.copy();
         } catch (RuntimeException e) {
             return component;
         }
+    }
+
+    private static boolean holdsAttach(Component component) {
+        if (!component.getProperties(Property.ATTACH).isEmpty()) {
+            return true;
+        }
+        return component instanceof ComponentContainer<?> container
+            && container.getComponentList().getAll().stream().anyMatch(CalendarUtil::holdsAttach);
     }
 
     /**

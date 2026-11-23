@@ -94,12 +94,14 @@ public record MeetingRequest(String id, MailAddress organizer, TeamCalendarId te
     }
 
     /**
-     * The texts come from a JSON event, not from an ICS: see {@link IcsText}.
+     * The texts come from a JSON event, not from an ICS: see {@link IcsText}. The UID identifies the meeting for Twake
+     * Space, so it is refused rather than rewritten.
      */
     public MeetingRequest {
-        uid = IcsText.sanitizeSingleLine(uid).orElse(null);
+        Preconditions.checkArgument(uid == null || IcsText.sanitizeSingleLine(uid).orElseThrow().equals(uid),
+            "uid must not hold control characters");
         title = IcsText.sanitize(title).orElse(null);
-        description = description.flatMap(IcsText::sanitize).map(StringUtils::trimToNull);
+        description = Optional.ofNullable(description).flatMap(text -> text.flatMap(IcsText::sanitize)).map(StringUtils::trimToNull);
         Preconditions.checkArgument(StringUtils.isNotBlank(uid), "uid must not be empty");
         Preconditions.checkArgument(StringUtils.isNotBlank(title), "title must not be empty");
         Preconditions.checkArgument(end.isAfter(start), "the meeting must end after it starts");
