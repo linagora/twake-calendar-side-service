@@ -1456,6 +1456,38 @@ class BookingLinkReservationRouteTest {
     }
 
     @Test
+    void shouldReturnPayloadTooLargeWhenBodyExceedsMaxSize(TwakeCalendarGuiceServer server) {
+        BookingLink inserted = insertActiveBookingLink(server);
+
+        given()
+            .pathParam("bookingLinkPublicId", inserted.publicId().value())
+            .body("""
+            {
+              "startUtc": "2036-01-26T09:00:00Z",
+              "creator": {
+                "name": "BOB",
+                "email": "creator@example.com"
+              },
+              "eventTitle": "30-min intro call",
+              "notes": "%s"
+            }
+            """.formatted("n".repeat(70_000)))
+        .when()
+            .post("/api/booking-links/{bookingLinkPublicId}/book")
+        .then()
+            .statusCode(HttpStatus.SC_REQUEST_TOO_LONG)
+            .contentType(JSON)
+            .body("error", jsonEquals("""
+                {
+                  "code": 413,
+                  "type": "PayloadTooLarge",
+                  "message": "Request Entity Too Large",
+                  "details": "Request body must not exceed 65536 bytes"
+                }
+                """));
+    }
+
+    @Test
     void shouldReturnBadRequestWhenBookingLinkIsInactive(TwakeCalendarGuiceServer server) {
         BookingLinkInsertRequest insertRequest = BookingLinkInsertRequest.builder()
             .calendarUrl(CalendarURL.from(openPaaSUser.id()))

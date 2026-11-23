@@ -19,12 +19,14 @@
 package com.linagora.calendar.restapi;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Optional;
 
 import javax.net.ssl.SSLException;
 
 import jakarta.inject.Inject;
 
+import org.apache.james.core.Username;
 import org.apache.james.jmap.http.Authenticator;
 import org.apache.james.metrics.api.MetricFactory;
 import org.apache.james.util.MDCStructuredLogger;
@@ -35,6 +37,8 @@ import com.linagora.calendar.dav.DavClient;
 import com.linagora.calendar.dav.DavConfiguration;
 import com.linagora.calendar.storage.TechnicalTokenService;
 
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpStatusClass;
 import io.netty.handler.timeout.ReadTimeoutException;
@@ -50,6 +54,10 @@ import reactor.netty.http.server.HttpServerResponse;
 public class DavProxy extends DavClient {
     public static final Logger LOGGER = LoggerFactory.getLogger(DavProxy.class);
     private static final String USER_AGENT = "twake-calendar-dav-proxy " + HttpClient.USER_AGENT;
+    private static final byte[] EMPTY_BODY = new byte[0];
+    private static final List<String> FORWARDED_HEADERS = List.of("Accept", "Destination", "Depth", "Content-Type",
+        "X-Http-Method-Override", "Prefer", "If-Match", "If-None-Match", "If-Modified-Since", "If-Unmodified-Since");
+
     private final Authenticator authenticator;
     private final MetricFactory metricFactory;
 
@@ -64,32 +72,45 @@ public class DavProxy extends DavClient {
 
     public Mono<Void> forwardRequest(HttpServerRequest request, HttpServerResponse response) {
         LOGGER.debug("Proxying DAV request {} {}", request.method(), request.uri());
-        return request.receive().aggregate().asByteArray()
-            .defaultIfEmpty("".getBytes())
-            .flatMap(payload -> authenticator.authenticate(request)
-                .flatMap(session ->
-                    Mono.from(metricFactory.decoratePublisherWithTimerMetric("davProxy",
-                            httpClientWithImpersonation(session.getUser()).headers(proxiedHeader -> {
-                                    HttpHeaders entries = request.requestHeaders();
-                                    Optional.ofNullable(entries.get("X-Forwarded-For", null)).ifPresent(value -> proxiedHeader.set("X-Forwarded-For", value));
-                                    Optional.ofNullable(entries.get("Accept", null)).ifPresent(value -> proxiedHeader.add("Accept", value));
-                                    Optional.ofNullable(entries.get("Destination", null)).ifPresent(value -> proxiedHeader.add("Destination", value));
-                                    Optional.ofNullable(entries.get("Depth", null)).ifPresent(value -> proxiedHeader.add("Depth", value));
-                                    Optional.ofNullable(entries.get("Content-Type", null)).ifPresent(value -> proxiedHeader.add("Content-Type", value));
-                                    Optional.ofNullable(entries.get("X-Http-Method-Override", null)).ifPresent(value -> proxiedHeader.add("X-Http-Method-Override", value));
-                                    Optional.ofNullable(entries.get("Prefer", null)).ifPresent(value -> proxiedHeader.add("Prefer", value));
-                                    Optional.ofNullable(entries.get("If-Match", null)).ifPresent(value -> proxiedHeader.add("If-Match", value));
-                                    Optional.ofNullable(entries.get("If-None-Match", null)).ifPresent(value -> proxiedHeader.add("If-None-Match", value));
-                                    Optional.ofNullable(entries.get("If-Modified-Since", null)).ifPresent(value -> proxiedHeader.add("If-Modified-Since", value));
-                                    Optional.ofNullable(entries.get("If-Unmodified-Since", null)).ifPresent(value -> proxiedHeader.add("If-Unmodified-Since", value));
-                                })
-                                .request(request.method())
-                                .uri(request.uri().substring(4)) // remove /dav
-                                .send((req, out) -> out.sendByteArray(Mono.just(payload)))
-                                .response((res, in) -> handleSabreResponse(response, request, res, in))))
-                        .then()
-                        .doOnError(error -> logUpstreamFailure(request, error))
-                        .onErrorMap(DavProxy::asProxyError)));
+        // Authenticate before reading the body: an anonymous caller must not get its upload buffered.
+        return authenticator.authenticate(request)
+            .flatMap(session -> proxy(request, response, session.getUser()));
+    }
+
+    private Mono<Void> proxy(HttpServerRequest request, HttpServerResponse response, Username user) {
+        boolean hasBody = hasBody(request.requestHeaders());
+        return Mono.from(metricFactory.decoratePublisherWithTimerMetric("davProxy",
+                httpClientWithImpersonation(user)
+                    // The request body is streamed once: a retry could not send it again.
+                    .disableRetry(hasBody)
+                    .headers(proxiedHeaders -> copyForwardedHeaders(request.requestHeaders(), proxiedHeaders))
+                    .request(request.method())
+                    .uri(request.uri().substring(4)) // remove /dav
+                    .send((req, out) -> sendBody(request, out, hasBody))
+                    .response((res, in) -> handleSabreResponse(response, request, res, in))))
+            .then()
+            .doOnError(error -> logUpstreamFailure(request, error))
+            .onErrorMap(DavProxy::asProxyError);
+    }
+
+    private static void copyForwardedHeaders(HttpHeaders entries, HttpHeaders proxiedHeaders) {
+        Optional.ofNullable(entries.get("X-Forwarded-For", null)).ifPresent(value -> proxiedHeaders.set("X-Forwarded-For", value));
+        Optional.ofNullable(entries.get(HttpHeaderNames.CONTENT_LENGTH, null)).ifPresent(value -> proxiedHeaders.set(HttpHeaderNames.CONTENT_LENGTH, value));
+        FORWARDED_HEADERS.forEach(header -> Optional.ofNullable(entries.get(header, null))
+            .ifPresent(value -> proxiedHeaders.add(header, value)));
+    }
+
+    private static boolean hasBody(HttpHeaders headers) {
+        return headers.contains(HttpHeaderNames.CONTENT_LENGTH)
+            || headers.containsValue(HttpHeaderNames.TRANSFER_ENCODING, HttpHeaderValues.CHUNKED, true);
+    }
+
+    private static NettyOutbound sendBody(HttpServerRequest request, NettyOutbound out, boolean hasBody) {
+        if (hasBody) {
+            // Stream the body chunk by chunk: it is never held whole in memory.
+            return out.send(request.receive().retain());
+        }
+        return out.sendByteArray(Mono.just(EMPTY_BODY));
     }
 
     private static void logUpstreamFailure(HttpServerRequest request, Throwable error) {

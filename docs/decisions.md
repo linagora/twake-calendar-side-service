@@ -45,3 +45,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: agent (session 7717c82f-49cb-473b-9970-18a578db177b, PR qa-rest-batch), to be confirmed by Benoit Tellier (maintainer).
 - Why: without a forced refresh, an immediate retry would snapshot the same stale documents and hit the same conflicts.
 - Scope: `OpensearchCalendarSearchService` delete of an event, stale occurrences of a series, and whole-calendar deletion.
+
+## 2026-11-23, [Tech] The DAV proxy authenticates first and streams the request body; the booking route body is capped at 64 KiB
+
+- Decision: `DavProxy` authenticates the caller before reading any byte of the body, then streams the body to Sabre chunk by chunk (forwarding `Content-Length` when the client gave one, with HTTP client retries off since a streamed body cannot be sent twice) instead of aggregating it. The anonymous `POST /api/booking-links/{id}/book` reads at most 64 KiB and answers 413 `PayloadTooLarge` beyond, whether announced by `Content-Length` or counted on a chunked body. The authenticated routes that aggregate their body are left unchanged.
+- Decided by: chibenwa, [issue #1630](https://github.com/linagora/twake-calendar-side-service/issues/1630); streaming instead of a configured size cap, and the 64 KiB value, chosen by agent (PR for #1630), to be confirmed by chibenwa
+- Why: an anonymous client could make the JVM hold multi-gigabyte or endless uploads before getting its 401, bringing the whole service down. Streaming keeps legitimate DAV uploads (imports, large calendars) unbounded without memory cost; a valid reservation (20 attendees, 255 characters title, 2000 characters notes) fits far below 64 KiB.
+- Scope: `calendar-rest-api`, `DavProxy`, `BookingLinkReservationRoute`, `BoundedRequestBody`.

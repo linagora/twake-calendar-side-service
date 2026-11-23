@@ -25,6 +25,7 @@ public enum ErrorType {
     UNAUTHORIZED("Unauthorized"),
     FORBIDDEN("Forbidden"),
     NOT_FOUND("NotFound"),
+    PAYLOAD_TOO_LARGE("PayloadTooLarge"),
     UNPROCESSABLE_ENTITY("UnprocessableEntity"),
     SERVICE_UNAVAILABLE("ServiceUnavailable"),
     SERVER_ERROR("ServerError"),
@@ -37,6 +38,7 @@ public enum ErrorType {
             case 401 -> UNAUTHORIZED;
             case 403 -> FORBIDDEN;
             case 404 -> NOT_FOUND;
+            case 413 -> PAYLOAD_TOO_LARGE;
             case 422 -> UNPROCESSABLE_ENTITY;
             case 503 -> SERVICE_UNAVAILABLE;
             default -> SERVER_ERROR;
