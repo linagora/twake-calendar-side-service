@@ -46,6 +46,7 @@ import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationException.SlotNotAvailableException;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest;
 import com.linagora.calendar.restapi.routes.BookingLinkReservationService.BookingRequest.BookingAttendee;
+import com.linagora.calendar.restapi.routes.BoundedRequestBody.PayloadTooLargeException;
 import com.linagora.calendar.storage.booking.BookingLinkNotActiveException;
 import com.linagora.calendar.storage.booking.BookingLinkNotFoundException;
 import com.linagora.calendar.storage.booking.BookingLinkPublicId;
@@ -60,6 +61,8 @@ public class BookingLinkReservationRoute extends PublicRoute {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingLinkReservationRoute.class);
     private static final String BOOKING_LINK_PUBLIC_ID_PARAM = "bookingLinkPublicId";
+    // Anonymous route: a valid reservation (20 attendees, 255 characters title, 2000 characters notes) fits well below.
+    private static final BoundedRequestBody REQUEST_BODY = new BoundedRequestBody(64 * 1024);
 
     private final BookingLinkReservationService bookingLinkReservationService;
     private final BookedEventTokenSigner bookedEventTokenSigner;
@@ -78,7 +81,7 @@ public class BookingLinkReservationRoute extends PublicRoute {
     }
 
     protected Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
-        return request.receive().aggregate().asByteArray()
+        return REQUEST_BODY.read(request)
             .flatMap(bytes -> Mono.fromCallable(() -> ReservationRequestDTO.parse(bytes).toBookingRequest()))
             .flatMap(bookingRequest -> bookingLinkReservationService.book(BookingLinkPublicId.from(request.param(BOOKING_LINK_PUBLIC_ID_PARAM)), bookingRequest))
             .flatMap(bookedEventTokenSigner::signAsJwt)
@@ -110,6 +113,10 @@ public class BookingLinkReservationRoute extends PublicRoute {
             case BookingLinkReservationException bookingLinkReservationException -> {
                 LOGGER.error("Booking operation failed for [{}]", request.uri(), bookingLinkReservationException);
                 yield ErrorResponseHandler.handle(response, HttpResponseStatus.INTERNAL_SERVER_ERROR, bookingLinkReservationException);
+            }
+            case PayloadTooLargeException payloadTooLargeException -> {
+                LOGGER.warn("Booking request body too large for [{}]", request.uri());
+                yield ErrorResponseHandler.handle(response, HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE, payloadTooLargeException);
             }
             case IllegalArgumentException illegalArgumentException -> {
                 LOGGER.warn("Bad request for [{}]: {}", request.uri(), illegalArgumentException.getMessage());
