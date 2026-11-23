@@ -52,3 +52,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: chibenwa, [issue #1630](https://github.com/linagora/twake-calendar-side-service/issues/1630); streaming instead of a configured size cap, and the 64 KiB value, chosen by agent (PR for #1630), to be confirmed by chibenwa
 - Why: an anonymous client could make the JVM hold multi-gigabyte or endless uploads before getting its 401, bringing the whole service down. Streaming keeps legitimate DAV uploads (imports, large calendars) unbounded without memory cost; a valid reservation (20 attendees, 255 characters title, 2000 characters notes) fits far below 64 KiB.
 - Scope: `calendar-rest-api`, `DavProxy`, `BookingLinkReservationRoute`, `BoundedRequestBody`.
+
+## 2026-11-23, [Tech] Inline ATTACH values are decoded on the heap
+
+- Decision: the side service builds `ATTACH` properties through `InMemoryAttach`, registered ahead of the ical4j factories in `CalendarUtil` and used by `CalendarUtil.copyOf`: a value with an `ENCODING` parameter is decoded into a heap buffer, never into a file.
+- Decided by: agent (session e2aca2a3-2d1e-4ac1-8ff0-43617824effd, PR ical4j-hardening), to be confirmed by Benoit Tellier (maintainer), on the twake-qa deep dependency review of ical4j 4.4.0 (SEV-3).
+- Why: ical4j 4.4.0 decodes it into an `ical4j-attach*.tmp` file it only deletes on JVM exit, so each parse or copy of an ICS sent by a user or a remote iTIP sender left a file in `java.io.tmpdir`, and a path in the JVM wide delete-on-exit set. To drop once ical4j stops doing so.
+- Scope: `CalendarUtil.parseIcs` and `CalendarUtil.copyOf`, hence every ICS the side service reads.

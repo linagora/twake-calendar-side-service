@@ -82,6 +82,7 @@ import net.fortuna.ical4j.model.component.Observance;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.component.VTimeZone;
 import net.fortuna.ical4j.model.component.XComponent;
+import net.fortuna.ical4j.model.property.Attach;
 import net.fortuna.ical4j.model.property.DtStart;
 import net.fortuna.ical4j.model.property.Method;
 import net.fortuna.ical4j.model.property.RRule;
@@ -97,10 +98,10 @@ public class CalendarUtil {
     private static final List<ComponentFactory<? extends Component>> COMPONENT_FACTORIES = new DefaultComponentFactorySupplier().get();
     /**
      * The property factories holding no per-property state, in lookup order: VERSION parsed by {@link LenientVersion},
-     * then the ical4j ones.
+     * ATTACH by {@link InMemoryAttach}, then the ical4j ones.
      */
     private static final List<PropertyFactory<?>> STATELESS_PROPERTY_FACTORIES = Stream.concat(
-            Stream.<PropertyFactory<?>>of(new LenientVersion.Factory()),
+            Stream.<PropertyFactory<?>>of(new LenientVersion.Factory(), new InMemoryAttach.Factory()),
             new DefaultPropertyFactorySupplier().get().stream())
         .toList();
 
@@ -458,6 +459,10 @@ public class CalendarUtil {
         if (component instanceof VEvent vEvent) {
             return copy(vEvent);
         }
+        if (!component.getProperties(Property.ATTACH).isEmpty()) {
+            // ical4j's copy would decode inline attachments into files: see InMemoryAttach
+            return (CalendarComponent) copy((Component) component);
+        }
         try {
             return (CalendarComponent) component.copy();
         } catch (RuntimeException e) {
@@ -572,6 +577,9 @@ public class CalendarUtil {
         }
         if (property instanceof Version) {
             return new LenientVersion(property.getParameterList(), property.getValue());
+        }
+        if (property instanceof Attach attach) {
+            return InMemoryAttach.copy(attach);
         }
         try {
             return property.copy();
