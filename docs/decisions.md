@@ -87,3 +87,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: agent (session e2aca2a3-2d1e-4ac1-8ff0-43617824effd, PR ical4j-hardening review), to be confirmed by Benoit Tellier (maintainer).
 - Why: the UID identifies the meeting for Twake Space and for the lookups of the side service: cleaning it could merge two distinct meetings into one event.
 - Scope: Twake Space `MeetingRequest`.
+
+## 2026-11-23, [Tech] Contact search lists each address book by full name
+
+- Decision: `CardDavClient.searchContacts` asks Sabre for `sort=fn` instead of `sort=uri`, so `POST /api/contacts/search` keeps the address book order of the request and lists the contacts of each book by the first letter of their full name (`fn` as Sabre stores it: ASCII folded, lower case, `#` for a non letter; ties in `_id` order), no longer by card URI.
+- Decided by: agent (PR #1633, esn-sabre 2.5.0.7 bump), to be confirmed by Benoit Tellier (maintainer).
+- Why: esn-sabre 2.5.0.7 answers 400 to a contact listing sorted on anything but `fn`, `email` or `_id`, which broke every contact search. Sabre adds `_id` as tie-breaker, so `offset` pages stay stable; `_id` alone is not even insertion order (the ObjectIds come from several PHP workers), and contacts often have no email. Sorting by the whole full name would need an esn-sabre change (`fn_sort` is only used by the cursor listing).
+- Scope: `calendar-dav` `CardDavClient`, the contact search route.

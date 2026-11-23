@@ -68,7 +68,7 @@ Successful requests return `200 OK`:
 
 Each item preserves the DAV `_links`, `etag` and `data`. The `data` field uses jCard,
 the JSON representation of vCard defined by [RFC 7095](https://www.rfc-editor.org/rfc/rfc7095).
-Results follow the address book order from the request and are sorted by contact URI
-within each book. `offset` and `limit` are applied to the combined result.
+Results follow the address book order from the request and are sorted by the first
+letter of their full name within each book, as Sabre sorts them. `offset` and `limit` are applied to the combined result.
 
 Invalid requests return `400`. DAV dependency failures return `502`.

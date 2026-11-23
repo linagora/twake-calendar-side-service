@@ -1106,7 +1106,7 @@ public class CardDavClientTest {
     }
 
     @Test
-    void searchContactsShouldFilterAndSortByUriBeforeLimiting() {
+    void searchContactsShouldFilterAndSortByFullNameBeforeLimiting() {
         AddressBookURL addressBook = new AddressBookURL(user.id(), "contacts");
         String vcard = """
             BEGIN:VCARD
@@ -1116,9 +1116,9 @@ public class CardDavClientTest {
             END:VCARD
             """;
         testee.upsertContact(user.username(), addressBook, "b", vcard.replace("{uid}", "b")
-            .replace("{name}", "Search 1061 Bob").getBytes(StandardCharsets.UTF_8)).block();
+            .replace("{name}", "Bob Search 1061").getBytes(StandardCharsets.UTF_8)).block();
         testee.upsertContact(user.username(), addressBook, "a", vcard.replace("{uid}", "a")
-            .replace("{name}", "Search 1061 Alice").getBytes(StandardCharsets.UTF_8)).block();
+            .replace("{name}", "Alice Search 1061").getBytes(StandardCharsets.UTF_8)).block();
         testee.upsertContact(user.username(), addressBook, "c", vcard.replace("{uid}", "c")
             .replace("{name}", "Other Contact").getBytes(StandardCharsets.UTF_8)).block();
 
