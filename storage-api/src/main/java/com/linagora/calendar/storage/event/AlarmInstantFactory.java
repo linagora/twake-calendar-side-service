@@ -398,7 +398,7 @@ public interface AlarmInstantFactory {
                     this.seed = seedStart;
                     this.periodEnd = now.atZone(seedStart.getZone()).plusYears(1);
                 }
-                this.countedOccurrences = Suppliers.memoize(() -> expand(seed, periodEnd, -1)
+                this.countedOccurrences = Suppliers.memoize(() -> expand(seed, periodEnd, periodEnd, -1)
                     .filter(this::isUpcoming)
                     .collect(Collectors.toCollection(LinkedHashSet::new)));
             }
@@ -416,7 +416,8 @@ public interface AlarmInstantFactory {
                     return countedOccurrences.get().stream()
                         .filter(date -> !startTime(date).toInstant().isBefore(periodStart));
                 }
-                return expand(toSeedType(periodStart), periodEnd, -1)
+                Temporal walkStart = toSeedType(periodStart);
+                return expand(walkStart, walkStart, periodEnd, -1)
                     .filter(this::isUpcoming);
             }
 
@@ -425,7 +426,7 @@ public interface AlarmInstantFactory {
                     return countedOccurrences.get().contains(recurrenceDate);
                 }
                 return isUpcoming(recurrenceDate) && toSeedType(recurrenceDate)
-                    .map(date -> expand(date, date, 1).anyMatch(recurrenceDate::equals))
+                    .map(date -> expand(date, date, date, 1).anyMatch(recurrenceDate::equals))
                     .orElse(false);
             }
 
@@ -443,10 +444,12 @@ public interface AlarmInstantFactory {
             }
 
             // Without COUNT, ical4j skips the occurrences before the period start: the cost does not depend on how
-            // far in the past DTSTART is, up to what it can skip. A series further away has no computable alarm.
-            private Stream<Temporal> expand(Temporal periodStart, Temporal periodEnd, int maxCount) {
-                if (!RecurSkipGuard.canSkip(recur, seed, periodStart)) {
-                    LOGGER.warn("Cannot expand {} from {} up to {}: no alarm computed", recur, seed, periodStart);
+            // far in the past DTSTART is, up to what it can skip. A series further away, or whose periods hold too many
+            // candidates, has no computable alarm. walkEnd is where the walk is bounded: the stream is lazy, so the
+            // period start when only the next occurrences are taken.
+            private Stream<Temporal> expand(Temporal periodStart, Temporal walkEnd, Temporal periodEnd, int maxCount) {
+                if (!RecurSkipGuard.canExpand(recur, seed, periodStart, walkEnd)) {
+                    LOGGER.warn("Cannot expand {} from {} over {} - {}: no alarm computed", recur, seed, periodStart, walkEnd);
                     return Stream.empty();
                 }
                 return recur.getDatesAsStream(seed, periodStart, periodEnd, maxCount)

@@ -39,6 +39,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import org.apache.james.core.MailAddress;
@@ -104,6 +106,34 @@ public class AlarmInstantFactoryTest {
             () -> factory.computeNextAlarmInstant(farAwayRule("DTSTART:20000101T000000Z\nRRULE:FREQ=SECONDLY"), Username.of("bob@example.com")))).isPresent();
     }
 
+
+    @ParameterizedTest
+    @ValueSource(strings = {"BYMONTH", "REPEATED"})
+    void computeNextAlarmInstantShouldReturnOnARuleWhosePeriodsHoldTooManyCandidates(String kind) {
+        String lists = kind.equals("BYMONTH")
+            ? "BYMONTH=" + range(1, 12) + ";BYMONTHDAY=" + range(1, 31) + ";BYHOUR=" + range(0, 23) + ";BYMINUTE=" + range(0, 59) + ";BYSECOND=" + range(0, 59)
+            : "BYHOUR=" + "0,".repeat(1000) + "0;BYMINUTE=" + "0,".repeat(1000) + "0;BYSECOND=" + "0,".repeat(1000) + "0";
+        AlarmInstantFactory factory = new AlarmInstantFactory.Default(
+            Clock.fixed(Instant.parse("2025-07-23T00:00:00Z"), ZoneOffset.UTC));
+
+        assertThat(assertTimeoutPreemptively(Duration.ofSeconds(5),
+            () -> factory.computeNextAlarmInstant(farAwayRule("DTSTART:20260101T000000Z\nRRULE:FREQ=YEARLY;" + lists), Username.of("bob@example.com"))))
+            .isEmpty();
+    }
+
+    @Test
+    void computeNextAlarmInstantShouldStillComputeALongCountedSeries() {
+        AlarmInstantFactory factory = new AlarmInstantFactory.Default(
+            Clock.fixed(Instant.parse("2025-07-23T00:00:00Z"), ZoneOffset.UTC));
+
+        assertThat(assertTimeoutPreemptively(Duration.ofSeconds(5),
+            () -> factory.computeNextAlarmInstant(farAwayRule("DTSTART:20000103T090000Z\nRRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;COUNT=81920"),
+                Username.of("bob@example.com")))).isPresent();
+    }
+
+    private static String range(int from, int to) {
+        return IntStream.rangeClosed(from, to).mapToObj(String::valueOf).collect(Collectors.joining(","));
+    }
 
     private AlarmInstantFactory testee(Instant clockFixedInstant) {
         return new AlarmInstantFactory.Default(Clock.fixed(clockFixedInstant, ZoneOffset.UTC));

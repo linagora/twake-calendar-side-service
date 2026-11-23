@@ -594,20 +594,35 @@ public class EventParseUtils {
     }
 
     /**
-     * The lookup period starts no later than the recurrence date: a rule that can skip up to it can skip up to the period.
+     * ical4j walks the lookup period, which spans at most a day before and two days after the recurrence date, widened by
+     * the span of the event (DURATION, or DTEND minus DTSTART): it starts at the start of the period minus the span, to
+     * find the occurrences overlapping the period. See {@link RecurSkipGuard} for the bounds of that walk.
      */
     private static void checkRulesCanBeExpanded(VEvent master, Temporal recurrenceDate, ZoneId floatingZone) {
-        Temporal target = recurrenceDate instanceof LocalDate ? recurrenceDate : toInstant(recurrenceDate, floatingZone);
+        Instant target = RecurSkipGuard.instant(recurrenceDate instanceof LocalDate ? recurrenceDate : toInstant(recurrenceDate, floatingZone));
+        Instant walkStart = minusAbsolute(target.atZone(ZoneOffset.UTC).minusDays(1), span(master));
+        Instant walkEnd = target.plus(Duration.ofDays(2));
         master.getProperty(Property.DTSTART)
             .flatMap(EventParseUtils::parseTime)
             .ifPresent(start -> Stream.concat(
                     master.getProperties(Property.RRULE).stream().filter(RRule.class::isInstance).map(rule -> ((RRule<?>) rule).getRecur()),
                     master.getProperties(Property.EXRULE).stream().filter(ExRule.class::isInstance).map(rule -> ((ExRule<?>) rule).getRecur()))
-                .filter(recur -> !RecurSkipGuard.canSkip(recur, start, target))
+                .filter(recur -> !RecurSkipGuard.canExpand(recur, start, walkStart, walkEnd))
                 .findAny()
                 .ifPresent(recur -> {
-                    throw new IllegalArgumentException("Cannot expand " + recur + " from " + start + " up to " + target);
+                    throw new IllegalArgumentException("Cannot expand " + recur + " from " + start + " over " + walkStart + " - " + walkEnd);
                 }));
+    }
+
+    /**
+     * A span too large to be subtracted throws a {@link DateTimeException}: the occurrence is not looked up.
+     */
+    private static Instant minusAbsolute(ZonedDateTime dateTime, TemporalAmount span) {
+        return switch (span) {
+            case Duration duration -> dateTime.minus(duration.abs()).toInstant();
+            case java.time.Period datePeriod -> dateTime.minus(datePeriod.isNegative() ? datePeriod.negated() : datePeriod).toInstant();
+            default -> dateTime.toInstant();
+        };
     }
 
     /**
