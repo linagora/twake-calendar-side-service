@@ -22,6 +22,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -29,6 +33,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -43,6 +48,7 @@ import net.fortuna.ical4j.model.TimeZoneRegistry;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.component.VTimeZone;
 import net.fortuna.ical4j.model.parameter.PartStat;
+import net.fortuna.ical4j.model.property.Attach;
 import net.fortuna.ical4j.model.property.XProperty;
 import net.fortuna.ical4j.model.property.immutable.ImmutableMethod;
 
@@ -1053,5 +1059,65 @@ class CalendarUtilTest {
 
         assertThat(calendar.getProperty(Property.VERSION).get().getValue())
             .isEqualTo("2.0");
+    }
+
+    @Test
+    void parsingAndCopyingAnInlineAttachmentShouldLeaveNoTemporaryFile() throws Exception {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:x
+            BEGIN:VEVENT
+            UID:a
+            DTSTART:20260401T100000Z
+            ATTACH;ENCODING=BASE64;VALUE=BINARY;FMTTYPE=text/plain:aGVsbG8=
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:AUDIO
+            ATTACH;ENCODING=BASE64;VALUE=BINARY:aGVsbG8=
+            END:VALARM
+            END:VEVENT
+            BEGIN:VTODO
+            UID:b
+            ATTACH;ENCODING=BASE64;VALUE=BINARY:aGVsbG8=
+            END:VTODO
+            END:VCALENDAR
+            """;
+        List<Path> before = ical4jAttachFiles();
+
+        Calendar calendar = CalendarUtil.parseIcs(ics);
+        Calendar copy = CalendarUtil.copyOf(calendar);
+
+        assertThat(ical4jAttachFiles()).isEqualTo(before);
+        Attach attach = (Attach) copy.getComponent(Component.VEVENT).orElseThrow().getProperty(Property.ATTACH).orElseThrow();
+        assertThat(new String(attach.getBinaryData(), StandardCharsets.US_ASCII)).isEqualTo("hello");
+        assertThat(copy.toString()).isEqualTo(calendar.toString())
+            .contains("ATTACH;ENCODING=BASE64;VALUE=BINARY;FMTTYPE=text/plain:aGVsbG8=");
+    }
+
+    @Test
+    void parsingAnAttachmentUriShouldKeepIt() {
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:x
+            BEGIN:VEVENT
+            UID:a
+            DTSTART:20260401T100000Z
+            ATTACH;FMTTYPE=application/pdf:https://example.com/a.pdf
+            END:VEVENT
+            END:VCALENDAR
+            """;
+
+        Attach attach = (Attach) CalendarUtil.copyOf(CalendarUtil.parseIcs(ics)).getComponent(Component.VEVENT).orElseThrow()
+            .getProperty(Property.ATTACH).orElseThrow();
+
+        assertThat(attach.getUri()).hasToString("https://example.com/a.pdf");
+    }
+
+    private static List<Path> ical4jAttachFiles() throws IOException {
+        try (Stream<Path> files = Files.list(Path.of(System.getProperty("java.io.tmpdir")))) {
+            return files.filter(file -> file.getFileName().toString().startsWith("ical4j-attach")).sorted().toList();
+        }
     }
 }
