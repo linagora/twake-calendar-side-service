@@ -136,3 +136,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: Benoit Tellier (post filtering on the stored `eventPath`, no index change), on the twake-qa security review of `e26eece1e897` (AMQP SEV-2).
 - Why: a user could put another user's event UID in their own object with an EMAIL VALARM naming that user, and the second write replaced the victim's reminder with the attacker's content, path and trigger time. UIDs are only unique within a calendar home.
 - Scope: `calendar-amqp` `EventAlarmHandler`. Two users keeping the same UID cannot both schedule an alarm for the same recipient: the recipient's own object wins, otherwise the first record.
+
+## 2026-11-24, [Product] Resources are booked only from their own domain
+
+- Decision: iTIP local delivery does not deliver a REQUEST or ADD to a resource whose domain differs from the sender's domain (warning logged, no `/itip` call), unless the resource already holds an object with that UID: a booking made before can still be updated or cancelled, and a CANCEL always goes through; and `EventResourceHandler` neither accepts nor mails the administrators a booking whose ORGANIZER is not in the resource domain or cannot be read (a booking without ORGANIZER keeps the usual handling).
+- Decided by: Benoit Tellier, on the twake-qa security review of `e26eece1e897` (AMQP SEV-3).
+- Why: a user of tenant X could book any resource of tenant Y, auto-accepted when it has no administrator, while booking links and `GET /api/resources/{id}` already treat resources as domain scoped.
+- Scope: `calendar-amqp` `ItipLocalDeliveryConsumer`, `EventResourceHandler`. Cross-domain booking, if ever wanted, needs an explicit option.
