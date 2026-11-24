@@ -91,4 +91,32 @@ class RecurSkipGuardTest {
 
         assertThat(RecurSkipGuard.canExpand(new Recur<>(rule), seed, target, target)).isTrue();
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "FREQ=HOURLY;BYWEEKNO=1;BYMINUTE=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59;BYSECOND=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31",
+        "FREQ=SECONDLY;BYWEEKNO=20"
+    })
+    void canExpandShouldCountTheYearIcal4jWalksForByweeknoBelowYearly(String rule) {
+        Instant start = Instant.parse("2026-04-08T10:00:00Z");
+
+        assertThat(RecurSkipGuard.canExpand(new Recur<>(rule), start, start, start)).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "FREQ=WEEKLY;BYDAY=1MO",
+        "FREQ=DAILY;BYDAY=-1FR",
+        "FREQ=HOURLY;BYDAY=1MO;BYMINUTE=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59;BYSECOND=0,1",
+        "FREQ=DAILY;BYWEEKNO=20",
+        "FREQ=MINUTELY;BYWEEKNO=20",
+        "FREQ=YEARLY;BYWEEKNO=1;BYDAY=MO",
+        "FREQ=MONTHLY;BYDAY=1MO",
+        "FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU"
+    })
+    void canExpandShouldAcceptCheapRulesMappingCandidatesBack(String rule) {
+        Instant start = Instant.parse("2026-04-08T10:00:00Z");
+
+        assertThat(RecurSkipGuard.canExpand(new Recur<>(rule), start, start, start)).isTrue();
+    }
 }

@@ -107,7 +107,9 @@ class EventParseUtilsTest {
             Arguments.of("BYDAY of a YEARLY rule", "DTSTART:20260101T000000Z\nRRULE:FREQ=YEARLY;BYDAY=MO,TU,WE,TH,FR,SA,SU;BYHOUR="
                 + range(0, 23) + ";BYMINUTE=" + range(0, 59) + ";BYSECOND=" + range(0, 59)),
             Arguments.of("BYMONTHDAY of a YEARLY rule without BYMONTH", "DTSTART:20260101T000000Z\nRRULE:FREQ=YEARLY;BYMONTHDAY="
-                + range(1, 31) + ";BYHOUR=" + range(0, 23) + ";BYMINUTE=" + range(0, 59) + ";BYSECOND=" + range(0, 19)));
+                + range(1, 31) + ";BYHOUR=" + range(0, 23) + ";BYMINUTE=" + range(0, 59) + ";BYSECOND=" + range(0, 19)),
+            Arguments.of("BYWEEKNO of an HOURLY rule", "DTSTART:20250601T000000Z\nRRULE:FREQ=HOURLY;BYWEEKNO=1;BYMINUTE="
+                + range(0, 59) + ";BYSECOND=" + range(0, 31)));
     }
 
     private static String range(int from, int to) {
