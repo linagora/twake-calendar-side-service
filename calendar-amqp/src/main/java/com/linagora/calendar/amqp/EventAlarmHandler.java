@@ -22,6 +22,7 @@ import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingR
 
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -31,14 +32,15 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavCalendarObject;
 import com.linagora.calendar.smtp.EventEmailFilter;
+import com.linagora.calendar.smtp.MailUsernames;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventFactory;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
@@ -130,15 +132,47 @@ public class EventAlarmHandler {
     }
 
     private Mono<AlarmEvent> upsertAlarmEvent(Username username, AlarmEvent alarmEvent) {
-        return alarmEventDAO.find(alarmEvent.eventUid(), Throwing.supplier(username::asMailAddress).get())
+        return alarmEventDAO.find(alarmEvent.eventUid(), alarmEvent.recipient())
+            .map(Optional::of)
+            .defaultIfEmpty(Optional.empty())
             .flatMap(existing -> {
+                if (existing.isEmpty()) {
+                    LOGGER.debug("Creating new alarm event: {}", alarmEvent.eventUid().value());
+                    return alarmEventDAO.create(alarmEvent).thenReturn(alarmEvent);
+                }
+                if (!sameCalendarHome(existing.get(), alarmEvent) && !isOwnedByItsRecipient(username, alarmEvent)) {
+                    // UIDs are only unique within a calendar home: another user's object never replaces this alarm, while
+                    // the recipient's own object always does.
+                    LOGGER.warn("Not replacing the alarm of {} for {} scheduled by {}: {} holds the same UID",
+                        alarmEvent.recipient().asString(), alarmEvent.eventUid().value(), existing.get().eventPath(), alarmEvent.eventPath());
+                    return Mono.empty();
+                }
                 LOGGER.debug("Updating existing alarm event: {}", alarmEvent.eventUid().value());
                 return alarmEventDAO.update(alarmEvent).thenReturn(alarmEvent);
-            })
-            .switchIfEmpty(Mono.defer(() -> {
-                LOGGER.debug("Creating new alarm event: {}", alarmEvent.eventUid().value());
-                return alarmEventDAO.create(alarmEvent).thenReturn(alarmEvent);
-            }));
+            });
+    }
+
+    private static boolean isOwnedByItsRecipient(Username owner, AlarmEvent alarmEvent) {
+        return MailUsernames.asUsername(alarmEvent.recipient())
+            .map(recipient -> recipient.asString().equalsIgnoreCase(owner.asString()))
+            .orElse(false);
+    }
+
+    /**
+     * Records written before the event path was stored hold an empty one: they stay replaceable.
+     */
+    private static boolean sameCalendarHome(AlarmEvent existing, AlarmEvent alarmEvent) {
+        return calendarHome(existing.eventPath())
+            .map(existingHome -> calendarHome(alarmEvent.eventPath()).map(existingHome::equals).orElse(false))
+            .orElse(true);
+    }
+
+    private static Optional<OpenPaaSId> calendarHome(String eventPath) {
+        try {
+            return Optional.of(EventFieldConverter.extractCalendarURL(eventPath).base());
+        } catch (CalendarEventDeserializeException e) {
+            return Optional.empty();
+        }
     }
 
     public Mono<Void> handleDelete(CalendarAlarmMessageDTO alarmMessageDTO) {

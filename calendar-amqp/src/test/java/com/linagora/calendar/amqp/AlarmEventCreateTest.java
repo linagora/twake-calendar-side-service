@@ -246,6 +246,68 @@ public class AlarmEventCreateTest {
     }
 
     @Test
+    void theRecipientsOwnEventShouldReplaceAnAlarmScheduledFromAnotherHome() throws Exception {
+        OpenPaaSUser victim = attendee2;
+        OpenPaaSUser attacker = organizer;
+        String eventUid = UUID.randomUUID().toString();
+        String attackerAlarm = """
+            BEGIN:VALARM
+            TRIGGER:-PT30M
+            ACTION:EMAIL
+            ATTENDEE:mailto:%s
+            ATTENDEE:mailto:%s
+            SUMMARY:Test
+            DESCRIPTION:Forged
+            END:VALARM""".formatted(attacker.username().asString(), victim.username().asString());
+        davTestHelper.upsertCalendar(attacker, generateEventWithValarm(eventUid, attacker.username().asString(),
+            List.of(attendee.username().asString()), PartStat.NEEDS_ACTION, attackerAlarm), eventUid);
+        awaitAlarmEventCreated(eventUid, victim.username());
+
+        davTestHelper.upsertCalendar(victim, generateEventWithValarm(eventUid, victim.username().asString(),
+            List.of(attendee.username().asString()), PartStat.NEEDS_ACTION, valarmFor(victim.username().asString())), eventUid);
+
+        awaitAtMost.atMost(Duration.ofSeconds(30))
+            .untilAsserted(() -> assertThat(alarmEventDAO.find(new EventUid(eventUid), victim.username().asMailAddress()).block().eventPath())
+                .contains(victim.id().value()));
+    }
+
+    @Test
+    void anotherUsersEventWithTheSameUidShouldNotReplaceTheAlarm() throws Exception {
+        OpenPaaSUser victim = attendee2;
+        OpenPaaSUser attacker = organizer;
+        String eventUid = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(victim, generateEventWithValarm(eventUid, victim.username().asString(),
+            List.of(attendee.username().asString()), PartStat.NEEDS_ACTION, valarmFor(victim.username().asString())), eventUid);
+        awaitAlarmEventCreated(eventUid, victim.username());
+        AlarmEvent victimAlarm = alarmEventDAO.find(new EventUid(eventUid), victim.username().asMailAddress()).block();
+
+        String attackerAlarm = """
+            BEGIN:VALARM
+            TRIGGER:%s
+            ACTION:EMAIL
+            ATTENDEE:mailto:%s
+            ATTENDEE:mailto:%s
+            SUMMARY:Test
+            DESCRIPTION:Forged
+            END:VALARM""";
+        davTestHelper.upsertCalendar(attacker, generateEventWithValarm(eventUid, attacker.username().asString(),
+            List.of(attendee.username().asString()), PartStat.NEEDS_ACTION,
+            attackerAlarm.formatted("-PT30M", attacker.username().asString(), victim.username().asString())), eventUid);
+        awaitAlarmEventCreated(eventUid, attacker.username());
+        davTestHelper.upsertCalendar(attacker, generateEventWithValarm(eventUid, attacker.username().asString(),
+            List.of(attendee.username().asString()), PartStat.NEEDS_ACTION,
+            attackerAlarm.formatted("-PT45M", attacker.username().asString(), victim.username().asString())), eventUid);
+        awaitAtMost.atMost(Duration.ofSeconds(30))
+            .untilAsserted(() -> {
+                AlarmEvent attackerRecord = alarmEventDAO.find(new EventUid(eventUid), attacker.username().asMailAddress()).block();
+                assertThat(attackerRecord.alarmTime()).isEqualTo(attackerRecord.eventStartTime().minus(45, MINUTES));
+            });
+
+        assertThat(alarmEventDAO.find(new EventUid(eventUid), victim.username().asMailAddress()).block())
+            .isEqualTo(victimAlarm);
+    }
+
+    @Test
     void shouldCreateAlarmEventForAttendeeAfterAcceptingEventWithVALARM() {
         // Given
         String eventUid = UUID.randomUUID().toString();
