@@ -258,6 +258,8 @@ public interface AlarmInstantFactory {
                             // Legacy ICS can contain repeated mailto: prefixes in VALARM recipients.
                             .map(value -> RegExUtils.removeFirst(value, "(?i)^(?:mailto:)+"))
                             .filter(StringUtils::isNotEmpty)
+                            // Alarm records are keyed on their recipient: one recipient, one spelling.
+                            .map(value -> value.toLowerCase(Locale.US))
                             .map(Throwing.function(MailAddress::new))
                             .stream();
                     } catch (Exception e) {

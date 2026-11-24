@@ -37,6 +37,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -750,6 +751,39 @@ public class AlarmEventUpdateTest {
                 .find(new EventUid(newUid), organizer.username().asMailAddress())
                 .block())
                 .isNotNull());
+    }
+
+    @Test
+    void shouldReplaceAlarmWhenNextVersionWritesTheValarmRecipientWithAnotherCase() {
+        String eventUid = UUID.randomUUID().toString();
+        String organizerEmail = organizer.username().asString();
+
+        davTestHelper.upsertCalendar(organizer, generateEventWithValarmRecipient(eventUid, organizerEmail.toUpperCase(Locale.US), "-PT10M"), eventUid);
+        awaitAlarmEventCreated(new EventUid(eventUid), organizer.username());
+
+        davTestHelper.upsertCalendar(organizer, generateEventWithValarmRecipient(eventUid, organizerEmail, "-PT20M"), eventUid);
+
+        awaitAtMost.untilAsserted(() -> assertThat(alarmEventDAO.findAlarmsToTrigger(Instant.MAX).collectList().block())
+            .filteredOn(alarmEvent -> alarmEvent.eventUid().value().equals(eventUid))
+            .extracting(alarmEvent -> Duration.between(alarmEvent.alarmTime(), alarmEvent.eventStartTime()))
+            .describedAs("The alarm of the first version should be replaced, not kept beside the new one")
+            .containsExactly(Duration.ofMinutes(20)));
+    }
+
+    private String generateEventWithValarmRecipient(String eventUid, String valarmRecipient, String trigger) {
+        return generateEventWithValarm(
+            eventUid,
+            organizer.username().asString(),
+            List.of(attendee.username().asString()),
+            PartStat.NEEDS_ACTION,
+            """
+                BEGIN:VALARM
+                TRIGGER:%s
+                ACTION:EMAIL
+                %s
+                SUMMARY:Meeting Reminder
+                DESCRIPTION:This is an automatic alarm
+                END:VALARM""".formatted(trigger, alarmAttendeeLines(List.of(valarmRecipient))));
     }
 
     private String generateRecurringEventWithValarm(String eventUid, String organizerEmail) {
