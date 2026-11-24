@@ -52,6 +52,7 @@ import com.linagora.calendar.webadmin.task.UnsentMailResendTaskAdditionalInforma
 
 public class CalendarRoutesModule extends AbstractModule {
     public static final String USER_CALENDAR_TASKS_KEY = "USER_CALENDAR";
+    public static final String CALENDAR_TASKS_KEY = "CALENDAR";
 
     @Override
     protected void configure() {
@@ -80,7 +81,7 @@ public class CalendarRoutesModule extends AbstractModule {
         bind(CalendarRoutes.ArchiveRequestToTask.class).in(Scopes.SINGLETON);
         bind(CalendarRoutes.UserArchiveRequestToTask.class).in(Scopes.SINGLETON);
 
-        Multibinder<TaskFromRequestRegistry.TaskRegistration> taskRegistrationMultibinder = Multibinder.newSetBinder(binder(), TaskFromRequestRegistry.TaskRegistration.class);
+        Multibinder<TaskFromRequestRegistry.TaskRegistration> taskRegistrationMultibinder = Multibinder.newSetBinder(binder(), TaskFromRequestRegistry.TaskRegistration.class, Names.named(CALENDAR_TASKS_KEY));
         taskRegistrationMultibinder.addBinding().to(CalendarRoutes.CalendarEventsReindexRequestToTask.class);
         taskRegistrationMultibinder.addBinding().to(CalendarRoutes.AlarmScheduleRequestToTask.class);
         taskRegistrationMultibinder.addBinding().to(CalendarRoutes.ArchiveRequestToTask.class);

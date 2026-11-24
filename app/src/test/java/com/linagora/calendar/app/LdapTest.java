@@ -43,6 +43,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.google.inject.Module;
 import com.linagora.calendar.app.modules.CalendarDataProbe;
@@ -202,6 +204,38 @@ class LdapTest {
             .body("additionalInformation.addedCount", is(notNullValue()))
             .body("additionalInformation.updatedCount", is(notNullValue()))
             .body("additionalInformation.deletedCount", is(notNullValue()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"archive", "reindex", "scheduleAlarms"})
+    void singleDomainMembersRouteShouldRejectGlobalCalendarTasks(String task) {
+        given()
+            .queryParam("task", task)
+        .when()
+            .post("/addressbook/domain-members/" + DOMAIN.name())
+        .then()
+            .statusCode(400);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"archive", "reindex", "scheduleAlarms"})
+    void allDomainMembersRouteShouldRejectGlobalCalendarTasks(String task) {
+        given()
+            .queryParam("task", task)
+        .when()
+            .post("/addressbook/domain-members")
+        .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void calendarsRouteShouldRejectDomainMembersSyncTask() {
+        given()
+            .queryParam("task", "sync")
+        .when()
+            .post("/calendars")
+        .then()
+            .statusCode(400);
     }
 
     @Test
