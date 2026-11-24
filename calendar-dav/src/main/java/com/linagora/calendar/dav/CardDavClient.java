@@ -936,7 +936,8 @@ public class CardDavClient extends DavClient {
                 if (StringUtils.isNotEmpty(query)) {
                     uriBuilder.addParameter("search", query);
                 }
-                return uriBuilder.addParameter("sort", "uri")
+                // Sabre sorts on the full name initial then _id, keeping offset pages stable; it refuses sort=uri.
+                return uriBuilder.addParameter("sort", "fn")
                     .addParameter("offset", "0")
                     .addParameter("limit", Integer.toString(limit))
                     .build().toASCIIString();

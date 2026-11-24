@@ -122,10 +122,10 @@ class ContactSearchRouteTest {
     @Test
     void shouldMergeBooksInRequestOrderAndPaginateGlobally() {
         // Given contacts in two books, including a non-match and a repeated book in the request
-        createContact(requester, "contacts", "b", "Search 1061 Bob");
-        createContact(requester, "contacts", "a", "Search 1061 Alice");
+        createContact(requester, "contacts", "b", "Bob Search 1061");
+        createContact(requester, "contacts", "a", "Alice Search 1061");
         createContact(requester, "contacts", "x", "Other Person");
-        createContact(requester, "collected", "c", "Search 1061 Collected");
+        createContact(requester, "collected", "c", "Collected Search 1061");
 
         // When offset skips the first match across the combined result
         String response = given()
@@ -148,7 +148,7 @@ class ContactSearchRouteTest {
             .body()
             .asString();
 
-        // Then the remaining contacts keep book order and URI order within each book
+        // Then the remaining contacts keep book order and full name order within each book
         assertThatJson(response)
             .inPath("_embedded.dav:item[*]._links.self.href")
             .isEqualTo("""
@@ -321,7 +321,7 @@ class ContactSearchRouteTest {
     void shouldRespectExplicitLimit() {
         // Given ten contacts matching the keyword
         IntStream.range(0, 10)
-            .forEach(index -> createContact(requester, "contacts", "contact-%02d".formatted(index), "grepme " + index));
+            .forEach(index -> createContact(requester, "contacts", "contact-%02d".formatted(index), contactNameStartingWithLetter(index)));
 
         // When the caller requests only three results
         String response = given()
@@ -341,7 +341,7 @@ class ContactSearchRouteTest {
             .body()
             .asString();
 
-        // Then exactly the first three URI-sorted contacts are returned
+        // Then exactly the first three contacts by full name are returned
         assertThatJson(response)
             .inPath("_embedded.dav:item[*]._links.self.href")
             .isEqualTo("""
@@ -376,24 +376,18 @@ class ContactSearchRouteTest {
             .body()
             .asString();
 
-        // Then the default page contains 30 contacts, starting with the first URI
+        // Then the default page contains 30 contacts
         assertThatJson(response)
             .inPath("_embedded.dav:item")
             .isArray()
             .hasSize(30);
-        assertThatJson(response)
-            .inPath("_embedded.dav:item[0]._links.self.href")
-            .isEqualTo("/addressbooks/" + requester.id().value() + "/contacts/contact-00.vcf");
-        assertThatJson(response)
-            .inPath("_embedded.dav:item[29]._links.self.href")
-            .isEqualTo("/addressbooks/" + requester.id().value() + "/contacts/contact-29.vcf");
     }
 
     @Test
     void shouldUseZeroBasedOffsetForPagination() {
-        // Given four matching contacts sorted by URI
+        // Given four matching contacts sorted by full name
         IntStream.range(0, 4)
-            .forEach(index -> createContact(requester, "contacts", "contact-%02d".formatted(index), "grepme " + index));
+            .forEach(index -> createContact(requester, "contacts", "contact-%02d".formatted(index), contactNameStartingWithLetter(index)));
 
         // When requesting the first page, the second page, and a page past the end
         String firstPage = given()
@@ -477,8 +471,8 @@ class ContactSearchRouteTest {
     @Test
     void shouldFilterByKeywordIgnoringCase() {
         // Given two matching contacts with different letter cases and one unrelated contact
-        createContact(requester, "contacts", "a", "GrepMe Alice");
-        createContact(requester, "contacts", "b", "grepme Bob");
+        createContact(requester, "contacts", "a", "Alice GrepMe");
+        createContact(requester, "contacts", "b", "Bob grepme");
         createContact(requester, "contacts", "c", "Unrelated Carol");
 
         // When searching for the lower-case keyword
@@ -508,7 +502,7 @@ class ContactSearchRouteTest {
                 ]
                 """.replace("{userId}", requester.id().value()));
         assertThat(response.toLowerCase())
-            .contains("grepme alice", "grepme bob")
+            .contains("alice grepme", "bob grepme")
             .doesNotContain("unrelated carol");
     }
 
@@ -1067,6 +1061,11 @@ class ContactSearchRouteTest {
                 }
                 {}
                 """, "Invalid request body"));
+    }
+
+    // Sabre sorts on the first letter of the full name only: distinct initials give a deterministic order.
+    private static String contactNameStartingWithLetter(int index) {
+        return (char) ('a' + index) + " grepme";
     }
 
     private void createContact(OpenPaaSUser owner, String bookId, String uid, String name) {
