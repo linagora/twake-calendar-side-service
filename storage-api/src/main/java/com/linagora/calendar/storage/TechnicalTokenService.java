@@ -37,6 +37,8 @@ import org.slf4j.LoggerFactory;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.exceptions.JWTDecodeException;
+import com.auth0.jwt.interfaces.DecodedJWT;
 import com.google.common.base.Preconditions;
 
 import reactor.core.publisher.Mono;
@@ -51,6 +53,10 @@ public interface TechnicalTokenService {
     class TechnicalTokenClaimException extends RuntimeException {
         public TechnicalTokenClaimException(String message) {
             super(message);
+        }
+
+        public TechnicalTokenClaimException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 
@@ -142,17 +148,28 @@ public interface TechnicalTokenService {
         @Override
         public Mono<TechnicalTokenInfo> claim(JwtToken token) {
             Preconditions.checkNotNull(token, "Token must not be null");
-            return Mono.fromCallable(() -> jwtVerifier.verify(token.value()))
+            return Mono.fromCallable(() -> verify(token))
                 .map(decodedJWT -> {
-                    Preconditions.checkArgument(decodedJWT.getClaim(CLAIM_TECHNICAL_TOKEN).asBoolean(),
-                        "Token is not a technical token: " + token.value());
+                    Preconditions.checkArgument(Boolean.TRUE.equals(decodedJWT.getClaim(CLAIM_TECHNICAL_TOKEN).asBoolean()),
+                        "Token is not a technical token");
                     String domainId = decodedJWT.getClaim(CLAIM_NAME_DOMAIN_ID).asString();
                     Map<String, Object> data = decodedJWT.getClaim(CLAIM_NAME_DATA).asMap();
                     return new TechnicalTokenInfo(new OpenPaaSId(domainId), data);
                 })
                 .subscribeOn(Schedulers.parallel())
-                .onErrorResume(throwable
-                    -> Mono.error(new TechnicalTokenClaimException("Unable to claim technical token: " + token.value() + " , " + throwable.getMessage())));
+                .onErrorMap(throwable -> !(throwable instanceof TechnicalTokenClaimException),
+                    throwable -> new TechnicalTokenClaimException("Unable to claim technical token: " + throwable.getMessage(), throwable));
+        }
+
+        // The token is a bearer credential, and java-jwt copies its decoded header or payload, which anyone can fill
+        // with line breaks or terminal escapes, into the message of a JWTDecodeException: neither may reach the logs,
+        // not even as the message of a cause.
+        private DecodedJWT verify(JwtToken token) {
+            try {
+                return jwtVerifier.verify(token.value());
+            } catch (JWTDecodeException e) {
+                throw new TechnicalTokenClaimException("Unable to claim technical token: the token is not a well formed JWT");
+            }
         }
     }
 }

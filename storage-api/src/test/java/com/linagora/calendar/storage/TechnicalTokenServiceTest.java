@@ -32,6 +32,8 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.algorithms.Algorithm;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -194,6 +196,39 @@ public class TechnicalTokenServiceTest {
         assertThatThrownBy(() -> testee.claim(invalidToken).block())
             .isInstanceOf(TechnicalTokenClaimException.class)
             .hasMessageContaining("Unable to claim technical token");
+    }
+
+    @Test
+    void claimShouldNotCopyTheDecodedTokenIntoTheMessage() {
+        String header = BaseEncoding.base64Url().omitPadding().encode("x\r\nFAKE LOG LINE\u001B[31m".getBytes(StandardCharsets.UTF_8));
+        JwtToken forgedToken = new JwtToken(header + ".e30.c2ln");
+
+        assertThatThrownBy(() -> testee.claim(forgedToken).block())
+            .isInstanceOf(TechnicalTokenClaimException.class)
+            .hasMessage("Unable to claim technical token: the token is not a well formed JWT")
+            .hasNoCause();
+    }
+
+    @Test
+    void claimShouldTellASignedTokenWithoutTechnicalClaim() {
+        JwtToken token = new JwtToken(JWT.create()
+            .withIssuer("Twake-calendar-side-service")
+            .withExpiresAt(Instant.now().plusSeconds(60))
+            .sign(Algorithm.HMAC256("super-secret-key")));
+
+        assertThatThrownBy(() -> testee.claim(token).block())
+            .isInstanceOf(TechnicalTokenClaimException.class)
+            .hasMessage("Unable to claim technical token: Token is not a technical token");
+    }
+
+    @Test
+    void claimShouldNotCopyTheTokenIntoTheMessage() {
+        JwtToken token = testee.generate(new OpenPaaSId("domain-id")).block();
+        TechnicalTokenService.Impl otherService = new TechnicalTokenService.Impl("other-secret", Duration.ofMinutes(2), Clock.systemUTC());
+
+        assertThatThrownBy(() -> otherService.claim(token).block())
+            .isInstanceOf(TechnicalTokenClaimException.class)
+            .satisfies(e -> assertThat(e.getMessage()).doesNotContain(token.value()));
     }
 
     @Test
