@@ -115,3 +115,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: agent (branch qa-findings-24-11-2026), to be confirmed by Benoit Tellier (maintainer), on the twake-qa security review of `e26eece1e897` (webadmin SEV-1).
 - Why: both routes shared the unnamed set, so the per-domain route that webadmin-proxy opens to domain administrators also started the archival, reindex and alarm tasks of every tenant.
 - Scope: `calendar-webadmin` `CalendarRoutesModule`, `CalendarRoutes`, `DomainMembersSyncRouteModule`, `DomainMembersAddressBookRoutes`.
+
+## 2026-11-24, [Infra] The SMTP client checks the relay host name on SMTPS and STARTTLS
+
+- Decision: `MailSender` turns on commons-net endpoint checking, so the relay certificate must match `smtp.host` when `smtp.ssl.enabled` or `smtp.starttls.enabled` is set. `smtp.ssl.verifyHostname=false` (default `true`) opts out of the host name check only; `smtp.ssl.trustAllCerts=true` skips every certificate check.
+- Decided by: agent (branch qa-findings-24-11-2026), to be confirmed by Benoit Tellier (maintainer), on the twake-qa security review of `e26eece1e897` (outbound clients SEV-2).
+- Why: commons-net leaves endpoint checking off, so any certificate a trusted CA issued for another name completed the handshake, and a man in the middle got the relay credentials and every outgoing mail.
+- Scope: `calendar-smtp` `MailSender`. A deployment reaching its relay through a name or IP its certificate does not hold must fix the name or set `smtp.ssl.verifyHostname=false`.

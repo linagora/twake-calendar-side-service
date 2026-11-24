@@ -4,6 +4,24 @@ This document describes breaking changes and migration steps required when upgra
 
 ## 2.4.3 (upcoming)
 
+### The SMTP relay certificate must match smtp.host
+
+Date: 24/11/2026
+
+With `smtp.ssl.enabled` or `smtp.starttls.enabled`, the side service now checks that the relay certificate is
+issued for `smtp.host`, as any TLS client does.
+
+#### Breaking Change
+
+A deployment that reaches its relay through an IP address or a name its certificate does not hold can no longer
+send mail.
+
+#### Required Actions
+
+Point `smtp.host` to a name of the relay certificate. As a fallback, `smtp.ssl.verifyHostname=false` skips the host
+name check only, the certificate chain is still checked. `smtp.ssl.trustAllCerts=true` still skips every certificate
+check, the name included.
+
 ### Added classification field to Calendar Event index mapping
 
 Date: 07/11/2026
