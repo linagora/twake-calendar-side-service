@@ -190,8 +190,23 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                 .flatMap(resolved -> {
                     Optional<OpenPaaSId> localRecipientId = resolved.map(LocalRecipientResolver.ResolvedRecipient::id);
                     boolean isResource = resolved.map(recipient -> recipient instanceof LocalRecipientResolver.ResolvedRecipient.LocalResource).orElse(false);
-                    return sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId, calendar)
+                    Mono<Void> delivery = sendItipIfNecessary(localDelivery, recipientUsername, localRecipientId, calendar)
                         .then(isResource ? Mono.empty() : publishEmailNotification(localDelivery, recipientUsername, localRecipientId, calendar, oldEventCalendar));
+                    if (isResource && booksTheResource(localDelivery) && !sentFromTheDomainOf(localDelivery, recipientUsername)) {
+                        // Resources belong to their domain: another domain cannot book them, but can still update or cancel a
+                        // booking made before this rule.
+                        return retrieveRecipientEventHref(recipientUsername, localRecipientId.get(), localDelivery.uid())
+                            .hasElement()
+                            .flatMap(alreadyBooked -> {
+                                if (alreadyBooked) {
+                                    return delivery;
+                                }
+                                LOGGER.warn("Not delivering {} from {} to resource {} of another domain",
+                                    localDelivery.uid(), localDelivery.strippedSender(), recipientUsername.asString());
+                                return Mono.empty();
+                            });
+                    }
+                    return delivery;
                 }));
     }
 
@@ -247,6 +262,18 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
         });
 
         return newPartStat.equals(oldPartStat);
+    }
+
+    private static boolean booksTheResource(ItipLocalDeliveryDTO localDelivery) {
+        return Method.VALUE_REQUEST.equalsIgnoreCase(localDelivery.method()) || Method.VALUE_ADD.equalsIgnoreCase(localDelivery.method());
+    }
+
+    private static boolean sentFromTheDomainOf(ItipLocalDeliveryDTO localDelivery, Username recipient) {
+        try {
+            return Username.of(localDelivery.strippedSender()).getDomainPart().equals(recipient.getDomainPart());
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     private Mono<Void> sendItipIfNecessary(ItipLocalDeliveryDTO localDelivery,

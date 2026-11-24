@@ -71,6 +71,7 @@ import com.linagora.calendar.storage.model.ResourceId;
 
 import net.fortuna.ical4j.model.Calendar;
 import net.fortuna.ical4j.model.Component;
+import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import reactor.core.publisher.Flux;
@@ -137,10 +138,39 @@ public class EventResourceHandler {
         LOGGER.debug("Handle create event with resource message containing resourceId {} and resourceEventId {} and eventPath {}",
             message.resourceId(), message.eventId(), message.eventPath());
         return resourceService.retrieveWithAdministration(new ResourceId(message.resourceId()), ONLY_ACTIVE)
+            .filterWhen(resourceWithAdministration -> isOrganizedFromTheResourceDomain(message, resourceWithAdministration.resource()))
             .flatMap(resourceWithAdministration -> shouldAutoAccept(message, resourceWithAdministration)
                 .flatMap(autoAccept -> autoAccept
                     ? acceptInvite(message, resourceWithAdministration.resource())
                     : sendValidationEmailToAdministrators(message, resourceWithAdministration)));
+    }
+
+    /**
+     * Resources belong to a domain: a booking organized from another domain, or whose ORGANIZER cannot be read, is
+     * neither accepted nor sent to the resource administrators. A booking without ORGANIZER keeps the usual handling.
+     */
+    private Mono<Boolean> isOrganizedFromTheResourceDomain(CalendarResourceMessageDTO message, Resource resource) {
+        Optional<VEvent> vEvent;
+        try {
+            vEvent = Optional.of(GET_FIRST_VEVENT_FUNCTION.apply(message.ics()));
+        } catch (IllegalStateException e) {
+            vEvent = Optional.empty();
+        }
+        if (vEvent.flatMap(event -> event.getProperty(Property.ORGANIZER)).isEmpty()) {
+            return Mono.just(true);
+        }
+        Optional<Domain> organizerDomain = vEvent.flatMap(EventParseUtils::getOrganizer)
+            .map(EventFields.Person::email)
+            .map(MailAddress::getDomain);
+        return domainDAO.retrieve(resource.domain())
+            .map(domain -> organizerDomain.map(domain.domain()::equals).orElse(false))
+            .defaultIfEmpty(false)
+            .doOnNext(sameDomain -> {
+                if (!sameDomain) {
+                    LOGGER.warn("Ignoring the booking of resource {} organized from another domain: {}",
+                        resource.id().value(), organizerDomain.map(Domain::asString).orElse("unreadable organizer"));
+                }
+            });
     }
 
     private Mono<Boolean> shouldAutoAccept(CalendarResourceMessageDTO message, ResourceWithAdministration resourceWithAdministration) {

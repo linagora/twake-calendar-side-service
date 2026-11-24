@@ -58,6 +58,7 @@ import org.apache.james.backends.rabbitmq.RabbitMQConfiguration;
 import org.apache.james.backends.rabbitmq.RabbitMQConnectionFactory;
 import org.apache.james.backends.rabbitmq.ReactorRabbitMQChannelPool;
 import org.apache.james.backends.rabbitmq.SimpleConnectionPool;
+import org.apache.james.core.Domain;
 import org.apache.james.core.MaybeSender;
 import org.apache.james.core.Username;
 import org.apache.james.metrics.api.NoopGaugeRegistry;
@@ -323,6 +324,52 @@ public class EventResourceConsumerTest {
     }
 
     @Test
+    void shouldIgnoreBookingsOrganizedFromAnotherDomain() throws Exception {
+        OpenPaaSDomain otherDomain = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB())
+            .add(Domain.of("other-" + UUID.randomUUID() + ".example")).block();
+        // Without administrator, the resource would accept the booking at once
+        ResourceId resourceId = createResource(otherDomain, resourceAdmin);
+        String eventUid = UUID.randomUUID().toString();
+        String message = new ObjectMapper().writeValueAsString(ImmutableMap.of(
+            "resourceId", resourceId.value(),
+            "eventId", eventUid + ".ics",
+            "eventPath", "/calendars/" + resourceId.value() + "/" + resourceId.value() + "/" + eventUid + ".ics",
+            "ics", generateCalendarData(eventUid, organizer.username().asString(), attendee.username().asString(),
+                "Sprint planning #01", "Twake Meeting Room", "Description", "30250411T100000", "30250411T110000",
+                resourceId.value())));
+
+        publishMessage(EventResourceConsumer.Queue.CREATE.exchangeName(), message);
+
+        negativeAwait.untilAsserted(() -> {
+            assertThat(channel.messageCount(EventResourceConsumer.Queue.CREATE.deadLetter())).isZero();
+            assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty();
+        });
+    }
+
+    @Test
+    void shouldIgnoreBookingsWithAnUnreadableOrganizer() throws Exception {
+        OpenPaaSDomain otherDomain = new MongoDBOpenPaaSDomainDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB())
+            .add(Domain.of("other-" + UUID.randomUUID() + ".example")).block();
+        // Without administrator, the resource would accept the booking at once
+        ResourceId resourceId = createResource(otherDomain, resourceAdmin);
+        String eventUid = UUID.randomUUID().toString();
+        String message = new ObjectMapper().writeValueAsString(ImmutableMap.of(
+            "resourceId", resourceId.value(),
+            "eventId", eventUid + ".ics",
+            "eventPath", "/calendars/" + resourceId.value() + "/" + resourceId.value() + "/" + eventUid + ".ics",
+            "ics", generateCalendarData(eventUid, "not an address", attendee.username().asString(),
+                "Sprint planning #01", "Twake Meeting Room", "Description", "30250411T100000", "30250411T110000",
+                resourceId.value())));
+
+        publishMessage(EventResourceConsumer.Queue.CREATE.exchangeName(), message);
+
+        negativeAwait.untilAsserted(() -> {
+            assertThat(channel.messageCount(EventResourceConsumer.Queue.CREATE.deadLetter())).isZero();
+            assertThat(smtpMailsResponseSupplier.get().getList("")).isEmpty();
+        });
+    }
+
+    @Test
     void shouldAcceptEventsWhenNoAdministrators(DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
         ResourceId resourceId = createResource(domain, resourceAdmin);
@@ -526,9 +573,10 @@ public class EventResourceConsumerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"$rg@example.com", "-bob@example.com"})
-    void shouldSendRequestMailToAdministratorWhenOrganizerAddressIsNotAValidUsername(String icsOrganizer, DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
+    @ValueSource(strings = {"$rg", "-bob"})
+    void shouldSendRequestMailToAdministratorWhenOrganizerAddressIsNotAValidUsername(String icsOrganizerLocalPart, DockerSabreDavSetup dockerSabreDavSetup) throws Exception {
         OpenPaaSDomain domain = dockerSabreDavSetup.getOpenPaaSProvisioningService().getDomain().block();
+        String icsOrganizer = icsOrganizerLocalPart + "@" + domain.domain().asString();
         ResourceId resourceId = createResource(domain, resourceAdmin, resourceAdmin);
         String eventUid = UUID.randomUUID().toString();
         String message = new ObjectMapper().writeValueAsString(ImmutableMap.of(

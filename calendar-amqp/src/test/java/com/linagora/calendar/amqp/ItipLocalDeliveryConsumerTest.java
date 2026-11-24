@@ -362,6 +362,88 @@ public class ItipLocalDeliveryConsumerTest {
     }
 
     @Test
+    void shouldNotDeliverToAResourceOfAnotherDomain() {
+        String mallory = "mallory@other.example";
+        when(localRecipientResolver.resolve(Username.of(ALICE)))
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalResource(new OpenPaaSId(RESOURCE_ID)))));
+        stubItipNoContent();
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(mallory, EVENT_UID, CALENDAR_ID, jsonString(SIMPLE_ICAL.replace(BOB, mallory)), ALICE);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.during(Duration.ofSeconds(1))
+            .untilAsserted(() -> WireMock.verify(0, WireMock.postRequestedFor(WireMock.urlEqualTo("/itip"))));
+    }
+
+    @Test
+    void shouldDeliverAnUpdateOfAnExistingBookingFromAnotherDomain() {
+        String mallory = "mallory@other.example";
+        when(localRecipientResolver.resolve(Username.of(ALICE)))
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalResource(new OpenPaaSId(RESOURCE_ID)))));
+        stubItipNoContent();
+        wireMockServer.stubFor(WireMock.request("REPORT", WireMock.urlEqualTo("/calendars/" + RESOURCE_ID))
+            .willReturn(WireMock.aResponse().withStatus(200).withBody("""
+                {"_embedded": {"dav:item": [{"_links": {"self": {"href": "/calendars/%s/%s/%s.ics"}}}]}}
+                """.formatted(RESOURCE_ID, RESOURCE_ID, EVENT_UID))));
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(mallory, EVENT_UID, CALENDAR_ID, jsonString(SIMPLE_ICAL.replace(BOB, mallory)), ALICE);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() ->
+            WireMock.verify(WireMock.postRequestedFor(WireMock.urlEqualTo("/itip"))
+                .withRequestBody(WireMock.matchingJsonPath("$.recipient", WireMock.equalTo(ALICE)))));
+    }
+
+    @Test
+    void shouldDeliverACancelToAResourceOfAnotherDomain() {
+        String mallory = "mallory@other.example";
+        when(localRecipientResolver.resolve(Username.of(ALICE)))
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalResource(new OpenPaaSId(RESOURCE_ID)))));
+        stubItipNoContent();
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "CANCEL",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(mallory, EVENT_UID, CALENDAR_ID, jsonString(SIMPLE_ICAL.replace(BOB, mallory)
+                .replace("VERSION:2.0", "VERSION:2.0\nMETHOD:CANCEL")), ALICE);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() ->
+            WireMock.verify(WireMock.postRequestedFor(WireMock.urlEqualTo("/itip"))
+                .withRequestBody(WireMock.matchingJsonPath("$.method", WireMock.equalTo("CANCEL")))));
+    }
+
+    @Test
     void shouldNotPublishEmailNotificationWhenRecipientIsResource() {
         when(localRecipientResolver.resolve(Username.of(ALICE)))
             .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalResource(new OpenPaaSId(RESOURCE_ID)))));
