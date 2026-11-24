@@ -22,6 +22,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.security.NoSuchAlgorithmException;
 import java.security.cert.X509Certificate;
 import java.time.Clock;
 import java.time.Duration;
@@ -42,6 +43,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.github.fge.lambdas.Throwing;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.CharMatcher;
 import com.linagora.calendar.smtp.Mail.UnknownUserHandling;
 import com.linagora.calendar.smtp.SmtpSendingFailedException.UnknownUser;
@@ -119,34 +121,57 @@ public interface MailSender {
                 this.clock = clock;
             }
 
+            /**
+             * The server certificate must match {@code smtp.host} on SMTPS and STARTTLS, unless {@code smtp.ssl.verifyHostname=false}
+             * opts out of the host name check only, or {@code smtp.ssl.trustAllCerts} of every certificate check.
+             */
+            @VisibleForTesting
+            static AuthenticatingSMTPClient newClient(MailSenderConfiguration configuration) throws NoSuchAlgorithmException {
+                AuthenticatingSMTPClient authClient = new AuthenticatingSMTPClient(DEFAULT_PROTOCOL,
+                    configuration.sslEnabled(),
+                    UTF_8_ENCODING);
+
+                if (configuration.trustAllCerts()) {
+                    authClient.setTrustManager(TRUST_ALL);
+                } else {
+                    authClient.setEndpointCheckingEnabled(configuration.verifyHostname());
+                }
+                return authClient;
+            }
+
             public Mono<MailSender> create() {
                 return Mono.<MailSender>fromCallable(() -> {
-                    AuthenticatingSMTPClient authClient = new AuthenticatingSMTPClient(DEFAULT_PROTOCOL,
-                        configuration.sslEnabled(),
-                        UTF_8_ENCODING);
+                    AuthenticatingSMTPClient authClient = newClient(configuration);
+                    try {
+                        // Connect
+                        authClient.connect(configuration.host(), configuration.port().getValue());
 
-                    if (configuration.trustAllCerts()) {
-                        authClient.setTrustManager(TRUST_ALL);
-                    }
-
-                    // Connect
-                    authClient.connect(configuration.host(), configuration.port().getValue());
-
-                    // StartTLS if needed
-                    if (configuration.startTlsEnabled()) {
-                        authClient.execTLS();
-                        if (!SMTPReply.isPositiveCompletion(authClient.getReplyCode())) {
-                            throw new SmtpSendingFailedException("'starttls' failed: " + authClient.getReplyString());
+                        // StartTLS if needed
+                        if (configuration.startTlsEnabled()) {
+                            authClient.execTLS();
+                            if (!SMTPReply.isPositiveCompletion(authClient.getReplyCode())) {
+                                throw new SmtpSendingFailedException("'starttls' failed: " + authClient.getReplyString());
+                            }
                         }
-                    }
-                    // AUTH
-                    configuration.username().ifPresent(Throwing.consumer(username -> {
-                        String password = configuration.password().get();
-                        authClient.auth(AuthenticatingSMTPClient.AUTH_METHOD.PLAIN, username.asString(), password);
-                        if (!SMTPReply.isPositiveCompletion(authClient.getReplyCode())) {
-                            throw new SmtpSendingFailedException("'auth' failed: " + authClient.getReplyString());
+                        // AUTH
+                        configuration.username().ifPresent(Throwing.consumer(username -> {
+                            String password = configuration.password().get();
+                            authClient.auth(AuthenticatingSMTPClient.AUTH_METHOD.PLAIN, username.asString(), password);
+                            if (!SMTPReply.isPositiveCompletion(authClient.getReplyCode())) {
+                                throw new SmtpSendingFailedException("'auth' failed: " + authClient.getReplyString());
+                            }
+                        }));
+                    } catch (Exception e) {
+                        // A refused handshake or login must not leave the connection open.
+                        if (authClient.isConnected()) {
+                            try {
+                                authClient.disconnect();
+                            } catch (IOException disconnectError) {
+                                e.addSuppressed(disconnectError);
+                            }
                         }
-                    }));
+                        throw e;
+                    }
                     return new MailSender.Default(authClient, configuration, eventEmailFilter);
                 })
                 .subscribeOn(Schedulers.boundedElastic());
