@@ -129,3 +129,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: agent (branch qa-findings-24-11-2026), to be confirmed by Benoit Tellier (maintainer), on the twake-qa security review of `e26eece1e897` (2026-11-24, SEV-1); counting rather than refusing these RFC-invalid rules, and leaving ordinal BYDAY out, after the code reviews of the branch.
 - Why: ical4j stops a walk only once a candidate passes its end; BYWEEKNO maps every candidate back to a week of the year, so it walked up to a year of periods whatever end it was given, past the counted bound: `FREQ=HOURLY;BYWEEKNO=1,...,20;BYMINUTE=0..59;BYSECOND=0..59` with an override built about 390 million dates in the alarm consumer. Refusing these rules would have dropped the alarms and iTIP notifications of cheap ones some clients write.
 - Scope: `storage-api` `RecurSkipGuard`, hence `EventParseUtils.createInstanceVEvent` and `AlarmInstantFactory`. `CalendarEventUtils` keeps its own check.
+
+## 2026-11-24, [Tech] An alarm record is never replaced from another calendar home
+
+- Decision: `EventAlarmHandler` looks an alarm record up by its own `(eventUid, recipient)`, no longer by the calendar owner's address, and does not replace a record whose `eventPath` lies in another calendar home than the object being processed, unless that object belongs to the recipient: it logs a warning instead. A record without a parsable `eventPath` (written before the field was stored) stays replaceable. The unique index stays `(eventUid, recipient)`: no migration.
+- Decided by: Benoit Tellier (post filtering on the stored `eventPath`, no index change), on the twake-qa security review of `e26eece1e897` (AMQP SEV-2).
+- Why: a user could put another user's event UID in their own object with an EMAIL VALARM naming that user, and the second write replaced the victim's reminder with the attacker's content, path and trigger time. UIDs are only unique within a calendar home.
+- Scope: `calendar-amqp` `EventAlarmHandler`. Two users keeping the same UID cannot both schedule an alarm for the same recipient: the recipient's own object wins, otherwise the first record.
