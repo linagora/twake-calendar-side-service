@@ -108,3 +108,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: Benoit Tellier, after the twake-qa security review of twake-calendar-side-service (SEV-1, 2026-11-23); the pipeline of twake-contacts-frontend is the model.
 - Why: the agents are persistent and shared, so code of a pull request that runs before the check can read a credential bound later in the same build, or leave a process behind for a later one. A review is tied to a commit by GitHub, unlike a comment, so a commit pushed after the approval is not built until a member reviews it again.
 - Scope: `Jenkinsfile`, including the failed test summary run in `post`.
+
+## 2026-11-24, [Tech] Each WebAdmin task route dispatches only its own task registrations
+
+- Decision: the `/calendars` tasks (`reindex`, `scheduleAlarms`, `archive`) are bound in a set named `CALENDAR` and the `/addressbook/domain-members` tasks (`sync`) in a set named `domainMembersTasks`; no route injects the unnamed `TaskRegistration` set any more. `POST /addressbook/domain-members[/{domain}]` answers 400 to `task=archive|reindex|scheduleAlarms`, and `POST /calendars` to `task=sync`.
+- Decided by: agent (branch qa-findings-24-11-2026), to be confirmed by Benoit Tellier (maintainer), on the twake-qa security review of `e26eece1e897` (webadmin SEV-1).
+- Why: both routes shared the unnamed set, so the per-domain route that webadmin-proxy opens to domain administrators also started the archival, reindex and alarm tasks of every tenant.
+- Scope: `calendar-webadmin` `CalendarRoutesModule`, `CalendarRoutes`, `DomainMembersSyncRouteModule`, `DomainMembersAddressBookRoutes`.

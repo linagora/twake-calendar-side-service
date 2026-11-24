@@ -24,6 +24,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.james.core.Domain;
@@ -130,7 +131,7 @@ public class DomainMembersAddressBookRoutes implements Routes {
     @Inject
     public DomainMembersAddressBookRoutes(JsonTransformer jsonTransformer,
                                           TaskManager taskManager,
-                                          Set<TaskFromRequestRegistry.TaskRegistration> taskRegistrations,
+                                          @Named(DomainMembersSyncRouteModule.DOMAIN_MEMBERS_TASKS) Set<TaskFromRequestRegistry.TaskRegistration> taskRegistrations,
                                           OpenPaaSDomainDAO openPaaSDomainDAO,
                                           DavDomainMembersClearService clearService) {
         this.jsonTransformer = jsonTransformer;
