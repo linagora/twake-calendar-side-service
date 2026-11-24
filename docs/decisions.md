@@ -94,3 +94,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: agent (PR #1633, esn-sabre 2.5.0.7 bump), to be confirmed by Benoit Tellier (maintainer).
 - Why: esn-sabre 2.5.0.7 answers 400 to a contact listing sorted on anything but `fn`, `email` or `_id`, which broke every contact search. Sabre adds `_id` as tie-breaker, so `offset` pages stay stable; `_id` alone is not even insertion order (the ObjectIds come from several PHP workers), and contacts often have no email. Sorting by the whole full name would need an esn-sabre change (`fn_sort` is only used by the cursor listing).
 - Scope: `calendar-dav` `CardDavClient`, the contact search route.
+
+## 2026-11-24, [Infra] The Docker Hub credential is bound only while pushing the image
+
+- Decision: the `Jenkinsfile` binds no credential at pipeline level. `dockerHub` is bound with `withCredentials` inside the `Deliver Docker images` stage (main and tags only), the login reads the password on stdin, the Docker client configuration lives in the workspace (`DOCKER_CONFIG=$WORKSPACE/.docker`) and is logged out after the push. A credential is never put in a pipeline-level `environment` block.
+- Decided by: Benoit Tellier, on the twake-qa security review of `e26eece1e897` (SEV-1).
+- Why: a pipeline-level binding exported the push credential to every step, including the `mvn` builds, the tests and `ci/summarize-test-failures.py` of fork pull requests; the `when { branch 'main' }` of the push stage did not gate the binding, and log masking does not stop a process from reading its environment.
+- Scope: `Jenkinsfile`. Rotating the credential, fork trust checks and isolating the shared `~/.m2` of PR builds are follow-ups.

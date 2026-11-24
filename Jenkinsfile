@@ -34,9 +34,8 @@ pipeline {
         jdk 'jdk_25'
     }
 
-    environment {
-        DOCKER_HUB_CREDENTIAL = credentials('dockerHub')
-    }
+    // No pipeline-level credential: every stage runs the change request's own pom.xml,
+    // tests and ci/ scripts, so dockerHub is bound only in the delivery stage below.
 
     options {
         // Configure an overall timeout for the build.
@@ -149,8 +148,19 @@ pipeline {
 
               sh 'docker load -i app/target/jib-image.tar'
               sh 'docker tag linagora/twake-calendar-side-service:latest linagora/twake-calendar-side-service:$DOCKER_TAG'
-              sh 'docker login -u $DOCKER_HUB_CREDENTIAL_USR -p $DOCKER_HUB_CREDENTIAL_PSW'
-              sh 'docker push linagora/twake-calendar-side-service:$DOCKER_TAG'
+              // The Docker client configuration stays in the workspace, deleted after the build,
+              // so the login is not left in the agent's ~/.docker/config.json for later builds.
+              withEnv(["DOCKER_CONFIG=${env.WORKSPACE}/.docker"]) {
+                withCredentials([usernamePassword(credentialsId: 'dockerHub',
+                        usernameVariable: 'DOCKER_HUB_CREDENTIAL_USR', passwordVariable: 'DOCKER_HUB_CREDENTIAL_PSW')]) {
+                  try {
+                    sh 'printf \'%s\' "$DOCKER_HUB_CREDENTIAL_PSW" | docker login -u "$DOCKER_HUB_CREDENTIAL_USR" --password-stdin'
+                    sh 'docker push linagora/twake-calendar-side-service:$DOCKER_TAG'
+                  } finally {
+                    sh 'docker logout || true'
+                  }
+                }
+              }
             }
           }
         }
