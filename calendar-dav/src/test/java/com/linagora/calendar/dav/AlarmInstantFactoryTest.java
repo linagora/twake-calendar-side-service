@@ -98,6 +98,39 @@ public class AlarmInstantFactoryTest {
     }
 
     @Test
+    void computeNextAlarmInstantShouldReturnOnAByweeknoRuleBelowYearly() {
+        String byMinute = java.util.stream.IntStream.rangeClosed(0, 59).mapToObj(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+        String byWeekNo = java.util.stream.IntStream.rangeClosed(1, 20).mapToObj(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:recurring-event
+            DTSTART:20260101T000000Z
+            RRULE:FREQ=HOURLY;BYWEEKNO=%s;BYMINUTE=%s;BYSECOND=%s
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:recurring-event
+            RECURRENCE-ID:20260520T000030Z
+            DTSTART:20260520T010000Z
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(byWeekNo, byMinute, byMinute).getBytes(StandardCharsets.UTF_8));
+        AlarmInstantFactory factory = new AlarmInstantFactory.Default(
+            Clock.fixed(Instant.parse("2026-05-01T00:00:00Z"), ZoneOffset.UTC));
+
+        assertTimeoutPreemptively(Duration.ofSeconds(5),
+            () -> factory.computeNextAlarmInstant(calendar, Username.of("bob@example.com")));
+    }
+
+    @Test
     void computeNextAlarmInstantShouldStillComputeASecondlyRuleItCanSkipAlong() {
         AlarmInstantFactory factory = new AlarmInstantFactory.Default(
             Clock.fixed(Instant.parse("2025-07-23T00:00:00Z"), ZoneOffset.UTC));
