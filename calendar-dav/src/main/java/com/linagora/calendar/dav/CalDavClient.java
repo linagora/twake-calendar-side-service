@@ -516,9 +516,7 @@ public class CalDavClient extends DavClient {
                 .add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JSON))
             .request(REPORT_METHOD)
             .uri(uri)
-            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer("""
-                {"uid":"%s"}
-                """.formatted(eventUid).trim().getBytes(StandardCharsets.UTF_8))))
+            .send(Mono.fromCallable(() -> Unpooled.wrappedBuffer(OBJECT_MAPPER.writeValueAsBytes(Map.of("uid", eventUid)))))
             .responseSingle((response, content) -> {
                 int statusCode = response.status().code();
 

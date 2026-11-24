@@ -19,9 +19,11 @@
 package com.linagora.calendar.dav;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -48,6 +50,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Streams;
 import com.linagora.calendar.dav.dto.AddressBookReportXmlResponse;
 import com.linagora.calendar.dav.dto.ContactSearchResponse;
@@ -729,17 +732,23 @@ public class CardDavClient extends DavClient {
             .map(AddressBookReportXmlResponse::countContacts);
     }
 
+    private static byte[] userAddressBookPayload(Map<String, String> properties) {
+        Map<String, Object> payload = new LinkedHashMap<>(properties);
+        payload.put("dav:acl", List.of("dav:read", "dav:write"));
+        payload.put("type", "user");
+        try {
+            return OBJECT_MAPPER.writeValueAsBytes(payload);
+        } catch (JsonProcessingException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     public Mono<Void> createUserAddressBook(Username username, OpenPaaSId userId, NewAddressBook newAddressBook) {
         String description = newAddressBook.description().isBlank() ? "" : newAddressBook.description();
-        byte[] payload = ("""
-        {
-            "id": "%s",
-            "dav:name": "%s",
-            "carddav:description": "%s",
-            "dav:acl": ["dav:read","dav:write"],
-            "type": "user"
-        }
-        """.formatted(newAddressBook.id(), newAddressBook.name(), description)).getBytes(StandardCharsets.UTF_8);
+        byte[] payload = userAddressBookPayload(ImmutableMap.of(
+            "id", newAddressBook.id(),
+            "dav:name", newAddressBook.name(),
+            "carddav:description", description));
 
         return httpClientWithImpersonation(username).headers(headers -> headers
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
@@ -833,14 +842,9 @@ public class CardDavClient extends DavClient {
 
     @VisibleForTesting
     public Mono<Void> createUserAddressBook(Username username, OpenPaaSId userId, String addressBookId, String name) {
-        byte[] payload = ("""
-        {
-            "id": "%s",
-            "dav:name": "%s",
-            "dav:acl": ["dav:read","dav:write"],
-            "type": "user"
-        }
-        """.formatted(addressBookId, name)).getBytes(StandardCharsets.UTF_8);
+        byte[] payload = userAddressBookPayload(ImmutableMap.of(
+            "id", addressBookId,
+            "dav:name", name));
 
         return httpClientWithImpersonation(username).headers(headers -> headers
                 .add(HttpHeaderNames.CONTENT_TYPE, "application/json")
