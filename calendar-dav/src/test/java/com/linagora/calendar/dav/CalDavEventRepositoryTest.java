@@ -220,6 +220,33 @@ public class CalDavEventRepositoryTest {
     }
 
     @Test
+    void updatePartStatShouldNotRedirectToAnotherEventThroughACraftedUid() {
+        String targetUid = UUID.randomUUID().toString();
+        upsertCalendarForTest(targetUid, PartStat.NEEDS_ACTION);
+        String craftedUid = "x\",\"uid\":\"" + targetUid;
+
+        assertThatThrownBy(() -> testee.updatePartStat(attendee.username(), attendee.id(),
+            new EventUid(craftedUid), PartStat.DECLINED).block())
+            .isInstanceOf(CalendarEventNotFoundException.class);
+
+        assertThat(calDavClient.calendarReportByUid(attendee.username(), attendee.id(), targetUid).block()
+            .value().toPrettyString())
+            .contains("\"partstat\" : \"NEEDS-ACTION\"")
+            .doesNotContain("\"partstat\" : \"DECLINED\"");
+    }
+
+    @Test
+    void calendarReportByUidShouldFindAnEventWhoseUidHoldsAQuote() {
+        String eventUid = "quoted\"" + UUID.randomUUID();
+        davTestHelper.upsertCalendar(attendee,
+            generateCalendarData(eventUid, organizer.username().asString(), attendee.username().asString(), PartStat.NEEDS_ACTION),
+            UUID.randomUUID().toString());
+
+        assertThat(calDavClient.calendarReportByUid(attendee.username(), attendee.id(), eventUid).blockOptional())
+            .isPresent();
+    }
+
+    @Test
     void updatePartStatShouldThrowWhenCalendarNotFound() {
         String eventUid = UUID.randomUUID().toString();
         upsertCalendarForTest(eventUid, PartStat.NEEDS_ACTION);
