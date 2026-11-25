@@ -21,6 +21,7 @@ package com.linagora.calendar.webadmin;
 import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.when;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.hamcrest.CoreMatchers.equalTo;
 
 import java.util.List;
 import java.util.Map;
@@ -274,6 +275,34 @@ class DomainSettingsRoutesTest {
             .get("/domains/invalid@@domain/settings")
         .then()
             .statusCode(400);
+    }
+
+    @Test
+    void putShouldReturn400WhenBodyIsJsonNull() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("null")
+            .put("/domains/linagora.com/settings")
+        .then()
+            .statusCode(400)
+            .body("type", equalTo("InvalidArgument"))
+            .body("message", equalTo("Request body must be a JSON object"));
+    }
+
+    @Test
+    void patchShouldReturn400WhenBodyIsJsonNull() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("null")
+            .patch("/domains/linagora.com/settings")
+        .then()
+            .statusCode(400)
+            .body("type", equalTo("InvalidArgument"))
+            .body("message", equalTo("Request body must be a JSON object"));
     }
 
     @Test

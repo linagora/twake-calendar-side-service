@@ -60,7 +60,7 @@ public class PublicRightParser {
         try {
             JsonNode body = OBJECT_MAPPER.readTree(request.bodyAsBytes());
             if (body == null || !body.isObject()) {
-                throw new IllegalArgumentException("Request body must be a JSON object");
+                throw new IllegalArgumentException(WebAdminRouteUtils.NOT_A_JSON_OBJECT_MESSAGE);
             }
             return body;
         } catch (Exception e) {

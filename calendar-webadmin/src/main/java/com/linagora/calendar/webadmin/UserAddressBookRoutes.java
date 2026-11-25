@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.NOT_A_JSON_OBJECT_MESSAGE;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.createdTaskResponse;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.invalidBody;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.parseDtoBody;
@@ -344,7 +345,7 @@ public class UserAddressBookRoutes implements Routes {
         try {
             JsonNode body = OBJECT_MAPPER.readTree(request.bodyAsBytes());
             if (body == null || !body.isObject()) {
-                throw new IllegalArgumentException("Request body must be a JSON object");
+                throw new IllegalArgumentException(NOT_A_JSON_OBJECT_MESSAGE);
             }
             return body;
         } catch (Exception e) {
