@@ -22,7 +22,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -61,7 +64,9 @@ import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import net.fortuna.ical4j.model.property.Description;
+import net.fortuna.ical4j.model.property.DtStart;
 import net.fortuna.ical4j.model.property.RecurrenceId;
+import net.fortuna.ical4j.model.property.XProperty;
 
 
 class EventParseUtilsTest {
@@ -296,6 +301,24 @@ class EventParseUtilsTest {
 
         assertThat(EventParseUtils.getStartTime(event).toInstant()).isEqualTo(expectedStart);
         assertThat(EventParseUtils.getEndTime(event).map(ZonedDateTime::toInstant)).contains(expectedEnd);
+    }
+
+    @Test
+    void parseTimeShouldFallBackToTextWhenTypedDateCannotBeRead() {
+        DtStart<?> start = mock(DtStart.class);
+        when(start.getDate()).thenThrow(new DateTimeException("Unreadable typed date"));
+        when(start.getValue()).thenReturn("20261111T113000Z");
+
+        assertThat(EventParseUtils.parseTime(start).map(ZonedDateTime::toInstant))
+            .contains(Instant.parse("2026-11-11T11:30:00Z"));
+    }
+
+    @Test
+    void parseTimeShouldKeepSupportingPropertiesWithoutTypedDates() {
+        XProperty property = new XProperty("X-LEGACY-DATE", "20261111T113000Z");
+
+        assertThat(EventParseUtils.parseTime(property).map(ZonedDateTime::toInstant))
+            .contains(Instant.parse("2026-11-11T11:30:00Z"));
     }
 
     @Test
