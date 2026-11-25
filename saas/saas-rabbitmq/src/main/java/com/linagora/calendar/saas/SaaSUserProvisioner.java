@@ -124,10 +124,12 @@ public class SaaSUserProvisioner {
             || !Objects.equals(StringUtils.defaultString(user.lastname()), StringUtils.defaultString(names.lastname()));
     }
 
+    // The domain member address book is readable by every member of the domain: it is only filled when user search is
+    // ENABLED, as a LIMITED domain forbids listing its members (see docs/decisions.md, issue #1646).
     private Mono<Void> addUserToDomainAddressBook(Username username, Optional<UserContact> userContact) {
         return Mono.justOrEmpty(username.getDomainPart())
             .flatMap(domain -> domainSettingsResolver.resolveUserSearchMode(domain)
-                .filter(mode -> mode != UserSearchMode.DISABLED)
+                .filter(mode -> mode == UserSearchMode.ENABLED)
                 .flatMap(ignored -> domainDAO.retrieve(domain))
                 .flatMap(openPaaSDomain -> upsertUserContact(openPaaSDomain, username, userContact)));
     }

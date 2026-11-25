@@ -102,7 +102,7 @@ class SaaSUserSubscriptionHandlerTest {
         userDAO = new MongoDBOpenPaaSUserDAO(mongoDB, domainDAO);
         cardDavClient = new CardDavClient(sabreDavExtension.dockerSabreDavSetup().davConfiguration(), TECHNICAL_TOKEN_SERVICE_TESTING);
         DomainSettingsResolver domainSettingsResolver = new DomainSettingsResolver(
-            new MemoryDomainSettingsDAO(), Set.of(Domain.of("nonshared.tld")), Set.of(), new MapConfiguration(Map.of()));
+            new MemoryDomainSettingsDAO(), Set.of(Domain.of("nonshared.tld")), Set.of(Domain.of("limited.tld")), new MapConfiguration(Map.of()));
         userContactResolver = new MutableUserContactResolver();
         testee = new SaaSUserSubscriptionHandler(new SaaSUserProvisioner(userDAO, domainDAO, cardDavClient, domainSettingsResolver,
             userContactResolver));
@@ -244,6 +244,29 @@ class SaaSUserSubscriptionHandlerTest {
 
         String vcardContent = listContactDomainMembersAsVcard(nonSharedDomain);
         assertThat(vcardContent).doesNotContain(userEmail);
+    }
+
+    @Test
+    void shouldNotAddContactToAddressBookWhenUserSearchIsLimitedForDomain() {
+        OpenPaaSDomain limitedDomain = domainDAO.add(Domain.of("limited.tld")).block();
+        cardDavClient.createDomainMembersAddressBook(limitedDomain.id()).block();
+
+        String userEmail = "bob@" + limitedDomain.domain().asString();
+        String json = """
+            {
+                "internalEmail": "%s",
+                "isPaying": true,
+                "canUpgrade": true,
+                "features": {
+                    "calendar": {}
+                }
+            }
+            """.formatted(userEmail);
+
+        testee.handleMessage(json.getBytes(StandardCharsets.UTF_8)).block();
+
+        assertThat(userDAO.retrieve(Username.of(userEmail)).block()).isNotNull();
+        assertThat(listContactDomainMembersAsVcard(limitedDomain)).doesNotContain(userEmail);
     }
 
     @Test

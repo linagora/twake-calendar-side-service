@@ -165,6 +165,10 @@ POST /addressbook/domain-members?task=sync
 
 Synchronizes LDAP members for **all existing domains**.
 
+> ⚠️ The synchronization does not read the user search mode of the domains: exclude the domains whose
+> `userSearchMode` is `limited` or `disabled` with `ignoredDomains`, as their `domain-members` address book,
+> readable by every member, must stay empty.
+
 Optional query parameters:
 - `ignoredDomains` : [String] Comma-separated list of domains to exclude from synchronization
 - `ldapFilter` : [String] Optional, URL-encoded LDAP search filter (RFC 4515). See [Restricting members with an LDAP filter](#restricting-members-with-an-ldap-filter).
@@ -1219,6 +1223,7 @@ Returns the explicitly configured settings for the domain alongside the effectiv
 
 **Field values** (top-level and `resolved`):
 - `userSearchMode`: `"enabled"` | `"limited"` | `"disabled"` (top-level also allows `null`)
+  SaaS provisioning only adds the users of an `"enabled"` domain to its `domain-members` address book, readable by every member: a `"limited"` domain must not be listable. When a domain switches away from `"enabled"`, clear its book with `DELETE /addressbook/domain-members/{domain}`.
 - `resourceSearchEnabled`: `true` | `false` (top-level also allows `null`)
 - `defaultCalendarPublicVisibility`: `"read"` | `"private"` (top-level also allows `null`)
 - `calendarPublicVisibilitySettingEnabled`: `true` | `false` (top-level also allows `null`)

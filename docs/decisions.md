@@ -205,3 +205,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: Benoit Tellier, following linagora/tmail-backend#3184 which does the same for mail search.
 - Why: a decomposed (NFD) text, as some clients send, was found neither by a composed query nor by an ASCII one (`reunion`, `hel` for "Réunion Hélène"), since ASCII folding only folds precomposed letters and leaves the combining marks in the token; a composed text was not found by a decomposed query either, and a decomposed summary reached the 7 code point prefix cap sooner (each combining mark counts).
 - Scope: `storage-opensearch` `CalendarEventsDocument`, `OpensearchCalendarSearchService`; `storage-api` `MemoryCalendarSearchService`, `EventSearchQuery`, `SearchTextNormalizer`.
+
+## 2026-11-25, [Product] A domain whose user search is not `enabled` gets no member in its `domain-members` address book
+
+- Decision: SaaS provisioning (`SaaSUserProvisioner`, on TWP `user.created` and `settings` messages) adds or updates the card of a user in the `domain-members` address book only when the user search mode of its domain is `enabled`; `limited` is now handled like `disabled`. The WebAdmin LDAP sync task is unchanged, being an administrator action: the administrator excludes such domains with `ignoredDomains`, and clears the book of a domain that leaves `enabled` with `DELETE /addressbook/domain-members/{domain}`.
+- Decided by: chibenwa, [issue #1646](https://github.com/linagora/twake-calendar-side-service/issues/1646); choosing to enforce `limited` rather than narrow its documentation, and leaving the LDAP sync task to the administrator, by agent (PR for #1646), to be confirmed by chibenwa
+- Why: `limited` is documented as preventing user enumeration, while every member of the domain can read the `domain-members` address book and export all of its cards in one request.
+- Scope: `saas-rabbitmq` `SaaSUserProvisioner`; documentation of `user.search.limited.domains` and of the WebAdmin domain-members routes.
