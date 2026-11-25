@@ -20,7 +20,6 @@ package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader.OBJECT_MAPPER_DEFAULT;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.NOT_AN_OBJECT_MESSAGE;
-import static com.linagora.calendar.webadmin.WebAdminRouteUtils.requireBody;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.util.Optional;
@@ -152,7 +151,7 @@ public class DomainSettingsRoutes implements Routes {
 
     private String putDomainSettings(Request request, Response response) throws JsonExtractException {
         Domain domain = asDomain(request);
-        DomainSettingsPutRequest requestDTO = requireBody(jsonExtractor.parse(request.body()));
+        DomainSettingsPutRequest requestDTO = jsonExtractor.parse(request.body());
         DomainSettings settings = requestDTO.toDomainSettings();
         domainSettingsDAO.save(domain, settings).block();
         response.status(HttpStatus.NO_CONTENT_204);

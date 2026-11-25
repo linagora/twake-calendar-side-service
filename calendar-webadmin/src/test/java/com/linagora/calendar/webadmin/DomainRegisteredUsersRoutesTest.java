@@ -187,7 +187,7 @@ class DomainRegisteredUsersRoutesTest {
         .then()
             .statusCode(400)
             .body("type", is("InvalidArgument"))
-            .body("message", equalTo("Invalid request body: Request body must be a JSON object"));
+            .body("message", equalTo("JSON payload of the request is not valid"));
     }
 
     @Test
@@ -203,7 +203,7 @@ class DomainRegisteredUsersRoutesTest {
         .then()
             .statusCode(400)
             .body("type", is("InvalidArgument"))
-            .body("message", equalTo("Invalid request body: Request body must be a JSON object"));
+            .body("message", equalTo("JSON payload of the request is not valid"));
     }
 
     @Test

@@ -19,7 +19,6 @@
 package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.dav.ResourceService.ONLY_ACTIVE;
-import static com.linagora.calendar.webadmin.WebAdminRouteUtils.requireBody;
 
 import java.util.List;
 import java.util.Optional;
@@ -240,7 +239,7 @@ public class ResourceRoutes implements Routes {
 
     private String createResource(Request req, Response res) throws JsonExtractException {
         OpenPaaSDomain domain = asDomainObject(req);
-        ResourceCreationDTO creationDTO = validate(requireBody(creationDTOJsonExtractor.parse(req.body())), ResourceCreationDTO::validate);
+        ResourceCreationDTO creationDTO = validate(creationDTOJsonExtractor.parse(req.body()),ResourceCreationDTO::validate);
         Username creator = validate(creationDTO.creator, email -> usernameInDomain(email, domain.domain()));
         List<ResourceAdministrator> administrators = toResourceAdministrators(creationDTO.administrators, domain.domain());
         Mono<OpenPaaSId> creatorIdMono = retrieveExistingUser(creator)
@@ -260,7 +259,7 @@ public class ResourceRoutes implements Routes {
 
     private String updateResource(Request req, Response res) throws JsonExtractException {
         OpenPaaSDomain domain = asDomainObject(req);
-        ResourceUpdateDTO dto = validate(requireBody(updateDTOJsonExtractor.parse(req.body())), ResourceUpdateDTO::validate);
+        ResourceUpdateDTO dto = validate(updateDTOJsonExtractor.parse(req.body()),ResourceUpdateDTO::validate);
         ResourceId resourceId = new ResourceId(req.params("id"));
 
         return retrieveActiveResource(resourceId, domain.id())

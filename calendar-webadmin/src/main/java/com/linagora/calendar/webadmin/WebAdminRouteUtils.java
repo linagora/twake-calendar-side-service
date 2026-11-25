@@ -153,7 +153,7 @@ final class WebAdminRouteUtils {
     /**
      * Jackson reads the JSON literal {@code null} as a null value, without error.
      */
-    static <T> T requireBody(T body) {
+    private static <T> T requireBody(T body) {
         if (body == null) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.BAD_REQUEST_400)

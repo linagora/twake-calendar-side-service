@@ -18,7 +18,6 @@
 
 package com.linagora.calendar.webadmin;
 
-import static com.linagora.calendar.webadmin.WebAdminRouteUtils.requireBody;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.time.Instant;
@@ -143,7 +142,7 @@ public class TeamCalendarRoutes implements Routes {
 
     private TeamCalendarResponse createTeamCalendar(Request request, Response response) throws JsonExtractException {
         Domain domain = parseDomain(request);
-        TeamCalendarCreationRequest creationRequest = requireBody(creationRequestJsonExtractor.parse(request.body()));
+        TeamCalendarCreationRequest creationRequest = creationRequestJsonExtractor.parse(request.body());
 
         return mapErrors(() -> teamCalendarService.create(domain, creationRequest.name(), creationRequest.displayName())
             .map(teamCalendar -> {
@@ -177,7 +176,7 @@ public class TeamCalendarRoutes implements Routes {
     private TeamCalendarResponse updateDisplayName(Request request, Response response) throws JsonExtractException {
         Domain domain = parseDomain(request);
         TeamCalendarId id = parseTeamCalendarId(request);
-        TeamCalendarUpdateRequest updateRequest = requireBody(updateRequestJsonExtractor.parse(request.body()));
+        TeamCalendarUpdateRequest updateRequest = updateRequestJsonExtractor.parse(request.body());
 
         TeamCalendarResponse teamCalendar = mapErrors(() -> teamCalendarService.updateDisplayName(domain, id, updateRequest.displayName())
             .map(TeamCalendarResponse::from));
