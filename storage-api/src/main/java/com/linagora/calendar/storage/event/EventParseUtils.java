@@ -75,6 +75,7 @@ import net.fortuna.ical4j.model.component.CalendarComponent;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
 import net.fortuna.ical4j.model.property.DateListProperty;
+import net.fortuna.ical4j.model.property.DateProperty;
 import net.fortuna.ical4j.model.property.Description;
 import net.fortuna.ical4j.model.property.DtEnd;
 import net.fortuna.ical4j.model.property.DtStart;
@@ -128,6 +129,16 @@ public class EventParseUtils {
 
     public static Optional<ZonedDateTime> parseTime(Property property) {
         try {
+            if (property instanceof DateProperty<?> dateProperty) {
+                try {
+                    // Use the same timezone resolution as ical4j applies to EXDATE and RECURRENCE-ID.
+                    if (dateProperty.getDate() instanceof ZonedDateTime zonedDateTime) {
+                        return Optional.of(zonedDateTime);
+                    }
+                } catch (DateTimeException exception) {
+                    LOGGER.debug("Could not read parsed {}: falling back to its text value", property.getName(), exception);
+                }
+            }
             String value = property.getValue();
             if (isDateType(property)) {
                 LocalDate localDate = LocalDate.from(DATE_FORMATTER.parse(value));
