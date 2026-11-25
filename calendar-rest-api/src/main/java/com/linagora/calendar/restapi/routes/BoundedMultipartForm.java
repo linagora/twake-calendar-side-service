@@ -35,8 +35,10 @@ import io.netty.handler.codec.http.multipart.FileUpload;
 import io.netty.handler.codec.http.multipart.HttpPostMultipartRequestDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder.EndOfDataDecoderException;
 import io.netty.handler.codec.http.multipart.InterfaceHttpData;
+import io.netty.util.ReferenceCountUtil;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import reactor.netty.http.server.HttpServerRequest;
 
 /**
@@ -104,6 +106,58 @@ final class BoundedMultipartForm {
         }
     }
 
+    /**
+     * Serializes the decoder use: parts are decoded on a worker thread while the request cleanup may run on another one.
+     */
+    private static final class SerializedDecoder {
+        private final HttpPostMultipartRequestDecoder decoder;
+        private boolean destroyed;
+
+        SerializedDecoder(PartBoundingDataFactory factory, HttpRequest request) {
+            this.decoder = new HttpPostMultipartRequestDecoder(factory, request);
+        }
+
+        /**
+         * Decodes {@code content}, then releases it: the decoder copies the bytes it is offered.
+         */
+        synchronized List<InterfaceHttpData> offerAndRelease(HttpContent content) {
+            try {
+                if (destroyed) {
+                    return List.of();
+                }
+                offer(content);
+                return completedParts();
+            } finally {
+                ReferenceCountUtil.release(content);
+            }
+        }
+
+        synchronized void destroy() {
+            destroyed = true;
+            decoder.destroy();
+        }
+
+        private void offer(HttpContent content) {
+            try {
+                decoder.offer(content);
+            } catch (DecoderException e) {
+                throw new PartDecodingException(decoder.currentPartialHttpData() instanceof FileUpload, e);
+            }
+        }
+
+        private List<InterfaceHttpData> completedParts() {
+            List<InterfaceHttpData> completedParts = new ArrayList<>();
+            try {
+                while (decoder.hasNext()) {
+                    completedParts.add(decoder.next());
+                }
+            } catch (EndOfDataDecoderException e) {
+                // The last part is decoded.
+            }
+            return completedParts;
+        }
+    }
+
     private BoundedMultipartForm() {
     }
 
@@ -112,37 +166,26 @@ final class BoundedMultipartForm {
      */
     static <T> Mono<T> decode(HttpServerRequest request, PartBoundingDataFactory factory,
                               Function<Flux<InterfaceHttpData>, Mono<T>> partsHandler) {
-        return Mono.using(() -> new HttpPostMultipartRequestDecoder(factory, asNettyRequest(request)),
+        return Mono.using(() -> new SerializedDecoder(factory, asNettyRequest(request)),
             decoder -> partsHandler.apply(parts(request, decoder)),
-            HttpPostMultipartRequestDecoder::destroy);
+            SerializedDecoder::destroy);
     }
 
     private static HttpRequest asNettyRequest(HttpServerRequest request) {
         return new DefaultHttpRequest(request.version(), request.method(), request.uri(), request.requestHeaders());
     }
 
-    private static Flux<InterfaceHttpData> parts(HttpServerRequest request, HttpPostMultipartRequestDecoder decoder) {
-        // offer copies the received bytes, so they can be released once it returns.
-        return Flux.concat(
-                request.receive().map(buffer -> offer(decoder, new DefaultHttpContent(buffer))),
-                Mono.fromCallable(() -> offer(decoder, LastHttpContent.EMPTY_LAST_CONTENT)))
+    /**
+     * Decodes the received chunks in order on a worker thread, as the decoder writes large parts to disk. The chunks are
+     * retained until decoded, and released if the decoding stops before reaching them.
+     */
+    private static Flux<InterfaceHttpData> parts(HttpServerRequest request, SerializedDecoder decoder) {
+        return Flux.<HttpContent>concat(
+                request.receive().retain().map(DefaultHttpContent::new),
+                Mono.just(LastHttpContent.EMPTY_LAST_CONTENT))
+            .publishOn(Schedulers.boundedElastic())
+            .map(decoder::offerAndRelease)
+            .doOnDiscard(HttpContent.class, ReferenceCountUtil::release)
             .flatMapIterable(Function.identity());
-    }
-
-    private static List<InterfaceHttpData> offer(HttpPostMultipartRequestDecoder decoder, HttpContent content) {
-        try {
-            decoder.offer(content);
-        } catch (DecoderException e) {
-            throw new PartDecodingException(decoder.currentPartialHttpData() instanceof FileUpload, e);
-        }
-        List<InterfaceHttpData> completedParts = new ArrayList<>();
-        try {
-            while (decoder.hasNext()) {
-                completedParts.add(decoder.next());
-            }
-        } catch (EndOfDataDecoderException e) {
-            // The last part is decoded.
-        }
-        return completedParts;
     }
 }
