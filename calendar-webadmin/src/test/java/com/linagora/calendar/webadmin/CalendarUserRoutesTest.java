@@ -387,6 +387,33 @@ class CalendarUserRoutesTest {
     }
 
     @Test
+    void postUserShouldReturn400WhenBodyIsJsonNull() {
+        given()
+            .body("null")
+        .when()
+            .post()
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Request body must be a JSON object"));
+    }
+
+    @Test
+    void patchUserShouldReturn400WhenBodyIsJsonNull() {
+        OpenPaaSUser user = userDAO.add(Username.of("jbond@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("id", user.id().value())
+            .body("null")
+        .when()
+            .patch()
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Request body must be a JSON object"));
+    }
+
+    @Test
     void patchUserShouldReturn400WhenIdMissing() {
         given()
             .body("{\"email\":\"jbond@linagora.com\",\"firstname\":\"James\",\"lastname\":\"Bond\"}")
