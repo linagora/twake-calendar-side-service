@@ -303,7 +303,7 @@ class FileUploadRouteTest {
             .post("/api/files")
         .then()
             .statusCode(HttpStatus.SC_BAD_REQUEST)
-            .body("error.details", equalTo("Real size is greater than declared size, expected: 5, got: 10"));
+            .body("error.details", equalTo("Real size is greater than declared size, expected: 5"));
     }
 
     @Test
@@ -334,7 +334,8 @@ class FileUploadRouteTest {
         .when()
             .post("/api/files")
         .then()
-            .statusCode(HttpStatus.SC_BAD_REQUEST);
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("Form fields other than the file are limited to 16 of 16384 bytes"));
     }
 
     @Test
