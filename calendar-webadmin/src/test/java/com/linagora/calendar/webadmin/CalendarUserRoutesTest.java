@@ -191,6 +191,35 @@ class CalendarUserRoutesTest {
     }
 
     @Test
+    void postUserShouldReturn400WhenBodyIsNull() {
+        given()
+            .body("null")
+        .when()
+            .post()
+        .then()
+            .statusCode(400)
+            .contentType(ContentType.JSON)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid request body: Request body must be a JSON object"));
+    }
+
+    @Test
+    void patchUserShouldReturn400WhenBodyIsNull() {
+        OpenPaaSUser user = userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("id", user.id().value())
+            .body("null")
+        .when()
+            .patch()
+        .then()
+            .statusCode(400)
+            .contentType(ContentType.JSON)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid request body: Request body must be a JSON object"));
+    }
+
+    @Test
     void postUserShouldReturn400WhenEmailHasNoDomain() {
         given()
             .body("{\"email\":\"not-an-email\",\"firstname\":\"James\",\"lastname\":\"Bond\"}")

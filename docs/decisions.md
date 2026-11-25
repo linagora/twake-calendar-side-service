@@ -171,6 +171,13 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Why: `receiveForm` takes a single `maxSize` for every part, so an ordinary field could fill a temporary file up to the declared file size (307,200 bytes measured with `size=2097152`) before the 16 KiB check ran on the completed field.
 - Scope: `calendar-rest-api` `FileUploadRoute`, `BoundedMultipartForm`. `AttachmentUploadRoute` keeps `receiveForm`.
 
+## 2026-11-25, [Tech] A WebAdmin JSON body that is not an object answers 400
+
+- Decision: every WebAdmin route that reads a JSON object body answers `400 InvalidArgument` "Invalid request body: Request body must be a JSON object" when the body is the JSON literal `null`, through `WebAdminRouteUtils.requireBody` (or `NOT_AN_OBJECT_MESSAGE` where the route parses inside its own try block). The PATCH routes that read the body as a tree (domain settings, booking links) also refuse an array or a scalar instead of treating it as an empty patch.
+- Decided by: agent (PR for [issue #1644](https://github.com/linagora/twake-calendar-side-service/issues/1644)), to be confirmed by Benoit Tellier (maintainer).
+- Why: Jackson and James' `JsonExtractor` read `null` as a null value without error, and the routes dereferenced it: a 500 with a `NullPointerException` message. `PublicRightParser` already answered this 400.
+- Scope: `calendar-webadmin` routes `/registeredUsers`, `/domains/{domain}/registeredUsers`, domain settings, resources, team calendars and their members, user calendars and address books, booking links. The Jackson internals echoed in other 400 messages and the coercion of numbers into boolean fields of `PUT /domains/{domain}/settings` are not changed.
+
 ## 2026-11-25, [Tech] A resource whose administrators cannot be shared is rolled back
 
 - Decision: `ResourceService.create` soft deletes the resource it just inserted when the CalDAV share of its administrators fails, then propagates the share error; a failing rollback is logged and does not hide that error. Administrators of another domain are already refused with a 400 before any write (ISSUE-1545).

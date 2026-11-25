@@ -17,6 +17,7 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.NOT_AN_OBJECT_MESSAGE;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.davError;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
@@ -167,6 +168,14 @@ public class TeamCalendarMemberRoutes implements Routes {
     }
 
     private <T> T parseBody(Request request, Class<T> type) {
+        T body = readBody(request, type);
+        if (body == null) {
+            throw new IllegalArgumentException(NOT_AN_OBJECT_MESSAGE);
+        }
+        return body;
+    }
+
+    private <T> T readBody(Request request, Class<T> type) {
         try {
             return OBJECT_MAPPER.readValue(request.bodyAsBytes(), type);
         } catch (Exception exception) {

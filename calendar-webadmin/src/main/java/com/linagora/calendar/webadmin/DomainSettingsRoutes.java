@@ -19,6 +19,8 @@
 package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader.OBJECT_MAPPER_DEFAULT;
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.NOT_AN_OBJECT_MESSAGE;
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.requireBody;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.util.Optional;
@@ -38,6 +40,7 @@ import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.base.Preconditions;
 import com.linagora.calendar.storage.DefaultCalendarPublicVisibility;
 import com.linagora.calendar.storage.DomainSettings;
 import com.linagora.calendar.storage.DomainSettingsDAO;
@@ -149,7 +152,7 @@ public class DomainSettingsRoutes implements Routes {
 
     private String putDomainSettings(Request request, Response response) throws JsonExtractException {
         Domain domain = asDomain(request);
-        DomainSettingsPutRequest requestDTO = jsonExtractor.parse(request.body());
+        DomainSettingsPutRequest requestDTO = requireBody(jsonExtractor.parse(request.body()));
         DomainSettings settings = requestDTO.toDomainSettings();
         domainSettingsDAO.save(domain, settings).block();
         response.status(HttpStatus.NO_CONTENT_204);
@@ -167,6 +170,7 @@ public class DomainSettingsRoutes implements Routes {
         }
         try {
             JsonNode node = OBJECT_MAPPER_DEFAULT.readTree(request.bodyAsBytes());
+            Preconditions.checkArgument(node.isObject(), NOT_AN_OBJECT_MESSAGE);
             DomainSettingsPatchRequest dto = OBJECT_MAPPER_DEFAULT.treeToValue(node, DomainSettingsPatchRequest.class);
             DomainSettingsPatch patch = new DomainSettingsPatch(
                 parseUserSearchMode(node, dto),

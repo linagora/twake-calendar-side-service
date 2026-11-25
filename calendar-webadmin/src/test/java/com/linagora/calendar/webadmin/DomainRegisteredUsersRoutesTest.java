@@ -177,6 +177,36 @@ class DomainRegisteredUsersRoutesTest {
     }
 
     @Test
+    void postShouldReturn400WhenBodyIsNull() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .body("null")
+        .when()
+            .post("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", equalTo("Invalid request body: Request body must be a JSON object"));
+    }
+
+    @Test
+    void patchShouldReturn400WhenBodyIsNull() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user = userDAO.add(Username.of("james@linagora.com"), "James", "Bond").block();
+
+        given()
+            .queryParam("id", user.id().value())
+            .body("null")
+        .when()
+            .patch("/domains/linagora.com/registeredUsers")
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", equalTo("Invalid request body: Request body must be a JSON object"));
+    }
+
+    @Test
     void postShouldReturn400WhenEmailMissing() {
         domainDAO.add(Domain.of("linagora.com")).block();
 

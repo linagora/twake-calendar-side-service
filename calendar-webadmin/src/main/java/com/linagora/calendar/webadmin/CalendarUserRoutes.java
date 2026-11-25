@@ -18,6 +18,8 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.requireBody;
+
 import java.util.Optional;
 
 import jakarta.inject.Inject;
@@ -189,7 +191,7 @@ public class CalendarUserRoutes implements Routes {
     }
 
     private String addUser(Request request, Response response) throws JsonExtractException {
-        CalendarUserDTO dto = jsonExtractor.parse(request.body()).validateForWrite();
+        CalendarUserDTO dto = requireBody(jsonExtractor.parse(request.body())).validateForWrite();
 
         try {
             userDAO.add(dto.username(), dto.firstname(), dto.lastname()).block();
@@ -253,7 +255,7 @@ public class CalendarUserRoutes implements Routes {
 
     private String updateUser(Request request, Response response) throws JsonExtractException {
         String id = request.queryParams("id");
-        CalendarUserDTO dto = jsonExtractor.parse(request.body()).validateForWrite();
+        CalendarUserDTO dto = requireBody(jsonExtractor.parse(request.body())).validateForWrite();
 
         validateUpdateUserRequest(id, dto);
 

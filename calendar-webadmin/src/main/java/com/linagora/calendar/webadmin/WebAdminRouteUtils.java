@@ -51,6 +51,7 @@ final class WebAdminRouteUtils {
     private static final String DAV_REFUSAL_MESSAGE = "The DAV server refused the request";
     private static final String USERNAME_PARAM = ":username";
     private static final String TASK_ID_FIELD = "taskId";
+    static final String NOT_AN_OBJECT_MESSAGE = "Invalid request body: Request body must be a JSON object";
 
     static OpenPaaSUser retrieveUser(Request request, OpenPaaSUserDAO userDAO) {
         String rawUsername = request.params(USERNAME_PARAM);
@@ -140,11 +141,27 @@ final class WebAdminRouteUtils {
     }
 
     static <T> T parseDtoBody(Request request, Class<T> type, ObjectMapper objectMapper) {
+        T body;
         try {
-            return objectMapper.readValue(request.bodyAsBytes(), type);
+            body = objectMapper.readValue(request.bodyAsBytes(), type);
         } catch (Exception e) {
             throw invalidBody(e);
         }
+        return requireBody(body);
+    }
+
+    /**
+     * Jackson reads the JSON literal {@code null} as a null value, without error.
+     */
+    static <T> T requireBody(T body) {
+        if (body == null) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message(NOT_AN_OBJECT_MESSAGE)
+                .haltError();
+        }
+        return body;
     }
 
     static String createdTaskResponse(Response response, TaskId taskId) {

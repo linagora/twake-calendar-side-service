@@ -435,6 +435,39 @@ class TeamCalendarRoutesTest {
     }
 
     @Test
+    void createShouldReturn400WhenBodyIsNull() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("null")
+        .when()
+            .post("/domains/linagora.com/team-calendars")
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid request body: Request body must be a JSON object"));
+    }
+
+    @Test
+    void patchShouldReturn400WhenBodyIsNull() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        TeamCalendarId id = teamCalendarRepository.create(new TeamCalendarInsertRequest(domain, "sales", "Sales Team"))
+            .map(TeamCalendar::id)
+            .block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("null")
+        .when()
+            .patch("/domains/linagora.com/team-calendars/" + id.value())
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid request body: Request body must be a JSON object"));
+    }
+
+    @Test
     void getShouldReturn400WhenDomainIsInvalid() {
         when()
             .get("/domains/linagor@.com/team-calendars")

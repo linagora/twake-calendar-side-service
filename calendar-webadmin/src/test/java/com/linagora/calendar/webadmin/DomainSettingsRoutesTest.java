@@ -21,6 +21,7 @@ package com.linagora.calendar.webadmin;
 import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.when;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.hamcrest.Matchers.is;
 
 import java.util.List;
 import java.util.Map;
@@ -34,6 +35,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.linagora.calendar.storage.DomainSettingsDAO;
 import com.linagora.calendar.storage.DomainSettingsResolver;
@@ -274,6 +277,35 @@ class DomainSettingsRoutesTest {
             .get("/domains/invalid@@domain/settings")
         .then()
             .statusCode(400);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "[]", "1"})
+    void putShouldReturn400WhenBodyIsNotAnObject(String body) {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body(body)
+            .put("/domains/linagora.com/settings")
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "[]", "1"})
+    void patchShouldReturn400WhenBodyIsNotAnObject(String body) {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body(body)
+            .patch("/domains/linagora.com/settings")
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid request body: Request body must be a JSON object"));
     }
 
     @Test

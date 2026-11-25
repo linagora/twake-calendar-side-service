@@ -174,6 +174,18 @@ public class UserCalendarRoutesTest {
     }
 
     @Test
+    void createCalendarShouldReturn400WhenBodyIsNull() {
+        given()
+            .body("null")
+        .when()
+            .post("/users/{username}/calendars", user.username().asString())
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid request body: Request body must be a JSON object"));
+    }
+
+    @Test
     void createCalendarShouldFailWhenNameIsMissing() {
         given()
             .body("""

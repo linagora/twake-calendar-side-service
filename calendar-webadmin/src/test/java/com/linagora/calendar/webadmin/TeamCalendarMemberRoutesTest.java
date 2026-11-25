@@ -761,6 +761,7 @@ class TeamCalendarMemberRoutesTest {
     @ParameterizedTest
     @CsvSource(delimiter = '|', textBlock = """
         not-json | Invalid request body:
+        null | Invalid request body: Request body must be a JSON object
         {} | Invalid request body:
         {"share":{"set":[{"dav:href":"http://member@open-paas.org","dav:read":true}]}} | Invalid request body:
         """)

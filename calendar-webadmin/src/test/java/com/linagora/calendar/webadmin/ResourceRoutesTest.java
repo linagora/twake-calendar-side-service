@@ -418,6 +418,21 @@ class ResourceRoutesTest {
     }
 
     @Test
+    void patchShouldReturn400WhenBodyIsNull() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(user1.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
+
+        given()
+            .body("null")
+            .patch("/domains/linagora.com/resources/" + resourceId.value())
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid request body: Request body must be a JSON object"));
+    }
+
+    @Test
     void patchShouldReturn400WhenAdminNotFound() {
         OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
         OpenPaaSUser user1 = userDAO.add(Username.of("user1@linagora.com")).block();
@@ -1015,6 +1030,19 @@ class ResourceRoutesTest {
             .inPath("$.message")
             .asString()
             .startsWith("Field 'icon' must be one of ");
+    }
+
+    @Test
+    void createResourceShouldReturn400WhenBodyIsNull() {
+        sabreDavExtension.newTestUser();
+
+        given()
+            .body("null")
+            .post("/domains/" + DOMAIN + "/resources")
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid request body: Request body must be a JSON object"));
     }
 
     @Test

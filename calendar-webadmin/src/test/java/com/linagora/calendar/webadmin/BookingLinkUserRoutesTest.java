@@ -44,6 +44,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.linagora.calendar.api.booking.AvailabilityRule.WeeklyAvailabilityRule;
 import com.linagora.calendar.api.booking.AvailabilityRules;
@@ -709,6 +711,18 @@ public class BookingLinkUserRoutesTest {
     }
 
     @Test
+    void createShouldReturn400WhenBodyIsNull() {
+        given()
+            .body("null")
+        .when()
+            .post("/users/{username}/booking-links", user.username().asString())
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid request body: Request body must be a JSON object"));
+    }
+
+    @Test
     void createShouldReturn400WhenCalendarUrlMissing() {
         given()
             .body("""
@@ -874,6 +888,21 @@ public class BookingLinkUserRoutesTest {
             .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), UUID.randomUUID().toString())
         .then()
             .statusCode(404);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "[]"})
+    void patchShouldReturn400WhenBodyIsNotAnObject(String body) {
+        BookingLink bookingLink = insertBookingLink(user);
+
+        given()
+            .body(body)
+        .when()
+            .patch("/users/{username}/booking-links/{publicId}", user.username().asString(), bookingLink.publicId().value().toString())
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Invalid request body: Request body must be a JSON object"));
     }
 
     @Test
