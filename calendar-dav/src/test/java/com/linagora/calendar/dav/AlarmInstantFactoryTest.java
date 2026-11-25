@@ -3168,6 +3168,74 @@ public class AlarmInstantFactoryTest {
     }
 
     @Test
+    void shouldHonorExDatesAndOverridesInAnEmbeddedWindowsTimezone() {
+        // Given a weekday series at 11:30 local time with a 15-minute reminder, using an embedded Windows timezone
+        // whose offset is UTC+1 in November. November 5 and 11 are excluded; November 12 is moved to 12:00 local time.
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VTIMEZONE
+            TZID:Romance Standard Time
+            BEGIN:DAYLIGHT
+            DTSTART:19700329T020000
+            TZOFFSETFROM:+0100
+            TZOFFSETTO:+0200
+            RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+            END:DAYLIGHT
+            BEGIN:STANDARD
+            DTSTART:19701025T030000
+            TZOFFSETFROM:+0200
+            TZOFFSETTO:+0100
+            RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:windows-timezone-series
+            DTSTART;TZID=Romance Standard Time:20261005T113000
+            RRULE:FREQ=WEEKLY;COUNT=50;BYDAY=MO,TU,WE,TH,FR
+            EXDATE;TZID=Romance Standard Time:20261105T113000
+            EXDATE;TZID=Romance Standard Time:20261111T113000
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT15M
+            END:VALARM
+            END:VEVENT
+            BEGIN:VEVENT
+            UID:windows-timezone-series
+            RECURRENCE-ID;TZID=Romance Standard Time:20261112T113000
+            DTSTART;TZID=Romance Standard Time:20261112T120000
+            ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            ACTION:DISPLAY
+            TRIGGER:-PT15M
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """);
+
+        Username bob = Username.of("bob@example.com");
+        AlarmInstantFactory factory = testee(Instant.parse("2026-11-11T00:00:00Z"));
+
+        // When looking for the next alarm from November 11
+        assertThat(factory.computeNextAlarmInstant(calendar, bob)).hasValueSatisfying(alarm -> {
+            // Then skip the excluded November 11 occurrence and use the November 12 override:
+            // 12:00 local is 11:00 UTC, with its reminder at 10:45 UTC.
+            assertThat(alarm.eventStartTime()).isEqualTo(Instant.parse("2026-11-12T11:00:00Z"));
+            assertThat(alarm.alarmTime()).isEqualTo(Instant.parse("2026-11-12T10:45:00Z"));
+        });
+
+        // When looking strictly after the override's alarm time
+        assertThat(factory.computeNextAlarmInstant(calendar, bob, Optional.of(Instant.parse("2026-11-12T10:45:00Z"))))
+            .hasValueSatisfying(alarm -> {
+                // Then resume the regular series on November 13: 11:30 local is 10:30 UTC,
+                // with its reminder at 10:15 UTC, rather than returning the override's alarm again.
+                assertThat(alarm.eventStartTime()).isEqualTo(Instant.parse("2026-11-13T10:30:00Z"));
+                assertThat(alarm.alarmTime()).isEqualTo(Instant.parse("2026-11-13T10:15:00Z"));
+            });
+    }
+
+    @Test
     void shouldIgnoreUnparsableExDate() {
         String ics = """
             BEGIN:VCALENDAR

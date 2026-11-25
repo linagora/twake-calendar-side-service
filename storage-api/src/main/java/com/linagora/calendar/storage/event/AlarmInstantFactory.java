@@ -26,7 +26,6 @@ import java.time.Clock;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.temporal.Temporal;
@@ -377,7 +376,6 @@ public interface AlarmInstantFactory {
             private final Recur<Temporal> recur;
             private final Supplier<Set<Temporal>> countedOccurrences;
             private final Temporal seed;
-            private final ZoneId zoneId;
             private final List<Temporal> excludedDates;
             private final Instant now;
             private final Temporal periodEnd;
@@ -386,15 +384,16 @@ public interface AlarmInstantFactory {
                 RRule<Temporal> rrule = master.getProperty(Property.RRULE)
                     .map(property -> (RRule<Temporal>) property)
                     .orElseThrow(() -> new IllegalArgumentException("Master event must have an RRULE, UID " + EventParseUtils.describeUid(master)));
+                Preconditions.checkArgument(master.getDateTimeStart() != null,
+                    "DTSTART property is required for event with UID %s", EventParseUtils.describeUid(master));
                 this.recur = capCount(rrule.getRecur());
-                this.zoneId = EventParseUtils.getZoneIdFromStartDate(master).orElse(EventParseUtils.ZONE_ID_DEFAULT);
                 this.excludedDates = extractExDates(master);
                 this.now = now;
+                ZonedDateTime seedStart = EventParseUtils.getStartTime(master);
                 if (EventParseUtils.isAllDay(master)) {
-                    this.seed = EventParseUtils.getStartTime(master).toLocalDate();
+                    this.seed = seedStart.toLocalDate();
                     this.periodEnd = LocalDate.ofInstant(now, ZoneOffset.UTC).plusYears(1);
                 } else {
-                    ZonedDateTime seedStart = EventParseUtils.getStartTime(master);
                     this.seed = seedStart;
                     this.periodEnd = now.atZone(seedStart.getZone()).plusYears(1);
                 }
@@ -442,7 +441,7 @@ public interface AlarmInstantFactory {
                 if (recurrenceDate instanceof LocalDate localDate) {
                     return localDate.atStartOfDay(ZoneOffset.UTC);
                 }
-                return ((Instant) recurrenceDate).atZone(zoneId);
+                return ((Instant) recurrenceDate).atZone(((ZonedDateTime) seed).getZone());
             }
 
             // Without COUNT, ical4j skips the occurrences before the period start: the cost does not depend on how

@@ -45,6 +45,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -198,6 +199,103 @@ class EventParseUtilsTest {
         VEvent event = EventParseUtils.getFirstEvent(CalendarUtil.parseIcs(ics));
 
         assertThat(EventParseUtils.getZoneIdFromStartDate(event)).contains(ZoneId.of("Europe/Paris"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "Romance Standard Time, 20261111, 2026-11-11T10:30:00Z",
+        "Romance Standard Time, 20260715, 2026-07-15T09:30:00Z",
+        "Custom/Office, 20261111, 2026-11-11T10:30:00Z"
+    })
+    void getStartAndEndTimeShouldHonorEmbeddedTimezone(String tzid, String date, Instant expectedStart) {
+        // Given embedded timezone rules, including a Windows ID and an ID with no IANA equivalent
+        String ics = """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VTIMEZONE
+            TZID:%1$s
+            BEGIN:DAYLIGHT
+            DTSTART:19700329T020000
+            TZOFFSETFROM:+0100
+            TZOFFSETTO:+0200
+            RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+            END:DAYLIGHT
+            BEGIN:STANDARD
+            DTSTART:19701025T030000
+            TZOFFSETFROM:+0200
+            TZOFFSETTO:+0100
+            RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:embedded-timezone@test
+            DTSTART;TZID=%1$s:%2$sT113000
+            DTEND;TZID=%1$s:%2$sT120000
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(tzid, date);
+        VEvent event = EventParseUtils.getFirstEvent(CalendarUtil.parseIcs(ics));
+
+        // When reading DTSTART and DTEND, then both use the resolved offset, including daylight saving time
+        assertThat(EventParseUtils.getStartTime(event).toInstant()).isEqualTo(expectedStart);
+        assertThat(EventParseUtils.getEndTime(event).map(ZonedDateTime::toInstant))
+            .contains(expectedStart.plusSeconds(30 * 60));
+
+        // When DTEND is replaced by DURATION, then the computed end uses the same start time
+        VEvent eventWithDuration = EventParseUtils.getFirstEvent(CalendarUtil.parseIcs(
+            ics.replace("DTEND;TZID=" + tzid + ":" + date + "T120000", "DURATION:PT30M")));
+        assertThat(EventParseUtils.getEndTime(eventWithDuration).map(ZonedDateTime::toInstant))
+            .contains(expectedStart.plusSeconds(30 * 60));
+    }
+
+    @Test
+    void getStartAndEndTimeShouldKeepRegistryResolutionOfKnownTimezone() {
+        // Given a known TZID, CalendarUtil resolves it to the global zone rather than registering an embedded override
+        VEvent event = EventParseUtils.getFirstEvent(CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VTIMEZONE
+            TZID:Europe/Paris
+            BEGIN:STANDARD
+            DTSTART:19700101T000000
+            TZOFFSETFROM:+0300
+            TZOFFSETTO:+0300
+            END:STANDARD
+            END:VTIMEZONE
+            BEGIN:VEVENT
+            UID:custom-paris@test
+            DTSTART;TZID=Europe/Paris:20261111T113000
+            DTEND;TZID=Europe/Paris:20261111T120000
+            END:VEVENT
+            END:VCALENDAR
+            """));
+
+        // When reading the event times, then keep the registry's Europe/Paris offset of UTC+1 in November
+        assertThat(EventParseUtils.getStartTime(event).toInstant()).isEqualTo(Instant.parse("2026-11-11T10:30:00Z"));
+        assertThat(EventParseUtils.getEndTime(event).map(ZonedDateTime::toInstant))
+            .contains(Instant.parse("2026-11-11T11:00:00Z"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "DTSTART:20261111T113000Z, DTEND:20261111T120000Z, 2026-11-11T11:30:00Z, 2026-11-11T12:00:00Z",
+        "DTSTART:20261111T113000, DTEND:20261111T120000, 2026-11-11T11:30:00Z, 2026-11-11T12:00:00Z",
+        "DTSTART;VALUE=DATE:20261111, DTEND;VALUE=DATE:20261112, 2026-11-11T00:00:00Z, 2026-11-12T00:00:00Z"
+    })
+    void getStartAndEndTimeShouldKeepUtcFloatingAndAllDayBehavior(String start, String end, Instant expectedStart, Instant expectedEnd) {
+        VEvent event = EventParseUtils.getFirstEvent(CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:date-types@test
+            %s
+            %s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(start, end)));
+
+        assertThat(EventParseUtils.getStartTime(event).toInstant()).isEqualTo(expectedStart);
+        assertThat(EventParseUtils.getEndTime(event).map(ZonedDateTime::toInstant)).contains(expectedEnd);
     }
 
     @Test
