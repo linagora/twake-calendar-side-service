@@ -33,9 +33,7 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
-import java.time.temporal.ChronoField;
 import java.time.temporal.Temporal;
-import java.time.temporal.TemporalAccessor;
 import java.time.temporal.TemporalAmount;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -70,7 +68,6 @@ import net.fortuna.ical4j.model.Period;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.TemporalAmountAdapter;
-import net.fortuna.ical4j.model.TimeZone;
 import net.fortuna.ical4j.model.component.CalendarComponent;
 import net.fortuna.ical4j.model.component.VEvent;
 import net.fortuna.ical4j.model.parameter.PartStat;
@@ -98,12 +95,8 @@ public class EventParseUtils {
     public static final DateTimeFormatter UTC_DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
         .appendPattern("yyyyMMdd'T'HHmmssX")
         .toFormatter();
-    public static final DateTimeFormatter DATE_TIME_FORMATTER = new DateTimeFormatterBuilder()
-        .appendPattern("yyyyMMdd'T'HHmmss")
-        .toFormatter();
-    public static final DateTimeFormatter DATE_FORMATTER = new DateTimeFormatterBuilder()
-        .appendPattern("yyyyMMdd")
-        .toFormatter();
+    public static final DateTimeFormatter DATE_TIME_FORMATTER = IcsDateParser.DATE_TIME_FORMATTER;
+    public static final DateTimeFormatter DATE_FORMATTER = IcsDateParser.DATE_FORMATTER;
 
     public static final ZoneId ZONE_ID_DEFAULT = ZoneId.of("UTC");
 
@@ -114,41 +107,11 @@ public class EventParseUtils {
         EVENT_FOOTER_SEPARATOR,
         LEGACY_EVENT_FOOTER_SEPARATOR);
 
-    private static final DateTimeFormatter FLEXIBLE_DATE_TIME_FORMATTER =
-        new DateTimeFormatterBuilder()
-            .appendPattern("yyyyMMdd'T'HHmmss")
-            .optionalStart()
-            .appendPattern("X")
-            .optionalEnd()
-            .toFormatter();
-
-
     private static final boolean GET_RESOURCE = true;
     private static final boolean GET_ATTENDEE = false;
 
     public static Optional<ZonedDateTime> parseTime(Property property) {
-        try {
-            String value = property.getValue();
-            if (isDateType(property)) {
-                LocalDate localDate = LocalDate.from(DATE_FORMATTER.parse(value));
-                return Optional.of(localDate.atStartOfDay(ZoneOffset.UTC));
-            } else {
-                return Optional.of(property.getParameter(Parameter.TZID)
-                    .map(tzId -> TimeZone.getTimeZone(tzId.getValue()).toZoneId())
-                    .map(zoneId -> LocalDateTime.parse(value, DATE_TIME_FORMATTER).atZone(zoneId))
-                    .orElseGet(() -> {
-                        TemporalAccessor temporalAccessor = FLEXIBLE_DATE_TIME_FORMATTER.parse(value);
-                        if (temporalAccessor.isSupported(ChronoField.OFFSET_SECONDS)) {
-                            return ZonedDateTime.from(temporalAccessor);
-                        } else {
-                            return LocalDateTime.from(temporalAccessor).atZone(ZoneOffset.UTC);
-                        }
-                    }));
-            }
-        } catch (Exception e) {
-            LOGGER.info("Failed to parse time: {}", e.getMessage());
-            return Optional.empty();
-        }
+        return IcsDateParser.parse(property);
     }
 
     public static Optional<Instant> parseTimeAsInstant(Property property) {
@@ -157,7 +120,7 @@ public class EventParseUtils {
     }
 
     public static boolean isDateType(Property prop) {
-        return prop.getParameter(Parameter.VALUE).map(parameter -> "DATE".equals(parameter.getValue())).orElse(false);
+        return IcsDateParser.isDateType(prop);
     }
 
     public static List<EventFields.Person> getAttendees(VEvent vEvent) {

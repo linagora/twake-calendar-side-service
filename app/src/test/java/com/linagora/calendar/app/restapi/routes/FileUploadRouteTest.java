@@ -243,6 +243,144 @@ class FileUploadRouteTest {
     }
 
     @Test
+    void shouldRejectMultipartPartLargerThanDeclared() {
+        byte[] content = new byte[1024 * 1024];
+        int declaredSize = 5;
+
+        given()
+            .queryParam("name", "oversize.ics")
+            .queryParam("size", declaredSize)
+            .queryParam("mimetype", UploadedMimeType.TEXT_CALENDAR.getType())
+            .header("Content-Type", "multipart/form-data")
+            .multiPart("file", "oversize.ics", content, UploadedMimeType.TEXT_CALENDAR.getType())
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("Real size is greater than declared size, expected: 5"));
+    }
+
+    @Test
+    void shouldRejectANegativeSize() {
+        given()
+            .queryParam("name", "oversize.ics")
+            .queryParam("size", -1)
+            .queryParam("mimetype", UploadedMimeType.TEXT_CALENDAR.getType())
+            .header("Content-Type", "multipart/form-data")
+            .multiPart("file", "oversize.ics", new byte[64 * 1024], UploadedMimeType.TEXT_CALENDAR.getType())
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldAcceptAMultipartFormFieldLargerThanTheFile(TwakeCalendarGuiceServer server) {
+        byte[] content = "BEGIN:VCALENDAR\nEND:VCALENDAR".getBytes(StandardCharsets.UTF_8);
+
+        given()
+            .queryParam("name", "calendar.ics")
+            .queryParam("size", content.length)
+            .queryParam("mimetype", UploadedMimeType.TEXT_CALENDAR.getType())
+            .header("Content-Type", "multipart/form-data")
+            .multiPart("description", "A description longer than the file it describes")
+            .multiPart("file", "calendar.ics", content, UploadedMimeType.TEXT_CALENDAR.getType())
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED);
+    }
+
+    @Test
+    void shouldRejectASmallMultipartPartLargerThanDeclared() {
+        given()
+            .queryParam("name", "oversize.ics")
+            .queryParam("size", 5)
+            .queryParam("mimetype", UploadedMimeType.TEXT_CALENDAR.getType())
+            .header("Content-Type", "multipart/form-data")
+            .multiPart("file", "oversize.ics", "0123456789".getBytes(StandardCharsets.UTF_8), UploadedMimeType.TEXT_CALENDAR.getType())
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("Real size is greater than declared size, expected: 5"));
+    }
+
+    @Test
+    void shouldRejectAMultipartUploadWithoutFilePart() {
+        given()
+            .queryParam("name", "calendar.ics")
+            .queryParam("size", 10)
+            .queryParam("mimetype", UploadedMimeType.TEXT_CALENDAR.getType())
+            .header("Content-Type", "multipart/form-data")
+            .multiPart("description", "no file here")
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldRejectALargeFormFieldBeforeTheFile() {
+        byte[] content = new byte[64 * 1024];
+
+        given()
+            .queryParam("name", "calendar.ics")
+            .queryParam("size", content.length)
+            .queryParam("mimetype", UploadedMimeType.TEXT_CALENDAR.getType())
+            .header("Content-Type", "multipart/form-data")
+            .multiPart("description", "A".repeat(32 * 1024))
+            .multiPart("file", "calendar.ics", content, UploadedMimeType.TEXT_CALENDAR.getType())
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST)
+            .body("error.details", equalTo("Form fields other than the file are limited to 16 of 16384 bytes"));
+    }
+
+    @Test
+    void shouldRejectTooManyFormFieldsBeforeTheFile() {
+        byte[] content = "BEGIN:VCALENDAR\nEND:VCALENDAR".getBytes(StandardCharsets.UTF_8);
+        var request = given()
+            .queryParam("name", "calendar.ics")
+            .queryParam("size", content.length)
+            .queryParam("mimetype", UploadedMimeType.TEXT_CALENDAR.getType())
+            .header("Content-Type", "multipart/form-data");
+        for (int i = 0; i < 20; i++) {
+            request = request.multiPart("field" + i, "value");
+        }
+
+        request.multiPart("file", "calendar.ics", content, UploadedMimeType.TEXT_CALENDAR.getType())
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_BAD_REQUEST);
+    }
+
+    @Test
+    void shouldSupportMultipartUploadStoredOnDisk(TwakeCalendarGuiceServer server) {
+        byte[] content = "A".repeat(64 * 1024).getBytes(StandardCharsets.UTF_8);
+
+        String id = given()
+            .queryParam("name", "calendar.ics")
+            .queryParam("size", content.length)
+            .queryParam("mimetype", UploadedMimeType.TEXT_CALENDAR.getType())
+            .header("Content-Type", "multipart/form-data")
+            .multiPart("file", "calendar.ics", content, UploadedMimeType.TEXT_CALENDAR.getType())
+        .when()
+            .post("/api/files")
+        .then()
+            .statusCode(HttpStatus.SC_CREATED)
+            .extract()
+            .body()
+            .jsonPath()
+            .getString("_id");
+
+        assertThat(server.getProbe(CalendarDataProbe.class).getUploadedFile(USERNAME, new OpenPaaSId(id)).data())
+            .isEqualTo(content);
+    }
+
+    @Test
     void shouldDeleteOldFilesWhenOverUserLimit(TwakeCalendarGuiceServer server) {
         byte[] small = new byte[1024 * 1024]; // 1MB
         Arrays.fill(small, (byte) 'c');

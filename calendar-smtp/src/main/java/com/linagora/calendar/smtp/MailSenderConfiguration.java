@@ -33,7 +33,13 @@ public record MailSenderConfiguration(String host,
                                       Optional<String> password,
                                       boolean sslEnabled,
                                       boolean trustAllCerts,
-                                      boolean startTlsEnabled) {
+                                      boolean startTlsEnabled,
+                                      boolean verifyHostname) {
+
+    public MailSenderConfiguration(String host, Port port, String ehlo, Optional<Username> username, Optional<String> password,
+                                   boolean sslEnabled, boolean trustAllCerts, boolean startTlsEnabled) {
+        this(host, port, ehlo, username, password, sslEnabled, trustAllCerts, startTlsEnabled, true);
+    }
 
     public MailSenderConfiguration {
         Preconditions.checkArgument(username.isPresent() == password.isPresent(), "'smtp.username' and 'smtp.password' must be simultaneously set.");
@@ -54,7 +60,8 @@ public record MailSenderConfiguration(String host,
         boolean sslEnabled = configuration.getBoolean("smtp.ssl.enabled", false);
         boolean trustAllCerts = configuration.getBoolean("smtp.ssl.trustAllCerts", false);
         boolean startTlsEnabled = configuration.getBoolean("smtp.starttls.enabled", false);
+        boolean verifyHostname = configuration.getBoolean("smtp.ssl.verifyHostname", true);
 
-        return new MailSenderConfiguration(host, port, helo, user, password, sslEnabled, trustAllCerts, startTlsEnabled);
+        return new MailSenderConfiguration(host, port, helo, user, password, sslEnabled, trustAllCerts, startTlsEnabled, verifyHostname);
     }
 }

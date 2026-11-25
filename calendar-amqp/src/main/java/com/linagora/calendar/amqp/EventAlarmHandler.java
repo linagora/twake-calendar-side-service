@@ -22,6 +22,7 @@ import static com.linagora.calendar.storage.configuration.resolver.AlarmSettingR
 
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -31,14 +32,15 @@ import org.apache.james.core.Username;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.dav.DavCalendarObject;
 import com.linagora.calendar.smtp.EventEmailFilter;
+import com.linagora.calendar.smtp.MailUsernames;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
 import com.linagora.calendar.storage.AlarmEventFactory;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.configuration.resolver.SettingsBasedResolver;
 import com.linagora.calendar.storage.event.AlarmInstantFactory;
@@ -129,16 +131,40 @@ public class EventAlarmHandler {
             .then();
     }
 
+    /**
+     * UIDs are only unique within a calendar home: the recipient's own object always replaces their alarm, another user's
+     * object only replaces an alarm scheduled from its own calendar home. The DAO checks that condition atomically.
+     */
     private Mono<AlarmEvent> upsertAlarmEvent(Username username, AlarmEvent alarmEvent) {
-        return alarmEventDAO.find(alarmEvent.eventUid(), Throwing.supplier(username::asMailAddress).get())
-            .flatMap(existing -> {
-                LOGGER.debug("Updating existing alarm event: {}", alarmEvent.eventUid().value());
-                return alarmEventDAO.update(alarmEvent).thenReturn(alarmEvent);
-            })
-            .switchIfEmpty(Mono.defer(() -> {
-                LOGGER.debug("Creating new alarm event: {}", alarmEvent.eventUid().value());
-                return alarmEventDAO.create(alarmEvent).thenReturn(alarmEvent);
-            }));
+        if (isOwnedByItsRecipient(username, alarmEvent)) {
+            LOGGER.debug("Upserting the alarm event {} of its recipient", alarmEvent.eventUid().value());
+            return alarmEventDAO.update(alarmEvent).thenReturn(alarmEvent);
+        }
+        return Mono.justOrEmpty(calendarHome(alarmEvent.eventPath()))
+            .flatMap(calendarHome -> alarmEventDAO.upsertIfReplaceableFrom(alarmEvent, calendarHome))
+            .defaultIfEmpty(false)
+            .flatMap(written -> {
+                if (!written) {
+                    LOGGER.warn("Not replacing the alarm of {} for {}: it is scheduled from another calendar home than {}",
+                        alarmEvent.recipient().asString(), alarmEvent.eventUid().value(), alarmEvent.eventPath());
+                    return Mono.empty();
+                }
+                return Mono.just(alarmEvent);
+            });
+    }
+
+    private static boolean isOwnedByItsRecipient(Username owner, AlarmEvent alarmEvent) {
+        return MailUsernames.asUsername(alarmEvent.recipient())
+            .map(recipient -> recipient.asString().equalsIgnoreCase(owner.asString()))
+            .orElse(false);
+    }
+
+    private static Optional<OpenPaaSId> calendarHome(String eventPath) {
+        try {
+            return Optional.of(EventFieldConverter.extractCalendarURL(eventPath).base());
+        } catch (CalendarEventDeserializeException e) {
+            return Optional.empty();
+        }
     }
 
     public Mono<Void> handleDelete(CalendarAlarmMessageDTO alarmMessageDTO) {

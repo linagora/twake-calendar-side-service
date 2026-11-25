@@ -59,6 +59,10 @@ final class RecurSkipGuard {
      */
     @VisibleForTesting
     static final long MAX_EXPANDED_CANDIDATES = Long.getLong("tcalendar.recur.max.expanded.candidates", 1_000_000L);
+    /**
+     * A week-based year, plus the week it may start or end with across a calendar year.
+     */
+    private static final Duration MAPPED_BACK_OVERRUN = Duration.ofDays(366 + 7);
     private static final Set<Frequency> FINER_THAN_HOURLY = EnumSet.of(Frequency.SECONDLY, Frequency.MINUTELY);
     private static final Set<Frequency> FINER_THAN_DAILY = EnumSet.of(Frequency.SECONDLY, Frequency.MINUTELY, Frequency.HOURLY);
     private static final Set<Frequency> FINER_THAN_WEEKLY = EnumSet.of(Frequency.SECONDLY, Frequency.MINUTELY, Frequency.HOURLY, Frequency.DAILY);
@@ -83,11 +87,39 @@ final class RecurSkipGuard {
             }
             from = later(from, instant(walkStart));
         }
-        long walkedPeriods = Math.max(0, units(recur, from, instant(walkEnd)) / Math.max(recur.getInterval(), 1)) + 1;
+        Instant end = instant(walkEnd);
+        if (mapsCandidatesBeyondItsPeriod(recur)) {
+            end = end.plus(MAPPED_BACK_OVERRUN);
+        }
+        long walkedPeriods = Math.max(0, units(recur, from, end) / Math.max(recur.getInterval(), 1)) + 1;
+        if (mapsCandidatesBack(recur)) {
+            // ical4j stops once a candidate passes the end of the walk: the period holding it is walked too.
+            walkedPeriods++;
+        }
         if (recur.getCount() > 0 && !mayLeavePeriodsEmpty(recur)) {
             walkedPeriods = Math.min(walkedPeriods, recur.getCount());
         }
         return candidatesPerPeriod(recur) <= MAX_EXPANDED_CANDIDATES / walkedPeriods;
+    }
+
+    /**
+     * BYWEEKNO moves every candidate to its week of the year. ical4j only stops walking once a candidate passes the end
+     * of the walk, so below YEARLY, where those candidates fall back before the walk, it may walk every period up to the
+     * end of the next week-based year whatever end it was given: such a walk is counted up to
+     * {@link #MAPPED_BACK_OVERRUN} further. RFC 5545 section 3.3.10 does not allow these rules, but cheap ones stay
+     * expanded. An ordinal BYDAY below MONTHLY only filters the candidates of its period, so it does not walk further.
+     */
+    @VisibleForTesting
+    static boolean mapsCandidatesBeyondItsPeriod(Recur<?> recur) {
+        return !recur.getWeekNoList().isEmpty() && recur.getFrequency() != Frequency.YEARLY;
+    }
+
+    private static boolean mapsCandidatesBack(Recur<?> recur) {
+        return !recur.getWeekNoList().isEmpty() || hasOrdinalDay(recur);
+    }
+
+    private static boolean hasOrdinalDay(Recur<?> recur) {
+        return recur.getDayList().stream().anyMatch(day -> day.getOffset() != 0);
     }
 
     /**
@@ -133,11 +165,18 @@ final class RecurSkipGuard {
                 recur.getDayList().size() * dayWeight,
                 recur.getMonthDayList().size() * monthDayWeight,
                 (long) recur.getYearDayList().size(),
-                recur.getWeekNoList().size() * 7L,
+                recur.getWeekNoList().size() * weekNoWeight(recur),
                 (long) recur.getMonthList().size())
             .mapToLong(Long::longValue)
             .filter(size -> size > 0)
             .reduce(1L, (a, b) -> Math.min(a * b, MAX_EXPANDED_CANDIDATES + 1));
+    }
+
+    /**
+     * BYWEEKNO expands a WEEKLY or coarser period to the days of its weeks, but only filters a finer one.
+     */
+    private static long weekNoWeight(Recur<?> recur) {
+        return FINER_THAN_WEEKLY.contains(recur.getFrequency()) ? 1 : 7;
     }
 
     private static Instant later(Instant a, Instant b) {

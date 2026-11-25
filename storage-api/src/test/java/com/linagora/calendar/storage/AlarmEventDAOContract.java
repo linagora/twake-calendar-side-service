@@ -89,6 +89,58 @@ public interface AlarmEventDAOContract {
     }
 
     @Test
+    default void upsertIfReplaceableFromShouldCreateAMissingAlarm() throws AddressException {
+        AlarmEvent event = alarmScheduledFrom("/calendars/home/calendar/object.ics", "ics");
+
+        assertThat(getDAO().upsertIfReplaceableFrom(event, new OpenPaaSId("home")).block()).isTrue();
+        assertThat(getDAO().find(event.eventUid(), event.recipient()).block()).isEqualTo(event);
+    }
+
+    @Test
+    default void upsertIfReplaceableFromShouldReplaceAnAlarmOfTheSameCalendarHome() throws AddressException {
+        getDAO().create(alarmScheduledFrom("/calendars/home/calendar/object.ics", "ics")).block();
+        AlarmEvent updated = alarmScheduledFrom("/calendars/home/other-calendar/object.ics", "newIcs");
+
+        assertThat(getDAO().upsertIfReplaceableFrom(updated, new OpenPaaSId("home")).block()).isTrue();
+        assertThat(getDAO().find(updated.eventUid(), updated.recipient()).block()).isEqualTo(updated);
+    }
+
+    @Test
+    default void upsertIfReplaceableFromShouldNotReplaceAnAlarmOfAnotherCalendarHome() throws AddressException {
+        AlarmEvent victimAlarm = alarmScheduledFrom("/calendars/victim/calendar/object.ics", "ics");
+        getDAO().create(victimAlarm).block();
+
+        assertThat(getDAO().upsertIfReplaceableFrom(alarmScheduledFrom("/calendars/attacker/calendar/object.ics", "attackerIcs"),
+            new OpenPaaSId("attacker")).block()).isFalse();
+        assertThat(getDAO().find(victimAlarm.eventUid(), victimAlarm.recipient()).block()).isEqualTo(victimAlarm);
+    }
+
+    @Test
+    default void upsertIfReplaceableFromShouldNotReplaceAnAlarmOfAHomeItPrefixes() throws AddressException {
+        AlarmEvent victimAlarm = alarmScheduledFrom("/calendars/home2/calendar/object.ics", "ics");
+        getDAO().create(victimAlarm).block();
+
+        assertThat(getDAO().upsertIfReplaceableFrom(alarmScheduledFrom("/calendars/home/calendar/object.ics", "attackerIcs"),
+            new OpenPaaSId("home")).block()).isFalse();
+        assertThat(getDAO().find(victimAlarm.eventUid(), victimAlarm.recipient()).block()).isEqualTo(victimAlarm);
+    }
+
+    @Test
+    default void upsertIfReplaceableFromShouldReplaceAnAlarmWithoutEventPath() throws AddressException {
+        getDAO().create(alarmScheduledFrom("", "ics")).block();
+        AlarmEvent updated = alarmScheduledFrom("/calendars/home/calendar/object.ics", "newIcs");
+
+        assertThat(getDAO().upsertIfReplaceableFrom(updated, new OpenPaaSId("home")).block()).isTrue();
+        assertThat(getDAO().find(updated.eventUid(), updated.recipient()).block()).isEqualTo(updated);
+    }
+
+    private static AlarmEvent alarmScheduledFrom(String eventPath, String ics) throws AddressException {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        return new AlarmEvent(new EventUid("1"), now, now, NO_RECURRING, Optional.empty(),
+            new MailAddress("recipient@abc.com"), ics, eventPath, AlarmAction.EMAIL);
+    }
+
+    @Test
     default void shouldDeleteAlarmEvent() throws AddressException {
         AlarmEvent event = new AlarmEvent(
             new EventUid("1"),

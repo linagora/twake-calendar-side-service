@@ -34,6 +34,15 @@ public interface AlarmEventDAO {
 
     Mono<Void> update(AlarmEvent alarmEvent);
 
+    /**
+     * Creates the alarm, or replaces the stored one only if it is {@link AlarmEventPaths#replaceableFrom replaceable}
+     * from {@code calendarHome}. The condition and the write are atomic: a concurrent write from another calendar home
+     * cannot slip between them.
+     *
+     * @return whether the alarm was written
+     */
+    Mono<Boolean> upsertIfReplaceableFrom(AlarmEvent alarmEvent, OpenPaaSId calendarHome);
+
     Mono<Void> delete(EventUid eventUid, MailAddress recipient);
 
     /**

@@ -115,3 +115,58 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: chibenwa, [issue #1640](https://github.com/linagora/twake-calendar-side-service/issues/1640); keeping `DELETE` permissive chosen by agent (PR for #1640), to be confirmed by chibenwa
 - Why: the other cross-domain grants (team calendar members, resource administrators) are already refused, and the admin console relies on the server to refuse invalid admins.
 - Scope: calendar-webadmin `DomainAdminRoutes`, `docs/apis/webadmin.md`.
+## 2026-11-24, [Tech] Each WebAdmin task route dispatches only its own task registrations
+
+- Decision: the `/calendars` tasks (`reindex`, `scheduleAlarms`, `archive`) are bound in a set named `CALENDAR` and the `/addressbook/domain-members` tasks (`sync`) in a set named `domainMembersTasks`; no route injects the unnamed `TaskRegistration` set any more. `POST /addressbook/domain-members[/{domain}]` answers 400 to `task=archive|reindex|scheduleAlarms`, and `POST /calendars` to `task=sync`.
+- Decided by: agent (branch qa-findings-24-11-2026), to be confirmed by Benoit Tellier (maintainer), on the twake-qa security review of `e26eece1e897` (webadmin SEV-1).
+- Why: both routes shared the unnamed set, so the per-domain route that webadmin-proxy opens to domain administrators also started the archival, reindex and alarm tasks of every tenant.
+- Scope: `calendar-webadmin` `CalendarRoutesModule`, `CalendarRoutes`, `DomainMembersSyncRouteModule`, `DomainMembersAddressBookRoutes`.
+
+## 2026-11-24, [Infra] The SMTP client checks the relay host name on SMTPS and STARTTLS
+
+- Decision: `MailSender` turns on commons-net endpoint checking, so the relay certificate must match `smtp.host` when `smtp.ssl.enabled` or `smtp.starttls.enabled` is set. `smtp.ssl.verifyHostname=false` (default `true`) opts out of the host name check only; `smtp.ssl.trustAllCerts=true` skips every certificate check.
+- Decided by: agent (branch qa-findings-24-11-2026), to be confirmed by Benoit Tellier (maintainer), on the twake-qa security review of `e26eece1e897` (outbound clients SEV-2).
+- Why: commons-net leaves endpoint checking off, so any certificate a trusted CA issued for another name completed the handshake, and a man in the middle got the relay credentials and every outgoing mail.
+- Scope: `calendar-smtp` `MailSender`. A deployment reaching its relay through a name or IP its certificate does not hold must fix the name or set `smtp.ssl.verifyHostname=false`.
+
+## 2026-11-24, [Tech] Recurrence expansion counts the year ical4j walks for BYWEEKNO below YEARLY
+
+- Decision: completes "Recurrence expansion bounds weigh BYDAY, BYMONTHDAY and sparse rules" (2026-11-23): for a rule with BYWEEKNO and a frequency other than YEARLY, `RecurSkipGuard.canExpand` counts the walk up to 373 days (a week-based year and a week) past its end; a rule then over the bound gives no occurrence (an `IllegalArgumentException`) and no alarm, while a cheap one such as `FREQ=DAILY;BYWEEKNO=20` is still expanded. Every rule with BYWEEKNO or an ordinal BYDAY also counts one more walked period, and BYWEEKNO weighs 1 candidate per value below WEEKLY, where it only filters. An ordinal BYDAY below MONTHLY gets no overrun: measured on ical4j 4.4.0, it only filters the candidates of its period.
+- Decided by: agent (branch qa-findings-24-11-2026), to be confirmed by Benoit Tellier (maintainer), on the twake-qa security review of `e26eece1e897` (2026-11-24, SEV-1); counting rather than refusing these RFC-invalid rules, and leaving ordinal BYDAY out, after the code reviews of the branch.
+- Why: ical4j stops a walk only once a candidate passes its end; BYWEEKNO maps every candidate back to a week of the year, so it walked up to a year of periods whatever end it was given, past the counted bound: `FREQ=HOURLY;BYWEEKNO=1,...,20;BYMINUTE=0..59;BYSECOND=0..59` with an override built about 390 million dates in the alarm consumer. Refusing these rules would have dropped the alarms and iTIP notifications of cheap ones some clients write.
+- Scope: `storage-api` `RecurSkipGuard`, hence `EventParseUtils.createInstanceVEvent` and `AlarmInstantFactory`. `CalendarEventUtils` keeps its own check.
+
+## 2026-11-24, [Tech] An alarm record is never replaced from another calendar home
+
+- Decision: `EventAlarmHandler` looks an alarm record up by its own `(eventUid, recipient)`, no longer by the calendar owner's address, and does not replace a record whose `eventPath` lies in another calendar home than the object being processed, unless that object belongs to the recipient: it logs a warning instead. A record without a parsable `eventPath` (written before the field was stored) stays replaceable. The unique index stays `(eventUid, recipient)`: no migration.
+- Decided by: Benoit Tellier (post filtering on the stored `eventPath`, no index change), on the twake-qa security review of `e26eece1e897` (AMQP SEV-2).
+- Why: a user could put another user's event UID in their own object with an EMAIL VALARM naming that user, and the second write replaced the victim's reminder with the attacker's content, path and trigger time. UIDs are only unique within a calendar home.
+- Scope: `calendar-amqp` `EventAlarmHandler`. Two users keeping the same UID cannot both schedule an alarm for the same recipient: the recipient's own object wins, otherwise the first record.
+
+## 2026-11-24, [Product] Resources are booked only from their own domain
+
+- Decision: iTIP local delivery does not deliver a REQUEST or ADD to a resource whose domain differs from the sender's domain (warning logged, no `/itip` call), unless the resource already holds an object with that UID: a booking made before can still be updated or cancelled, and a CANCEL always goes through; and `EventResourceHandler` neither accepts nor mails the administrators a booking whose ORGANIZER is not in the resource domain or cannot be read (a booking without ORGANIZER keeps the usual handling).
+- Decided by: Benoit Tellier, on the twake-qa security review of `e26eece1e897` (AMQP SEV-3).
+- Why: a user of tenant X could book any resource of tenant Y, auto-accepted when it has no administrator, while booking links and `GET /api/resources/{id}` already treat resources as domain scoped.
+- Scope: `calendar-amqp` `ItipLocalDeliveryConsumer`, `EventResourceHandler`. Cross-domain booking, if ever wanted, needs an explicit option.
+
+## 2026-11-25, [Tech] An alarm record is replaced from another calendar home only by an atomic conditional write
+
+- Decision: replaces the 2026-11-24 entry "An alarm record is never replaced from another calendar home" for how the rule is enforced, not for the rule itself. `EventAlarmHandler` no longer reads the record and then writes it. The recipient's own object upserts their alarm as before. Any other object goes through `AlarmEventDAO.upsertIfReplaceableFrom(alarm, calendarHome)`: MongoDB runs a `replaceOne` upsert whose filter on `(eventUid, recipient)` also requires the stored `eventPath` to lie in that calendar home or not to be a calendar object path (`AlarmEventPaths`). A record of another home thus fails the filter and the insert hits the unique index; on that duplicate key, a plain conditional replace covers a record a concurrent write created meanwhile. The rule now holds without a parsable incoming `eventPath`: when there is none, nothing is written.
+- Decided by: agent (branch qa-findings-24-11-2026), on vttranlina's review of PR #1635, to be confirmed by Benoit Tellier (maintainer).
+- Why: with the check and the write in separate requests, an update from another home could pass the check, pause, and then overwrite the recipient's alarm saved in the meantime, replacing its path, ICS and trigger time (reproduced on MongoDB).
+- Scope: `storage-api` `AlarmEventDAO`, `AlarmEventPaths`, `MemoryAlarmEventDAO`; `storage-mongodb` `MongoDBAlarmEventDAO`; `calendar-amqp` `EventAlarmHandler`. No index change, no migration.
+
+## 2026-11-25, [Tech] A failed booking lookup retries a cross-domain resource delivery
+
+- Decision: amends the 2026-11-24 entry "Resources are booked only from their own domain". The check for an existing booking calls `CalDavClient.calendarReportByUid` directly: only a 404 or an empty answer means no booking. Any other failure (5xx, timeout) fails the delivery, which the consumer retries and then sends to its dead letter queue, instead of skipping it as not booked.
+- Decided by: agent (branch qa-findings-24-11-2026), on vttranlina's review of PR #1635, to be confirmed by Benoit Tellier (maintainer).
+- Why: `retrieveRecipientEventHref` turns every error into an empty result, so a DAV 503 silently dropped valid updates of existing cross-domain bookings.
+- Scope: `calendar-amqp` `ItipLocalDeliveryConsumer`. The event-path lookup used for email notifications keeps its fallback.
+
+## 2026-11-25, [Tech] Multipart file uploads bound each part kind while decoding it
+
+- Decision: `POST /api/files` decodes multipart bodies with Netty's `HttpPostMultipartRequestDecoder`, fed from `request.receive()`, instead of reactor-netty's `receiveForm`. Its data factory (`BoundedMultipartForm.PartBoundingDataFactory`) caps the file part at the declared size and every other field at 16 KiB as the bytes arrive (part header parameters, such as the file name, fall under the field limit). At most 16 fields are accepted before the file. The decoding runs on `Schedulers.boundedElastic()`, chunks retained and offered in order, as the decoder writes parts past 16 KiB to disk and must not block the event loop. A file larger than its declared size is now refused while it is decoded, so the error no longer reports the size actually sent (`expected: N`, without `got`).
+- Decided by: agent (branch qa-findings-24-11-2026), on vttranlina's review of PR #1635, to be confirmed by Benoit Tellier (maintainer).
+- Why: `receiveForm` takes a single `maxSize` for every part, so an ordinary field could fill a temporary file up to the declared file size (307,200 bytes measured with `size=2097152`) before the 16 KiB check ran on the completed field.
+- Scope: `calendar-rest-api` `FileUploadRoute`, `BoundedMultipartForm`. `AttachmentUploadRoute` keeps `receiveForm`.

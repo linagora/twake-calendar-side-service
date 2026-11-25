@@ -23,6 +23,7 @@ import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import jakarta.inject.Inject;
 
@@ -38,6 +39,7 @@ import org.apache.james.util.ReactorUtils;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Throwables;
 import com.linagora.calendar.storage.FileUploadConfiguration;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.UploadedFileDAO;
@@ -45,10 +47,10 @@ import com.linagora.calendar.storage.model.Upload;
 import com.linagora.calendar.storage.model.UploadedFile;
 import com.linagora.calendar.storage.model.UploadedMimeType;
 
+import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.FileUpload;
-import io.netty.handler.codec.http.multipart.HttpData;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -95,6 +97,9 @@ public class FileUploadRoute extends CalendarRoute {
     private final UploadedFileDAO fileDAO;
     private final Clock clock;
     private final Long userTotalLimitInBytes;
+
+    private static final long FORM_FIELD_MAX_SIZE = 16 * 1024;
+    private static final int MAX_FORM_FIELDS = 16;
 
     @Inject
     public FileUploadRoute(Authenticator authenticator, MetricFactory metricFactory, UploadedFileDAO fileDAO, Clock clock, FileUploadConfiguration configuration) {
@@ -147,18 +152,52 @@ public class FileUploadRoute extends CalendarRoute {
     }
 
     private Mono<byte[]> getUploadedDataFromMultiPartRequest(HttpServerRequest request, long fileSize) {
-        return request.receiveForm()
-            .doOnNext(HttpData::retain)
-            .filter(data -> data instanceof FileUpload)
-            .cast(FileUpload.class)
-            .next()
-            .flatMap(fileUpload -> {
-                long actualSize = fileUpload.length();
-                if (actualSize > fileSize) {
-                    return Mono.error(sizeExceededException(fileSize, actualSize));
-                }
-                return Mono.fromCallable(fileUpload::get);
-            });
+        // The decoder refuses a part past its bound while receiving it, before it is all stored on disk: the file part is
+        // bounded by the declared size, the parts before it are limited in number and each to FORM_FIELD_MAX_SIZE. A request
+        // thus stores at most the declared size plus that budget.
+        AtomicInteger formFields = new AtomicInteger();
+        return BoundedMultipartForm.decode(request, new BoundedMultipartForm.PartBoundingDataFactory(fileSize, FORM_FIELD_MAX_SIZE), parts -> parts
+                .concatMap(data -> data instanceof FileUpload fileUpload
+                    ? readFileUpload(fileUpload, fileSize)
+                    : checkFormFieldCount(formFields.incrementAndGet()), 0)
+                .next())
+            .switchIfEmpty(Mono.error(() -> new IllegalArgumentException("A file part is required")))
+            .onErrorMap(DecoderException.class, error -> multipartError(fileSize, error));
+    }
+
+    private static Mono<byte[]> checkFormFieldCount(int index) {
+        if (index > MAX_FORM_FIELDS) {
+            return Mono.error(formFieldsLimitException());
+        }
+        return Mono.empty();
+    }
+
+    private static IllegalArgumentException formFieldsLimitException() {
+        return new IllegalArgumentException("Form fields other than the file are limited to " + MAX_FORM_FIELDS
+            + " of " + FORM_FIELD_MAX_SIZE + " bytes");
+    }
+
+    private Mono<byte[]> readFileUpload(FileUpload fileUpload, long fileSize) {
+        if (!fileUpload.isCompleted()) {
+            return Mono.error(new IllegalArgumentException("Incomplete file part"));
+        }
+        if (fileUpload.length() > fileSize) {
+            return Mono.error(sizeExceededException(fileSize, fileUpload.length()));
+        }
+        return Mono.fromCallable(fileUpload::get).subscribeOn(Schedulers.boundedElastic());
+    }
+
+    private static IllegalArgumentException multipartError(long declaredSize, DecoderException error) {
+        // Netty reports maxSize violations without a dedicated exception type: an IllegalArgumentException when the part
+        // is created or grows in memory, an IOException once it is stored on disk.
+        String cause = Throwables.getRootCause(error).getMessage();
+        if (!"Attribute bigger than maxSize allowed".equals(cause) && !"Size exceed allowed maximum capacity".equals(cause)) {
+            return new IllegalArgumentException("Invalid multipart upload", error);
+        }
+        if (error instanceof BoundedMultipartForm.PartDecodingException partError && partError.filePart()) {
+            return new IllegalArgumentException("Real size is greater than declared size, expected: " + declaredSize, error);
+        }
+        return formFieldsLimitException();
     }
 
     private IllegalArgumentException sizeExceededException(long pSizeMax, long pCount) {
@@ -196,11 +235,17 @@ public class FileUploadRoute extends CalendarRoute {
             .filter(s -> !s.isBlank())
             .orElseThrow(() -> new IllegalArgumentException("Missing size param"));
 
+        long fileSize;
         try {
-            return Long.parseLong(size);
+            fileSize = Long.parseLong(size);
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid size param: " + size);
         }
+        if (fileSize < 0) {
+            // A negative size would lift the bound of the multipart decoder.
+            throw new IllegalArgumentException("Invalid size param: " + size);
+        }
+        return fileSize;
     }
 
     private UploadedMimeType extractMimeType(QueryStringDecoder queryStringDecoder) {

@@ -27,8 +27,10 @@ import org.apache.james.webadmin.tasks.TaskFromRequestRegistry;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Scopes;
+import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
 import com.google.inject.name.Named;
+import com.google.inject.name.Names;
 import com.linagora.calendar.webadmin.DomainMembersAddressBookRoutes.LdapToDavDomainMembersSyncTaskRegistration;
 import com.linagora.calendar.webadmin.service.DavDomainMembersClearService;
 import com.linagora.calendar.webadmin.service.DomainAddressBookCopyService;
@@ -38,17 +40,16 @@ import com.linagora.calendar.webadmin.task.DomainMembersClearTaskAdditionalInfor
 import com.linagora.calendar.webadmin.task.DomainMembersSyncTaskAdditionalInformationDTO;
 
 public class DomainMembersSyncRouteModule extends AbstractModule {
+    public static final String DOMAIN_MEMBERS_TASKS = "domainMembersTasks";
 
     @Override
     protected void configure() {
         bind(LdapToDavDomainMembersSyncService.class).in(Scopes.SINGLETON);
         bind(DavDomainMembersClearService.class).in(Scopes.SINGLETON);
         bind(DomainAddressBookCopyService.class).in(Scopes.SINGLETON);
-    }
 
-    @ProvidesIntoSet
-    public TaskFromRequestRegistry.TaskRegistration ldapToDavDomainMembersSyncTaskRegistration(LdapToDavDomainMembersSyncTaskRegistration taskRegistration) {
-        return taskRegistration;
+        Multibinder.newSetBinder(binder(), TaskFromRequestRegistry.TaskRegistration.class, Names.named(DOMAIN_MEMBERS_TASKS))
+            .addBinding().to(LdapToDavDomainMembersSyncTaskRegistration.class);
     }
 
     @Named(DTOModuleInjections.WEBADMIN_DTO)

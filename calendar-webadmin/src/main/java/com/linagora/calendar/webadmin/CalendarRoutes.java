@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.webadmin.CalendarRoutesModule.CALENDAR_TASKS_KEY;
 import static com.linagora.calendar.webadmin.CalendarRoutesModule.USER_CALENDAR_TASKS_KEY;
 import static com.linagora.calendar.webadmin.EventArchivalCriteriaRequestParser.extractEventArchivalCriteria;
 import static com.linagora.calendar.webadmin.task.CalendarEventsReindexTask.RunningOptions.DEFAULT_CALENDARS_CONCURRENCY;
@@ -138,7 +139,7 @@ public class CalendarRoutes implements Routes {
 
     @Inject
     public CalendarRoutes(JsonTransformer jsonTransformer, TaskManager taskManager,
-                          Set<TaskFromRequestRegistry.TaskRegistration> taskRegistrations,
+                          @Named(CALENDAR_TASKS_KEY) Set<TaskFromRequestRegistry.TaskRegistration> taskRegistrations,
                           @Named(USER_CALENDAR_TASKS_KEY) Set<TaskFromRequestRegistry.TaskRegistration> userTaskRegistrations) {
         this.jsonTransformer = jsonTransformer;
         this.taskManager = taskManager;

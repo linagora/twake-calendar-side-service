@@ -21,6 +21,7 @@ package com.linagora.calendar.storage;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -55,6 +56,21 @@ public class MemoryAlarmEventDAO implements AlarmEventDAO {
     @Override
     public Mono<Void> update(AlarmEvent alarmEvent) {
         return Mono.fromRunnable(() -> store.put(generateKey(alarmEvent.eventUid(), alarmEvent.recipient()), alarmEvent));
+    }
+
+    @Override
+    public Mono<Boolean> upsertIfReplaceableFrom(AlarmEvent alarmEvent, OpenPaaSId calendarHome) {
+        return Mono.fromCallable(() -> {
+            AtomicBoolean written = new AtomicBoolean();
+            store.compute(generateKey(alarmEvent.eventUid(), alarmEvent.recipient()), (key, existing) -> {
+                if (existing == null || AlarmEventPaths.replaceableFrom(existing.eventPath(), calendarHome)) {
+                    written.set(true);
+                    return alarmEvent;
+                }
+                return existing;
+            });
+            return written.get();
+        });
     }
 
     @Override
