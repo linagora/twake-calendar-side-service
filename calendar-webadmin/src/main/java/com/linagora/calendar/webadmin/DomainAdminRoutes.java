@@ -21,6 +21,7 @@ package com.linagora.calendar.webadmin;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.util.List;
+import java.util.Optional;
 
 import jakarta.inject.Inject;
 
@@ -97,6 +98,7 @@ public class DomainAdminRoutes implements Routes {
     private String addDomainAdmin(Request request, Response response) {
         OpenPaaSDomain openPaaSDomain = asOpenPaaSDomain(request.params(DOMAIN_PARAM));
         OpenPaaSUser userAdmin = asAdminUser(request.params(USER_PARAM));
+        checkBelongsToDomain(userAdmin, openPaaSDomain);
         domainAdminDAO.addAdmins(openPaaSDomain.id(), List.of(userAdmin.id()))
             .block();
         return Responses.returnNoContent(response);
@@ -108,6 +110,16 @@ public class DomainAdminRoutes implements Routes {
         domainAdminDAO.revokeAdmin(openPaaSDomain.id(), userAdmin.id())
             .block();
         return Responses.returnNoContent(response);
+    }
+
+    private void checkBelongsToDomain(OpenPaaSUser user, OpenPaaSDomain openPaaSDomain) {
+        if (!user.username().getDomainPart().equals(Optional.of(openPaaSDomain.domain()))) {
+            throw ErrorResponder.builder()
+                .statusCode(HttpStatus.BAD_REQUEST_400)
+                .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
+                .message("%s does not belong to domain %s", user.username().asString(), openPaaSDomain.domain().asString())
+                .haltError();
+        }
     }
 
     private OpenPaaSUser asAdminUser(String username) {

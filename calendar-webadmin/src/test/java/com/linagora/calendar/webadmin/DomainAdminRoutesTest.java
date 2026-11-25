@@ -21,6 +21,9 @@ package com.linagora.calendar.webadmin;
 import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.when;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static org.hamcrest.Matchers.is;
+
+import java.util.List;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.Username;
@@ -138,6 +141,49 @@ class DomainAdminRoutesTest {
             .put("/domains/linagora.com/admins/notfound@linagora.com")
         .then()
             .statusCode(404);
+    }
+
+    @Test
+    void putShouldReturn400WhenUserBelongsToAnotherDomain() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+        domainDAO.add(Domain.of("other.com")).block();
+        userDAO.add(Username.of("user1@linagora.com")).block();
+
+        given()
+            .put("/domains/other.com/admins/user1@linagora.com")
+        .then()
+            .statusCode(400)
+            .body("message", is("user1@linagora.com does not belong to domain other.com"));
+
+        String body = when()
+            .get("/domains/other.com/admins")
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+
+        assertThatJson(body).isEqualTo("[]");
+    }
+
+    @Test
+    void deleteShouldRevokeAdminOfAnotherDomain() {
+        OpenPaaSDomain otherDomain = domainDAO.add(Domain.of("other.com")).block();
+        OpenPaaSUser user = userDAO.add(Username.of("user1@linagora.com")).block();
+        domainAdminDAO.addAdmins(otherDomain.id(), List.of(user.id())).block();
+
+        given()
+            .delete("/domains/other.com/admins/user1@linagora.com")
+        .then()
+            .statusCode(204);
+
+        String body = when()
+            .get("/domains/other.com/admins")
+        .then()
+            .statusCode(200)
+            .extract()
+            .asString();
+
+        assertThatJson(body).isEqualTo("[]");
     }
 
     @Test

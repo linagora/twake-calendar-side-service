@@ -109,6 +109,12 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Why: the agents are persistent and shared, so code of a pull request that runs before the check can read a credential bound later in the same build, or leave a process behind for a later one. A review is tied to a commit by GitHub, unlike a comment, so a commit pushed after the approval is not built until a member reviews it again.
 - Scope: `Jenkinsfile`, including the failed test summary run in `post`.
 
+## 2026-11-25, [Product] A domain administrator belongs to the domain they administer
+
+- Decision: `PUT /domains/{domainName}/admins/{username}` answers `400` "`<username>` does not belong to domain `<domainName>`" when the domain part of the user differs from the domain, and grants nothing. `DELETE` stays allowed for such a user, so grants made before this check can be revoked.
+- Decided by: chibenwa, [issue #1640](https://github.com/linagora/twake-calendar-side-service/issues/1640); keeping `DELETE` permissive chosen by agent (PR for #1640), to be confirmed by chibenwa
+- Why: the other cross-domain grants (team calendar members, resource administrators) are already refused, and the admin console relies on the server to refuse invalid admins.
+- Scope: calendar-webadmin `DomainAdminRoutes`, `docs/apis/webadmin.md`.
 ## 2026-11-24, [Tech] Each WebAdmin task route dispatches only its own task registrations
 
 - Decision: the `/calendars` tasks (`reindex`, `scheduleAlarms`, `archive`) are bound in a set named `CALENDAR` and the `/addressbook/domain-members` tasks (`sync`) in a set named `domainMembersTasks`; no route injects the unnamed `TaskRegistration` set any more. `POST /addressbook/domain-members[/{domain}]` answers 400 to `task=archive|reindex|scheduleAlarms`, and `POST /calendars` to `task=sync`.

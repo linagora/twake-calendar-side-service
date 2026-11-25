@@ -1156,12 +1156,12 @@ Example:
 PUT /domains/linagora.com/admins/user1@linagora.com
 ```
 
-Adds the user `user1@linagora.com` as an admin of domain `linagora.com`.
+Adds the user `user1@linagora.com` as an admin of domain `linagora.com`. The user must belong to the domain: a user of another domain cannot administer it.
 
 **Status codes**:
 - `204` if successfully added (idempotent: calling multiple times with the same user still returns `204`).
 - `404` if the domain or user does not exist.
-- `400` if `domainName` or `username` has an invalid format.
+- `400` if `domainName` or `username` has an invalid format, or if the user does not belong to the domain.
 
 ---
 
