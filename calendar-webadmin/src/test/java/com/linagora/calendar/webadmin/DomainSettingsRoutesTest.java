@@ -288,7 +288,7 @@ class DomainSettingsRoutesTest {
         .then()
             .statusCode(400)
             .body("type", equalTo("InvalidArgument"))
-            .body("message", equalTo("Request body must be a JSON object"));
+            .body("message", equalTo("JSON payload of the request is not valid"));
     }
 
     @Test

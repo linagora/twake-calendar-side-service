@@ -187,7 +187,7 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 
 ## 2026-11-25, [Tech] A WebAdmin request body that is the JSON literal `null` is refused with 400
 
-- Decision: every WebAdmin route reading a JSON object body answers `400 InvalidArgument "Request body must be a JSON object"` when the body is `null`. DTO bodies go through `WebAdminRouteUtils.parseDtoBody`, or `WebAdminRouteUtils.requireBody` around `JsonExtractor.parse`; PATCH routes reading a `JsonNode` check `isObject()`.
-- Decided by: chibenwa, [issue #1644](https://github.com/linagora/twake-calendar-side-service/issues/1644); the shared helper chosen by agent (PR for #1644), to be confirmed by chibenwa.
-- Why: Jackson and James' `JsonExtractor` read `null` as a `null` DTO without error, which ended in a 500 carrying a NullPointerException message.
+- Decision: every WebAdmin route reading a JSON object body answers 400 `InvalidArgument` when the body is `null`. Routes parsing with James' `JsonExtractor` rely on it: it refuses `null` since apache/james-project@32255c6f34, and the route answers `"JSON payload of the request is not valid"`. Routes parsing with their own `ObjectMapper` go through `WebAdminRouteUtils.parseDtoBody`, and PATCH routes reading a `JsonNode` check `isObject()`: both answer `"Request body must be a JSON object"`.
+- Decided by: chibenwa, [issue #1644](https://github.com/linagora/twake-calendar-side-service/issues/1644); the shared helper chosen by agent (PR for #1644), to be confirmed by chibenwa. Relying on James' `JsonExtractor` rather than double-checking it: agent, after chibenwa pointed at the James upstream change on PR #1649.
+- Why: Jackson read `null` as a `null` DTO without error, which ended in a 500 carrying a NullPointerException message. James now fixes it upstream for `JsonExtractor`; a second null check behind it is dead code.
 - Scope: `calendar-webadmin` routes: users, registered users, domain settings, resources, team calendars and their members, user calendars and address books, booking links.

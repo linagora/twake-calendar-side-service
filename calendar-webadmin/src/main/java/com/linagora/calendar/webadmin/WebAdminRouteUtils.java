@@ -140,7 +140,7 @@ final class WebAdminRouteUtils {
             .haltError();
     }
 
-    static HaltException notAJsonObject() {
+    private static HaltException notAJsonObject() {
         return ErrorResponder.builder()
             .statusCode(HttpStatus.BAD_REQUEST_400)
             .type(ErrorResponder.ErrorType.INVALID_ARGUMENT)
@@ -150,8 +150,9 @@ final class WebAdminRouteUtils {
 
     /**
      * Jackson reads the JSON literal {@code null} as a {@code null} DTO, without error: refuse it as a request body.
+     * James' {@code JsonExtractor} already refuses it on its own.
      */
-    static <T> T requireBody(T body) {
+    private static <T> T requireBody(T body) {
         return Optional.ofNullable(body)
             .orElseThrow(WebAdminRouteUtils::notAJsonObject);
     }
