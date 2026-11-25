@@ -18,8 +18,6 @@
 
 package com.linagora.calendar.webadmin;
 
-import static com.linagora.calendar.webadmin.WebAdminRouteUtils.requireBody;
-
 import java.util.Optional;
 import java.util.function.Predicate;
 
@@ -114,7 +112,7 @@ public class DomainRegisteredUsersRoutes implements Routes {
 
     private String addUser(Request request, Response response) throws JsonExtractException {
         Domain domain = asDomain(request);
-        CalendarUserRoutes.CalendarUserDTO dto = requireBody(jsonExtractor.parse(request.body())).validateForWrite();
+        CalendarUserRoutes.CalendarUserDTO dto = jsonExtractor.parse(request.body()).validateForWrite();
 
         Username username = Username.of(dto.email());
         validateEmailDomain(username, domain);
@@ -207,7 +205,7 @@ public class DomainRegisteredUsersRoutes implements Routes {
                 .message("Missing 'id' query parameter")
                 .haltError());
 
-        CalendarUserRoutes.CalendarUserDTO dto = requireBody(jsonExtractor.parse(request.body())).validateForWrite();
+        CalendarUserRoutes.CalendarUserDTO dto = jsonExtractor.parse(request.body()).validateForWrite();
         Username username = Username.of(dto.email());
         validateEmailDomain(username, domain);
 

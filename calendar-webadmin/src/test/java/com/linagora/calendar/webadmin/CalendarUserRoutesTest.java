@@ -395,7 +395,7 @@ class CalendarUserRoutesTest {
         .then()
             .statusCode(400)
             .body("type", is("InvalidArgument"))
-            .body("message", is("Request body must be a JSON object"));
+            .body("message", is("JSON payload of the request is not valid"));
     }
 
     @Test
@@ -410,7 +410,7 @@ class CalendarUserRoutesTest {
         .then()
             .statusCode(400)
             .body("type", is("InvalidArgument"))
-            .body("message", is("Request body must be a JSON object"));
+            .body("message", is("JSON payload of the request is not valid"));
     }
 
     @Test
