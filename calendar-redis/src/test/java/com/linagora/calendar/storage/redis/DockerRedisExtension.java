@@ -38,7 +38,7 @@ import io.lettuce.core.api.reactive.RedisReactiveCommands;
 
 public class DockerRedisExtension implements BeforeAllCallback, AfterAllCallback, AfterEachCallback {
 
-    public static final RedisContainer redisContainer = new RedisContainer(DockerImageName.parse("redis:6.2.6"));
+    public static final RedisContainer redisContainer = new RedisContainer(DockerImageName.parse("redis:8.12.0"));
     public static final Duration redisTimeout = Duration.ofSeconds(3);
 
     private StatefulRedisConnection redisClientReactive;

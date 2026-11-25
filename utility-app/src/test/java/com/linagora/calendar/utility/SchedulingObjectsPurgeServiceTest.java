@@ -52,7 +52,7 @@ import reactor.core.publisher.Mono;
 public class SchedulingObjectsPurgeServiceTest {
 
     @Container
-    static final MongoDBContainer mongo = new MongoDBContainer("mongo:8.0.6")
+    static final MongoDBContainer mongo = new MongoDBContainer("mongo:9.0.8")
         .withCommand("--replSet", "docker-rs", "--setParameter", "ttlMonitorSleepSecs=5")
         .withCreateContainerCmdModifier(createContainerCmd -> createContainerCmd.withName("tcalendar-utility-mongo-test-" + UUID.randomUUID()));
 

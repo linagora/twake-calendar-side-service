@@ -97,7 +97,7 @@ services:
       - tcalendar
 
   mongo:
-    image: mongo:8.0.6
+    image: mongo:9.0.8
     container_name: mongo
     networks:
       - tcalendar
@@ -119,7 +119,7 @@ services:
       retries: 10
 
   rabbitmq:
-    image: rabbitmq:4.1.1-management
+    image: rabbitmq:4.2.9-management
     container_name: rabbitmq
     networks:
       - tcalendar
@@ -186,7 +186,7 @@ services:
         ipv4_address: 172.32.32.32
 
   redis:
-    image: redis:6.2.6
+    image: redis:8.12.0
     container_name: redis
     networks:
       - tcalendar

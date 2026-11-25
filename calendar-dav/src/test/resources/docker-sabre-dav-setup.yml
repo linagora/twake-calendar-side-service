@@ -9,7 +9,7 @@ services:
       - tcalendar
 
   rabbitmq:
-    image: rabbitmq:4.1.1-management
+    image: rabbitmq:4.2.9-management
     hostname: esn-rabbit
     networks:
       - tcalendar
@@ -23,7 +23,7 @@ services:
       RABBITMQ_DEFAULT_PASS: calendar
 
   mongo:
-    image: mongo:8.0.6
+    image: mongo:9.0.8
     networks:
       - tcalendar
     ulimits:
