@@ -177,3 +177,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: chibenwa, [issue #1643](https://github.com/linagora/twake-calendar-side-service/issues/1643); soft delete rather than a hard delete chosen by agent (PR for #1643), to be confirmed by chibenwa
 - Why: the resource was inserted in MongoDB before the share, so every failed creation (500) left one more resource behind. Soft delete is what `DELETE` does, and needs no new DAO operation.
 - Scope: `calendar-dav` `ResourceService.create`, WebAdmin `POST /domains/{domain}/resources`.
+  
+## 2026-11-24, [Tech] VALARM recipients are lower-cased
+
+- Decision: `AlarmInstantFactory` lower-cases (`Locale.US`) the address of each VALARM `ATTENDEE`, so alarm records (`twake_calendar_alarm_events`) are keyed on the lower-cased recipient and matched by plain equality by `EventAlarmHandler`, which already looks a record up by the recipient of the alarm (2026-11-24 "An alarm record is never replaced from another calendar home"). No migration: a record written before with a mixed-case recipient is no longer matched. An update of its event adds a lower-cased record beside it instead of replacing it, so its recipient gets the stale reminder too, until that record fires its last occurrence or the event is deleted (`deleteByEventPath`); this is accepted.
+- Decided by: Benoit Tellier, [issue #1636](https://github.com/linagora/twake-calendar-side-service/issues/1636) (no regex on MongoDB, no backward compatibility, addresses are lower case).
+- Why: the local part of a VALARM `ATTENDEE` kept its case, so `Bob@domain` in one version of an event and `bob@domain` in the next made a second record and two reminders. A case-insensitive regex would have cost every alarm lookup the recipient index. A migration task was judged overkill: no mixed-case recipient is stored as of today.
+- Scope: `storage-api` `AlarmInstantFactory`. Alarm emails go to the lower-cased address.

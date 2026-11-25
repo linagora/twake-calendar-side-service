@@ -131,6 +131,32 @@ public class AlarmInstantFactoryTest {
     }
 
     @Test
+    void computeNextAlarmInstantShouldLowerCaseValarmRecipients() {
+        Calendar calendar = CalendarUtil.parseIcs("""
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            BEGIN:VEVENT
+            UID:event
+            DTSTART:20250801T100000Z
+            ATTENDEE;CN=Bob;PARTSTAT=ACCEPTED:mailto:bob@example.com
+            BEGIN:VALARM
+            TRIGGER:-PT15M
+            ACTION:EMAIL
+            ATTENDEE:mailto:Bob@Example.com
+            DESCRIPTION:Reminder
+            END:VALARM
+            END:VEVENT
+            END:VCALENDAR
+            """.getBytes(StandardCharsets.UTF_8));
+        AlarmInstantFactory factory = new AlarmInstantFactory.Default(
+            Clock.fixed(Instant.parse("2025-07-23T00:00:00Z"), ZoneOffset.UTC));
+
+        assertThat(factory.computeNextAlarmInstant(calendar, Username.of("bob@example.com")).get().recipients().stream()
+            .map(MailAddress::asString).toList())
+            .isEqualTo(List.of("bob@example.com"));
+    }
+
+    @Test
     void computeNextAlarmInstantShouldStillComputeASecondlyRuleItCanSkipAlong() {
         AlarmInstantFactory factory = new AlarmInstantFactory.Default(
             Clock.fixed(Instant.parse("2025-07-23T00:00:00Z"), ZoneOffset.UTC));
