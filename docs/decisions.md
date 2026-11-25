@@ -170,3 +170,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: agent (branch qa-findings-24-11-2026), on vttranlina's review of PR #1635, to be confirmed by Benoit Tellier (maintainer).
 - Why: `receiveForm` takes a single `maxSize` for every part, so an ordinary field could fill a temporary file up to the declared file size (307,200 bytes measured with `size=2097152`) before the 16 KiB check ran on the completed field.
 - Scope: `calendar-rest-api` `FileUploadRoute`, `BoundedMultipartForm`. `AttachmentUploadRoute` keeps `receiveForm`.
+
+## 2026-11-24, [Tech] VALARM recipients are lower-cased
+
+- Decision: `AlarmInstantFactory` lower-cases (`Locale.US`) the address of each VALARM `ATTENDEE`, so alarm records (`twake_calendar_alarm_events`) are keyed on the lower-cased recipient and matched by plain equality by `EventAlarmHandler`, which already looks a record up by the recipient of the alarm (2026-11-24 "An alarm record is never replaced from another calendar home"). No migration: a record written before with a mixed-case recipient is no longer matched. An update of its event adds a lower-cased record beside it instead of replacing it, so its recipient gets the stale reminder too, until that record fires its last occurrence or the event is deleted (`deleteByEventPath`); this is accepted.
+- Decided by: Benoit Tellier, [issue #1636](https://github.com/linagora/twake-calendar-side-service/issues/1636) (no regex on MongoDB, no backward compatibility, addresses are lower case).
+- Why: the local part of a VALARM `ATTENDEE` kept its case, so `Bob@domain` in one version of an event and `bob@domain` in the next made a second record and two reminders. A case-insensitive regex would have cost every alarm lookup the recipient index. A migration task was judged overkill: no mixed-case recipient is stored as of today.
+- Scope: `storage-api` `AlarmInstantFactory`. Alarm emails go to the lower-cased address.
