@@ -170,3 +170,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: agent (branch qa-findings-24-11-2026), on vttranlina's review of PR #1635, to be confirmed by Benoit Tellier (maintainer).
 - Why: `receiveForm` takes a single `maxSize` for every part, so an ordinary field could fill a temporary file up to the declared file size (307,200 bytes measured with `size=2097152`) before the 16 KiB check ran on the completed field.
 - Scope: `calendar-rest-api` `FileUploadRoute`, `BoundedMultipartForm`. `AttachmentUploadRoute` keeps `receiveForm`.
+
+## 2026-11-25, [Tech] A resource whose administrators cannot be shared is rolled back
+
+- Decision: `ResourceService.create` soft deletes the resource it just inserted when the CalDAV share of its administrators fails, then propagates the share error; a failing rollback is logged and does not hide that error. Administrators of another domain are already refused with a 400 before any write (ISSUE-1545).
+- Decided by: chibenwa, [issue #1643](https://github.com/linagora/twake-calendar-side-service/issues/1643); soft delete rather than a hard delete chosen by agent (PR for #1643), to be confirmed by chibenwa
+- Why: the resource was inserted in MongoDB before the share, so every failed creation (500) left one more resource behind. Soft delete is what `DELETE` does, and needs no new DAO operation.
+- Scope: `calendar-dav` `ResourceService.create`, WebAdmin `POST /domains/{domain}/resources`.
