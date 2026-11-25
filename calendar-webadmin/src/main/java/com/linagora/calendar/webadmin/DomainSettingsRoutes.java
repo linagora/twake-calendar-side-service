@@ -20,6 +20,7 @@ package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader.OBJECT_MAPPER_DEFAULT;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.NOT_A_JSON_OBJECT_MESSAGE;
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.createdTaskResponse;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.util.Optional;
@@ -28,6 +29,8 @@ import jakarta.annotation.Nullable;
 import jakarta.inject.Inject;
 
 import org.apache.james.core.Domain;
+import org.apache.james.task.TaskId;
+import org.apache.james.task.TaskManager;
 import org.apache.james.util.ValuePatch;
 import org.apache.james.webadmin.Constants;
 import org.apache.james.webadmin.Routes;
@@ -44,8 +47,11 @@ import com.linagora.calendar.storage.DomainSettings;
 import com.linagora.calendar.storage.DomainSettingsDAO;
 import com.linagora.calendar.storage.DomainSettingsPatch;
 import com.linagora.calendar.storage.DomainSettingsResolver;
+import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.UserSearchMode;
+import com.linagora.calendar.webadmin.service.DomainMembersUserSearchModeService;
+import com.linagora.calendar.webadmin.task.DomainMembersUserSearchModeTask;
 
 import spark.Request;
 import spark.Response;
@@ -114,17 +120,23 @@ public class DomainSettingsRoutes implements Routes {
     private final DomainSettingsResolver domainSettingsResolver;
     private final OpenPaaSDomainDAO domainDAO;
     private final JsonTransformer jsonTransformer;
+    private final TaskManager taskManager;
+    private final DomainMembersUserSearchModeService domainMembersUserSearchModeService;
     private final JsonExtractor<DomainSettingsPutRequest> jsonExtractor;
 
     @Inject
     public DomainSettingsRoutes(DomainSettingsDAO domainSettingsDAO,
                                 DomainSettingsResolver domainSettingsResolver,
                                 OpenPaaSDomainDAO domainDAO,
-                                JsonTransformer jsonTransformer) {
+                                JsonTransformer jsonTransformer,
+                                TaskManager taskManager,
+                                DomainMembersUserSearchModeService domainMembersUserSearchModeService) {
         this.domainSettingsDAO = domainSettingsDAO;
         this.domainSettingsResolver = domainSettingsResolver;
         this.domainDAO = domainDAO;
         this.jsonTransformer = jsonTransformer;
+        this.taskManager = taskManager;
+        this.domainMembersUserSearchModeService = domainMembersUserSearchModeService;
         this.jsonExtractor = new JsonExtractor<>(DomainSettingsPutRequest.class);
     }
 
@@ -141,7 +153,7 @@ public class DomainSettingsRoutes implements Routes {
     }
 
     private DomainSettingsResponse getDomainSettings(Request request, Response response) {
-        Domain domain = asDomain(request);
+        Domain domain = asOpenPaaSDomain(request).domain();
         return domainSettingsDAO.retrieve(domain)
             .defaultIfEmpty(DomainSettings.DEFAULT_DOMAIN_SETTINGS)
             .map(stored -> DomainSettingsResponse.of(stored, domainSettingsResolver.applyFallbacks(domain, stored)))
@@ -149,16 +161,29 @@ public class DomainSettingsRoutes implements Routes {
     }
 
     private String putDomainSettings(Request request, Response response) throws JsonExtractException {
-        Domain domain = asDomain(request);
+        OpenPaaSDomain domain = asOpenPaaSDomain(request);
         DomainSettingsPutRequest requestDTO = jsonExtractor.parse(request.body());
         DomainSettings settings = requestDTO.toDomainSettings();
-        domainSettingsDAO.save(domain, settings).block();
-        response.status(HttpStatus.NO_CONTENT_204);
-        return Constants.EMPTY_BODY;
+        UserSearchMode previousMode = domainSettingsResolver.resolveUserSearchMode(domain.domain()).block();
+        domainSettingsDAO.save(domain.domain(), settings).block();
+        return respondAfterUpdate(domain, previousMode, response);
+    }
+
+    // The domain-members address book, readable by every member, lists the members only while user search is enabled:
+    // the effective mode is compared, the configured fallbacks included, and a task fills or clears the book when it
+    // enters or leaves enabled (see docs/decisions.md, issue #1646).
+    private String respondAfterUpdate(OpenPaaSDomain domain, UserSearchMode previousMode, Response response) {
+        UserSearchMode newMode = domainSettingsResolver.resolveUserSearchMode(domain.domain()).block();
+        if ((previousMode == UserSearchMode.ENABLED) == (newMode == UserSearchMode.ENABLED)) {
+            response.status(HttpStatus.NO_CONTENT_204);
+            return Constants.EMPTY_BODY;
+        }
+        TaskId taskId = taskManager.submit(new DomainMembersUserSearchModeTask(domain, domainMembersUserSearchModeService));
+        return createdTaskResponse(response, taskId);
     }
 
     private String patchDomainSettings(Request request, Response response) {
-        Domain domain = asDomain(request);
+        OpenPaaSDomain domain = asOpenPaaSDomain(request);
         if (request.body() == null || request.body().isEmpty()) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.BAD_REQUEST_400)
@@ -166,6 +191,7 @@ public class DomainSettingsRoutes implements Routes {
                 .message("Request body is required")
                 .haltError();
         }
+        UserSearchMode previousMode = domainSettingsResolver.resolveUserSearchMode(domain.domain()).block();
         try {
             JsonNode node = OBJECT_MAPPER_DEFAULT.readTree(request.bodyAsBytes());
             if (!node.isObject()) {
@@ -177,7 +203,7 @@ public class DomainSettingsRoutes implements Routes {
                 parseResourceSearchEnabled(node, dto),
                 parseDefaultCalendarPublicVisibility(node, dto),
                 parseCalendarPublicVisibilitySettingEnabled(node, dto));
-            domainSettingsDAO.patch(domain, patch).block();
+            domainSettingsDAO.patch(domain.domain(), patch).block();
         } catch (IllegalArgumentException e) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.BAD_REQUEST_400)
@@ -191,8 +217,7 @@ public class DomainSettingsRoutes implements Routes {
                 .message("Invalid request body")
                 .haltError();
         }
-        response.status(HttpStatus.NO_CONTENT_204);
-        return Constants.EMPTY_BODY;
+        return respondAfterUpdate(domain, previousMode, response);
     }
 
     private ValuePatch<UserSearchMode> parseUserSearchMode(JsonNode node, DomainSettingsPatchRequest dto) {
@@ -229,18 +254,17 @@ public class DomainSettingsRoutes implements Routes {
             .orElseGet(ValuePatch::remove);
     }
 
-    private Domain asDomain(Request request) {
+    private OpenPaaSDomain asOpenPaaSDomain(Request request) {
         String domainName = request.params(DOMAIN_PARAM);
         try {
             Domain domain = Domain.of(domainName);
-            domainDAO.retrieve(domain)
+            return domainDAO.retrieve(domain)
                 .blockOptional()
                 .orElseThrow(() -> ErrorResponder.builder()
                     .statusCode(HttpStatus.NOT_FOUND_404)
                     .type(ErrorResponder.ErrorType.NOT_FOUND)
                     .message("Domain not found: %s".formatted(domainName))
                     .haltError());
-            return domain;
         } catch (IllegalArgumentException e) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.BAD_REQUEST_400)

@@ -22,6 +22,8 @@ import static io.restassured.RestAssured.given;
 import static io.restassured.RestAssured.when;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.hamcrest.CoreMatchers.equalTo;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 
 import java.util.List;
 import java.util.Map;
@@ -29,12 +31,15 @@ import java.util.Set;
 
 import org.apache.commons.configuration2.MapConfiguration;
 import org.apache.james.core.Domain;
+import org.apache.james.task.Hostname;
+import org.apache.james.task.MemoryTaskManager;
 import org.apache.james.webadmin.WebAdminServer;
 import org.apache.james.webadmin.utils.JsonTransformer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.mockito.Mockito;
 
 import com.linagora.calendar.storage.DomainSettingsDAO;
 import com.linagora.calendar.storage.DomainSettingsResolver;
@@ -42,9 +47,11 @@ import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.DockerMongoDBExtension;
 import com.linagora.calendar.storage.mongodb.MongoDBDomainSettingsDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
+import com.linagora.calendar.webadmin.service.DomainMembersUserSearchModeService;
 
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
+import reactor.core.publisher.Mono;
 
 class DomainSettingsRoutesTest {
 
@@ -60,9 +67,12 @@ class DomainSettingsRoutesTest {
         domainDAO = new MongoDBOpenPaaSDomainDAO(mongo.getDb());
         domainSettingsDAO = new MongoDBDomainSettingsDAO(mongo.getDb());
         DomainSettingsResolver resolver = new DomainSettingsResolver(domainSettingsDAO, Set.of(), Set.of(), new MapConfiguration(Map.of()));
+        DomainMembersUserSearchModeService alignmentService = mock(DomainMembersUserSearchModeService.class);
+        Mockito.when(alignmentService.align(any(), any(), any())).thenReturn(Mono.empty());
 
         webAdminServer = WebAdminUtils.createWebAdminServer(
-                new DomainSettingsRoutes(domainSettingsDAO, resolver, domainDAO, new JsonTransformer()))
+                new DomainSettingsRoutes(domainSettingsDAO, resolver, domainDAO, new JsonTransformer(),
+                    new MemoryTaskManager(new Hostname("foo")), alignmentService))
             .start();
 
         RestAssured.requestSpecification = WebAdminUtils.buildRequestSpecification(webAdminServer).build();
@@ -115,7 +125,7 @@ class DomainSettingsRoutesTest {
                 """)
             .put("/domains/linagora.com/settings")
         .then()
-            .statusCode(204);
+            .statusCode(201);
 
         String body = when()
             .get("/domains/linagora.com/settings")
@@ -160,7 +170,7 @@ class DomainSettingsRoutesTest {
             }
             """;
 
-        given().contentType(ContentType.JSON).body(body1).put("/domains/linagora.com/settings").then().statusCode(204);
+        given().contentType(ContentType.JSON).body(body1).put("/domains/linagora.com/settings").then().statusCode(201);
         given().contentType(ContentType.JSON).body(body2).put("/domains/linagora.com/settings").then().statusCode(204);
 
         String response = when()
@@ -202,7 +212,7 @@ class DomainSettingsRoutesTest {
             .body(body1)
             .put("/domains/linagora.com/settings")
         .then()
-            .statusCode(204);
+            .statusCode(201);
 
         String body2 = """
             {
@@ -217,7 +227,7 @@ class DomainSettingsRoutesTest {
             .body(body2)
             .put("/domains/other.com/settings")
         .then()
-            .statusCode(204);
+            .statusCode(201);
 
         assertThatJson(when().get("/domains/linagora.com/settings").then().statusCode(200).extract().asString())
             .isEqualTo("""
@@ -389,7 +399,7 @@ class DomainSettingsRoutesTest {
                   "calendarPublicVisibilitySettingEnabled": true
                 }
                 """)
-            .put("/domains/linagora.com/settings").then().statusCode(204);
+            .put("/domains/linagora.com/settings").then().statusCode(201);
 
         given().contentType(ContentType.JSON)
             .body("""
@@ -430,7 +440,7 @@ class DomainSettingsRoutesTest {
                   "calendarPublicVisibilitySettingEnabled": true
                 }
                 """)
-            .put("/domains/linagora.com/settings").then().statusCode(204);
+            .put("/domains/linagora.com/settings").then().statusCode(201);
 
         given().contentType(ContentType.JSON)
             .body("""
@@ -465,7 +475,7 @@ class DomainSettingsRoutesTest {
                   "calendarPublicVisibilitySettingEnabled": true
                 }
                 """)
-            .put("/domains/linagora.com/settings").then().statusCode(204);
+            .put("/domains/linagora.com/settings").then().statusCode(201);
 
         given().contentType(ContentType.JSON)
             .body("""
@@ -582,7 +592,7 @@ class DomainSettingsRoutesTest {
         given().contentType(ContentType.JSON)
             .body("""
                 {"userSearchMode": "disabled"}""")
-            .patch("/domains/linagora.com/settings").then().statusCode(204);
+            .patch("/domains/linagora.com/settings").then().statusCode(201);
 
         assertThatJson(when().get("/domains/linagora.com/settings").then().statusCode(200).extract().asString())
             .isEqualTo("""

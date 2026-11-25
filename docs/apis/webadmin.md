@@ -1223,7 +1223,7 @@ Returns the explicitly configured settings for the domain alongside the effectiv
 
 **Field values** (top-level and `resolved`):
 - `userSearchMode`: `"enabled"` | `"limited"` | `"disabled"` (top-level also allows `null`)
-  SaaS provisioning only adds the users of an `"enabled"` domain to its `domain-members` address book, readable by every member: a `"limited"` domain must not be listable. When a domain switches away from `"enabled"`, clear its book with `DELETE /addressbook/domain-members/{domain}`.
+  SaaS provisioning only adds the users of an `"enabled"` domain to its `domain-members` address book, readable by every member: a `"limited"` domain must not be listable. Changing the setting through `PUT` or `PATCH` keeps the book in line, see [Effect on the domain-members address book](#effect-on-the-domain-members-address-book).
 - `resourceSearchEnabled`: `true` | `false` (top-level also allows `null`)
 - `defaultCalendarPublicVisibility`: `"read"` | `"private"` (top-level also allows `null`)
 - `calendarPublicVisibilitySettingEnabled`: `true` | `false` (top-level also allows `null`)
@@ -1250,6 +1250,7 @@ PUT /domains/{domain}/settings
 All fields are required. A `null` value clears the setting for that field, causing it to fall back to the system default.
 
 **Status codes**:
+- `201`: settings saved, and the effective `userSearchMode` entered or left `"enabled"`: a task aligning the `domain-members` address book was started, see [Effect on the domain-members address book](#effect-on-the-domain-members-address-book)
 - `204`: settings saved
 - `400`: a required field is missing, an unknown field is present, or a field value is invalid
 - `404`: domain does not exist
@@ -1273,9 +1274,58 @@ All fields are optional. Only the fields present in the body are updated:
 - An absent field is left unchanged
 
 **Status codes**:
+- `201`: patch applied, and the effective `userSearchMode` entered or left `"enabled"`: a task aligning the `domain-members` address book was started, see [Effect on the domain-members address book](#effect-on-the-domain-members-address-book)
 - `204`: patch applied
 - `400`: a field value is invalid
 - `404`: domain does not exist
+
+---
+
+### Effect on the domain-members address book
+
+The `domain-members` address book of a domain can be read by every member. It lists the members only while the
+effective `userSearchMode` of the domain (the stored value, otherwise `user.search.disabled.domains` /
+`user.search.limited.domains`, otherwise `"enabled"`) is `"enabled"`.
+
+When a `PUT` or a `PATCH` makes the effective mode enter or leave `"enabled"`, the route answers `201` with the id of a
+task (`Location: /tasks/{taskId}`):
+
+```json
+{"taskId": "56413760-02ed-47bd-bcc7-76ff6262d92a"}
+```
+
+The task reads the effective mode of the domain when it runs, so that the last change wins whatever the order in which
+the tasks run:
+- `"enabled"`: every registered user of the domain gets a card, built from the user directory (LDAP) when one is
+  configured. A member who already has a card, for example from the LDAP sync, keeps it and has it updated: no second
+  card is added. Cards of people who are not registered users are left untouched.
+- `"limited"` or `"disabled"`: every card of the book is deleted.
+
+A change between `"limited"` and `"disabled"`, or to another field, starts no task. Neither does a change of the
+configuration file: after one, run the domain-members sync or clear routes.
+
+[More details about endpoints returning a task](https://james.apache.org/server/manage-webadmin.html#Endpoints_returning_a_task).
+
+The scheduled task has the following additional information:
+
+```json
+{
+  "type": "align-domain-members-with-user-search-mode",
+  "domain": "linagora.com",
+  "userSearchMode": "limited",
+  "timestamp": "2026-11-25T10:00:00Z",
+  "populatedCount": 0,
+  "populateFailureUsers": [],
+  "deletedCount": 12,
+  "deleteFailureContacts": []
+}
+```
+
+- `userSearchMode`: the effective mode the task applied (absent before it ran)
+- `populatedCount` / `populateFailureUsers`: registered users whose card was written (or already up to date) / could not be written
+- `deletedCount` / `deleteFailureContacts`: cards deleted / that could not be deleted
+
+The task is `completed`, or `failed` when a card could not be written or deleted. It is listed by `GET /domains/{domain}/tasks`.
 
 ---
 
