@@ -25,6 +25,9 @@ import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 
 import java.time.Clock;
 import java.util.List;
@@ -47,6 +50,7 @@ import com.linagora.calendar.dav.dto.CalendarMirrorSource;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.MemoryOpenPaaSUserDAO;
 import com.linagora.calendar.storage.OpenPaaSDomain;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.ResourceInsertRequest;
 import com.linagora.calendar.storage.ResourceUpdateRequest;
@@ -57,6 +61,7 @@ import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
 
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 class ResourceServiceTest {
     @RegisterExtension
@@ -195,6 +200,33 @@ class ResourceServiceTest {
 
         assertThat(resourceDAO.findAll().count().block())
             .isEqualTo(resourceCountBefore);
+    }
+
+    @Test
+    void createShouldNotLeaveResourceBehindWhenSharingFails() {
+        OpenPaaSUser creator = sabreDavExtension.newTestUser(Optional.of("creator_"));
+        OpenPaaSUser administrator = sabreDavExtension.newTestUser(Optional.of("admin_"));
+        CalDavClient failingCalDavClient = spy(calDavClient);
+        doReturn(Mono.error(new DavClientException("Unexpected status code: 403 when updating shares")))
+            .when(failingCalDavClient).updateCalendarShares(any(OpenPaaSId.class), any(CalendarURL.class), any(CalendarSharingUpdate.class));
+        ResourceService failingTestee = new ResourceService(userDAO, resourceDAO, failingCalDavClient);
+        ResourceInsertRequest request = new ResourceInsertRequest(
+            creator.id(),
+            "Resource sharing failure test",
+            domain.id(),
+            "projector",
+            "Resource " + UUID.randomUUID());
+
+        assertThatThrownBy(() -> failingTestee.create(request, List.of(new ResourceAdministrator(
+            administrator.username(), DavRight.READ_WRITE))).block())
+            .isInstanceOf(DavClientException.class);
+
+        assertThat(resourceDAO.findByDomain(domain.id())
+            .filter(resource -> resource.name().equals(request.name()))
+            .filter(resource -> !resource.deleted())
+            .collectList()
+            .block())
+            .isEmpty();
     }
 
     @Test

@@ -171,6 +171,13 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Why: `receiveForm` takes a single `maxSize` for every part, so an ordinary field could fill a temporary file up to the declared file size (307,200 bytes measured with `size=2097152`) before the 16 KiB check ran on the completed field.
 - Scope: `calendar-rest-api` `FileUploadRoute`, `BoundedMultipartForm`. `AttachmentUploadRoute` keeps `receiveForm`.
 
+## 2026-11-25, [Tech] A resource whose administrators cannot be shared is rolled back
+
+- Decision: `ResourceService.create` soft deletes the resource it just inserted when the CalDAV share of its administrators fails, then propagates the share error; a failing rollback is logged and does not hide that error. Administrators of another domain are already refused with a 400 before any write (ISSUE-1545).
+- Decided by: chibenwa, [issue #1643](https://github.com/linagora/twake-calendar-side-service/issues/1643); soft delete rather than a hard delete chosen by agent (PR for #1643), to be confirmed by chibenwa
+- Why: the resource was inserted in MongoDB before the share, so every failed creation (500) left one more resource behind. Soft delete is what `DELETE` does, and needs no new DAO operation.
+- Scope: `calendar-dav` `ResourceService.create`, WebAdmin `POST /domains/{domain}/resources`.
+  
 ## 2026-11-24, [Tech] VALARM recipients are lower-cased
 
 - Decision: `AlarmInstantFactory` lower-cases (`Locale.US`) the address of each VALARM `ATTENDEE`, so alarm records (`twake_calendar_alarm_events`) are keyed on the lower-cased recipient and matched by plain equality by `EventAlarmHandler`, which already looks a record up by the recipient of the alarm (2026-11-24 "An alarm record is never replaced from another calendar home"). No migration: a record written before with a mixed-case recipient is no longer matched. An update of its event adds a lower-cased record beside it instead of replacing it, so its recipient gets the stale reminder too, until that record fires its last occurrence or the event is deleted (`deleteByEventPath`); this is accepted.

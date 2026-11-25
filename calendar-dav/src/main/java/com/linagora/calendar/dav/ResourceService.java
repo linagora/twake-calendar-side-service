@@ -134,7 +134,16 @@ public class ResourceService {
     public Mono<ResourceId> create(ResourceInsertRequest request, List<ResourceAdministrator> admins) {
         return resolveValidAdministrators(admins)
             .flatMap(administrators -> resourceDAO.insert(request)
-                .delayUntil(resourceId -> applyCalDavPatch(request.domain(), resourceId, AdminChanges.adding(administrators))));
+                .delayUntil(resourceId -> applyCalDavPatch(request.domain(), resourceId, AdminChanges.adding(administrators))
+                    .onErrorResume(error -> rollbackCreation(resourceId, error))));
+    }
+
+    // A creation answered with an error must not leave the resource behind
+    private Mono<Void> rollbackCreation(ResourceId resourceId, Throwable error) {
+        return resourceDAO.softDelete(resourceId)
+            .doOnError(rollbackError -> LOGGER.error("Error rolling back the creation of resource {}", resourceId.value(), rollbackError))
+            .onErrorResume(rollbackError -> Mono.empty())
+            .then(Mono.error(error));
     }
 
     public Mono<Void> delete(Resource resource) {
