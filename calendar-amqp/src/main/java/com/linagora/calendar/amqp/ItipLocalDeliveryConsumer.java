@@ -195,8 +195,7 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
                     if (isResource && booksTheResource(localDelivery) && !sentFromTheDomainOf(localDelivery, recipientUsername)) {
                         // Resources belong to their domain: another domain cannot book them, but can still update or cancel a
                         // booking made before this rule.
-                        return retrieveRecipientEventHref(recipientUsername, localRecipientId.get(), localDelivery.uid())
-                            .hasElement()
+                        return hasBooking(recipientUsername, localRecipientId.get(), localDelivery.uid())
                             .flatMap(alreadyBooked -> {
                                 if (alreadyBooked) {
                                     return delivery;
@@ -372,6 +371,14 @@ public class ItipLocalDeliveryConsumer implements Closeable, Startable {
             return URI.create(StringUtils.EMPTY);
         }
         return URI.create(String.format("%s/%s/%s/%s.ics", CalendarURL.CALENDAR_URL_PATH_PREFIX, calendarId, calendarId, uid));
+    }
+
+    /**
+     * A lookup failure is propagated, not read as a missing booking: the delivery is then retried rather than dropped.
+     */
+    private Mono<Boolean> hasBooking(Username resourceUsername, OpenPaaSId resourceId, String uid) {
+        return calDavClient.calendarReportByUid(resourceUsername, resourceId, uid)
+            .hasElement();
     }
 
     private Mono<URI> retrieveRecipientEventHref(Username recipientUsername, OpenPaaSId recipientId, String uid) {

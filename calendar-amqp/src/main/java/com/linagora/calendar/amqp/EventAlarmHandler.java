@@ -131,24 +131,25 @@ public class EventAlarmHandler {
             .then();
     }
 
+    /**
+     * UIDs are only unique within a calendar home: the recipient's own object always replaces their alarm, another user's
+     * object only replaces an alarm scheduled from its own calendar home. The DAO checks that condition atomically.
+     */
     private Mono<AlarmEvent> upsertAlarmEvent(Username username, AlarmEvent alarmEvent) {
-        return alarmEventDAO.find(alarmEvent.eventUid(), alarmEvent.recipient())
-            .map(Optional::of)
-            .defaultIfEmpty(Optional.empty())
-            .flatMap(existing -> {
-                if (existing.isEmpty()) {
-                    LOGGER.debug("Creating new alarm event: {}", alarmEvent.eventUid().value());
-                    return alarmEventDAO.create(alarmEvent).thenReturn(alarmEvent);
-                }
-                if (!sameCalendarHome(existing.get(), alarmEvent) && !isOwnedByItsRecipient(username, alarmEvent)) {
-                    // UIDs are only unique within a calendar home: another user's object never replaces this alarm, while
-                    // the recipient's own object always does.
-                    LOGGER.warn("Not replacing the alarm of {} for {} scheduled by {}: {} holds the same UID",
-                        alarmEvent.recipient().asString(), alarmEvent.eventUid().value(), existing.get().eventPath(), alarmEvent.eventPath());
+        if (isOwnedByItsRecipient(username, alarmEvent)) {
+            LOGGER.debug("Upserting the alarm event {} of its recipient", alarmEvent.eventUid().value());
+            return alarmEventDAO.update(alarmEvent).thenReturn(alarmEvent);
+        }
+        return Mono.justOrEmpty(calendarHome(alarmEvent.eventPath()))
+            .flatMap(calendarHome -> alarmEventDAO.upsertIfReplaceableFrom(alarmEvent, calendarHome))
+            .defaultIfEmpty(false)
+            .flatMap(written -> {
+                if (!written) {
+                    LOGGER.warn("Not replacing the alarm of {} for {}: it is scheduled from another calendar home than {}",
+                        alarmEvent.recipient().asString(), alarmEvent.eventUid().value(), alarmEvent.eventPath());
                     return Mono.empty();
                 }
-                LOGGER.debug("Updating existing alarm event: {}", alarmEvent.eventUid().value());
-                return alarmEventDAO.update(alarmEvent).thenReturn(alarmEvent);
+                return Mono.just(alarmEvent);
             });
     }
 
@@ -156,15 +157,6 @@ public class EventAlarmHandler {
         return MailUsernames.asUsername(alarmEvent.recipient())
             .map(recipient -> recipient.asString().equalsIgnoreCase(owner.asString()))
             .orElse(false);
-    }
-
-    /**
-     * Records written before the event path was stored hold an empty one: they stay replaceable.
-     */
-    private static boolean sameCalendarHome(AlarmEvent existing, AlarmEvent alarmEvent) {
-        return calendarHome(existing.eventPath())
-            .map(existingHome -> calendarHome(alarmEvent.eventPath()).map(existingHome::equals).orElse(false))
-            .orElse(true);
     }
 
     private static Optional<OpenPaaSId> calendarHome(String eventPath) {

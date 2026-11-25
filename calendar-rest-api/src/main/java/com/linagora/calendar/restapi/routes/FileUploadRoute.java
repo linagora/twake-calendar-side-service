@@ -51,7 +51,6 @@ import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.multipart.FileUpload;
-import io.netty.handler.codec.http.multipart.HttpData;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -153,27 +152,29 @@ public class FileUploadRoute extends CalendarRoute {
     }
 
     private Mono<byte[]> getUploadedDataFromMultiPartRequest(HttpServerRequest request, long fileSize) {
-        // The decoder refuses a part past the bound while receiving it, before it is all stored on disk. The bound applies to
-        // every part, so the parts before the file are also limited in number and each to FORM_FIELD_MAX_SIZE: a request
-        // stores at most the declared size plus that budget. The file part is then checked against the declared size.
+        // The decoder refuses a part past its bound while receiving it, before it is all stored on disk: the file part is
+        // bounded by the declared size, the parts before it are limited in number and each to FORM_FIELD_MAX_SIZE. A request
+        // thus stores at most the declared size plus that budget.
         AtomicInteger formFields = new AtomicInteger();
-        return request.receiveForm(builder -> builder.maxSize(Math.max(fileSize, FORM_FIELD_MAX_SIZE)))
-            .concatMap(data -> Mono.using(data::retain,
-                retained -> retained instanceof FileUpload fileUpload
+        return BoundedMultipartForm.decode(request, new BoundedMultipartForm.PartBoundingDataFactory(fileSize, FORM_FIELD_MAX_SIZE), parts -> parts
+                .concatMap(data -> data instanceof FileUpload fileUpload
                     ? readFileUpload(fileUpload, fileSize)
-                    : checkFormField(retained, formFields.incrementAndGet()),
-                HttpData::release), 0)
-            .next()
+                    : checkFormFieldCount(formFields.incrementAndGet()), 0)
+                .next())
             .switchIfEmpty(Mono.error(() -> new IllegalArgumentException("A file part is required")))
             .onErrorMap(DecoderException.class, error -> multipartError(fileSize, error));
     }
 
-    private static Mono<byte[]> checkFormField(HttpData field, int index) {
-        if (index > MAX_FORM_FIELDS || field.length() > FORM_FIELD_MAX_SIZE) {
-            return Mono.error(new IllegalArgumentException("Form fields other than the file are limited to " + MAX_FORM_FIELDS
-                + " of " + FORM_FIELD_MAX_SIZE + " bytes"));
+    private static Mono<byte[]> checkFormFieldCount(int index) {
+        if (index > MAX_FORM_FIELDS) {
+            return Mono.error(formFieldsLimitException());
         }
         return Mono.empty();
+    }
+
+    private static IllegalArgumentException formFieldsLimitException() {
+        return new IllegalArgumentException("Form fields other than the file are limited to " + MAX_FORM_FIELDS
+            + " of " + FORM_FIELD_MAX_SIZE + " bytes");
     }
 
     private Mono<byte[]> readFileUpload(FileUpload fileUpload, long fileSize) {
@@ -190,10 +191,13 @@ public class FileUploadRoute extends CalendarRoute {
         // Netty reports maxSize violations without a dedicated exception type: an IllegalArgumentException when the part
         // is created or grows in memory, an IOException once it is stored on disk.
         String cause = Throwables.getRootCause(error).getMessage();
-        if ("Attribute bigger than maxSize allowed".equals(cause) || "Size exceed allowed maximum capacity".equals(cause)) {
+        if (!"Attribute bigger than maxSize allowed".equals(cause) && !"Size exceed allowed maximum capacity".equals(cause)) {
+            return new IllegalArgumentException("Invalid multipart upload", error);
+        }
+        if (error instanceof BoundedMultipartForm.PartDecodingException partError && partError.filePart()) {
             return new IllegalArgumentException("Real size is greater than declared size, expected: " + declaredSize, error);
         }
-        return new IllegalArgumentException("Invalid multipart upload", error);
+        return formFieldsLimitException();
     }
 
     private IllegalArgumentException sizeExceededException(long pSizeMax, long pCount) {

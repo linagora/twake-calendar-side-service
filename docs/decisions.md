@@ -143,3 +143,24 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: Benoit Tellier, on the twake-qa security review of `e26eece1e897` (AMQP SEV-3).
 - Why: a user of tenant X could book any resource of tenant Y, auto-accepted when it has no administrator, while booking links and `GET /api/resources/{id}` already treat resources as domain scoped.
 - Scope: `calendar-amqp` `ItipLocalDeliveryConsumer`, `EventResourceHandler`. Cross-domain booking, if ever wanted, needs an explicit option.
+
+## 2026-11-25, [Tech] An alarm record is replaced from another calendar home only by an atomic conditional write
+
+- Decision: replaces the 2026-11-24 entry "An alarm record is never replaced from another calendar home" for how the rule is enforced, not for the rule itself. `EventAlarmHandler` no longer reads the record and then writes it. The recipient's own object upserts their alarm as before. Any other object goes through `AlarmEventDAO.upsertIfReplaceableFrom(alarm, calendarHome)`: MongoDB runs a `replaceOne` upsert whose filter on `(eventUid, recipient)` also requires the stored `eventPath` to lie in that calendar home or not to be a calendar object path (`AlarmEventPaths`). A record of another home thus fails the filter and the insert hits the unique index; on that duplicate key, a plain conditional replace covers a record a concurrent write created meanwhile. The rule now holds without a parsable incoming `eventPath`: when there is none, nothing is written.
+- Decided by: agent (branch qa-findings-24-11-2026), on vttranlina's review of PR #1635, to be confirmed by Benoit Tellier (maintainer).
+- Why: with the check and the write in separate requests, an update from another home could pass the check, pause, and then overwrite the recipient's alarm saved in the meantime, replacing its path, ICS and trigger time (reproduced on MongoDB).
+- Scope: `storage-api` `AlarmEventDAO`, `AlarmEventPaths`, `MemoryAlarmEventDAO`; `storage-mongodb` `MongoDBAlarmEventDAO`; `calendar-amqp` `EventAlarmHandler`. No index change, no migration.
+
+## 2026-11-25, [Tech] A failed booking lookup retries a cross-domain resource delivery
+
+- Decision: amends the 2026-11-24 entry "Resources are booked only from their own domain". The check for an existing booking calls `CalDavClient.calendarReportByUid` directly: only a 404 or an empty answer means no booking. Any other failure (5xx, timeout) fails the delivery, which the consumer retries and then sends to its dead letter queue, instead of skipping it as not booked.
+- Decided by: agent (branch qa-findings-24-11-2026), on vttranlina's review of PR #1635, to be confirmed by Benoit Tellier (maintainer).
+- Why: `retrieveRecipientEventHref` turns every error into an empty result, so a DAV 503 silently dropped valid updates of existing cross-domain bookings.
+- Scope: `calendar-amqp` `ItipLocalDeliveryConsumer`. The event-path lookup used for email notifications keeps its fallback.
+
+## 2026-11-25, [Tech] Multipart file uploads bound each part kind while decoding it
+
+- Decision: `POST /api/files` decodes multipart bodies with Netty's `HttpPostMultipartRequestDecoder`, fed from `request.receive()`, instead of reactor-netty's `receiveForm`. Its data factory (`BoundedMultipartForm.PartBoundingDataFactory`) caps the file part at the declared size and every other field at 16 KiB as the bytes arrive (part header parameters, such as the file name, fall under the field limit). At most 16 fields are accepted before the file. A file larger than its declared size is now refused while it is decoded, so the error no longer reports the size actually sent (`expected: N`, without `got`).
+- Decided by: agent (branch qa-findings-24-11-2026), on vttranlina's review of PR #1635, to be confirmed by Benoit Tellier (maintainer).
+- Why: `receiveForm` takes a single `maxSize` for every part, so an ordinary field could fill a temporary file up to the declared file size (307,200 bytes measured with `size=2097152`) before the 16 KiB check ran on the completed field.
+- Scope: `calendar-rest-api` `FileUploadRoute`, `BoundedMultipartForm`. `AttachmentUploadRoute` keeps `receiveForm`.

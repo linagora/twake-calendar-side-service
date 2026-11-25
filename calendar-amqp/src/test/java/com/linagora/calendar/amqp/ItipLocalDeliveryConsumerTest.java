@@ -417,6 +417,33 @@ public class ItipLocalDeliveryConsumerTest {
     }
 
     @Test
+    void shouldRouteToDeadLetterWhenTheBookingLookupOfAResourceOfAnotherDomainFails() {
+        String mallory = "mallory@other.example";
+        when(localRecipientResolver.resolve(Username.of(ALICE)))
+            .thenReturn(Mono.just(Optional.of(new LocalRecipientResolver.ResolvedRecipient.LocalResource(new OpenPaaSId(RESOURCE_ID)))));
+        stubItipNoContent();
+        wireMockServer.stubFor(WireMock.request("REPORT", WireMock.urlEqualTo("/calendars/" + RESOURCE_ID))
+            .willReturn(WireMock.aResponse().withStatus(503)));
+
+        String payload = """
+            {
+              "sender": "mailto:%s",
+              "method": "REQUEST",
+              "uid": "%s",
+              "calendarId": "%s",
+              "message": %s,
+              "hasChange": true,
+              "recipients": ["mailto:%s"]
+            }
+            """.formatted(mallory, EVENT_UID, CALENDAR_ID, jsonString(SIMPLE_ICAL.replace(BOB, mallory)), ALICE);
+
+        publishToConsumer(payload);
+
+        AWAIT_AT_MOST.untilAsserted(() ->
+            assertThat(channel.basicGet(ItipLocalDeliveryConsumer.DEAD_LETTER_QUEUE, true)).isNotNull());
+    }
+
+    @Test
     void shouldDeliverACancelToAResourceOfAnotherDomain() {
         String mallory = "mallory@other.example";
         when(localRecipientResolver.resolve(Username.of(ALICE)))

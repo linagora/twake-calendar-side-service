@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.storage.mongodb;
 
+import static com.linagora.calendar.storage.mongodb.MongoConstants.MONGO_DUPLICATE_KEY_CODE;
 import static com.mongodb.client.model.Filters.eq;
 import static com.mongodb.client.model.Filters.lte;
 import static com.mongodb.client.model.Indexes.ascending;
@@ -30,12 +31,16 @@ import jakarta.inject.Inject;
 
 import org.apache.james.core.MailAddress;
 import org.bson.Document;
+import org.bson.conversions.Bson;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.storage.AlarmEvent;
 import com.linagora.calendar.storage.AlarmEventDAO;
+import com.linagora.calendar.storage.AlarmEventPaths;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.event.AlarmAction;
 import com.linagora.calendar.storage.eventsearch.EventUid;
+import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.ReplaceOptions;
@@ -93,6 +98,33 @@ public class MongoDBAlarmEventDAO implements AlarmEventDAO {
             toDocument(alarmEvent),
             new ReplaceOptions().upsert(true)
         )).then();
+    }
+
+    @Override
+    public Mono<Boolean> upsertIfReplaceableFrom(AlarmEvent alarmEvent, OpenPaaSId calendarHome) {
+        // A record not replaceable from that home fails the filter: the upsert then inserts and hits the unique index.
+        Bson replaceableFilter = Filters.and(
+            eq(EVENT_UID_FIELD, alarmEvent.eventUid().value()),
+            eq(RECIPIENT_FIELD, alarmEvent.recipient().asString()),
+            Filters.or(
+                Filters.regex(EVENT_PATH_FIELD, AlarmEventPaths.calendarObjectIn(calendarHome)),
+                new Document(EVENT_PATH_FIELD, new Document("$not", AlarmEventPaths.ANY_CALENDAR_HOME))));
+        return Mono.from(collection.replaceOne(replaceableFilter, toDocument(alarmEvent), new ReplaceOptions().upsert(true)))
+            .thenReturn(true)
+            .onErrorResume(MongoDBAlarmEventDAO::isDuplicateKey, e -> replace(replaceableFilter, alarmEvent));
+    }
+
+    /**
+     * A concurrent upsert may have created the record between the match and the insert: it is replaced if replaceable.
+     */
+    private Mono<Boolean> replace(Bson filter, AlarmEvent alarmEvent) {
+        return Mono.from(collection.replaceOne(filter, toDocument(alarmEvent)))
+            .map(result -> result.getMatchedCount() > 0);
+    }
+
+    private static boolean isDuplicateKey(Throwable error) {
+        return error instanceof MongoWriteException writeException
+            && writeException.getError().getCode() == MONGO_DUPLICATE_KEY_CODE;
     }
 
     @Override
