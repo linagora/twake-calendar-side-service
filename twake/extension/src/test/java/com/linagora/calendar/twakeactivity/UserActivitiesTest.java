@@ -61,14 +61,14 @@ class UserActivitiesTest {
             {"eventPath": "/calendars/%1$s/%1$s/event.ics", "etag": "\\"1\\"", "connectedUser": "principals/users/%1$s", "event": []}
             """.formatted(alice.id().value())).orElseThrow();
 
-        assertThat(activity.type().routingKey()).isEqualTo("calendar.eventCreated");
+        assertThat(activity.type().routingKey()).isEqualTo("com.twake.calendar.event.created.v1");
         JsonNode json = OBJECT_MAPPER.readTree(activity.serialize());
         assertThat(json).isEqualTo(OBJECT_MAPPER.readTree("""
             {
               "specversion": "1.0",
               "id": "%2$s",
               "source": "twake://calendar",
-              "type": "com.twake.calendar.eventCreated.v1",
+              "type": "com.twake.calendar.event.created.v1",
               "time": "2026-10-06T12:00:00Z",
               "subject": "calendars/%1$s/%1$s/event.ics",
               "twakeactor": "alice@linagora.com",
@@ -87,14 +87,14 @@ class UserActivitiesTest {
         UserActivity activity = handle(UserActivities.CONTACT_CREATED_EXCHANGE, contact(alice, "principals/users/" + alice.id().value()))
             .orElseThrow();
 
-        assertThat(activity.type().routingKey()).isEqualTo("contacts.contactCreated");
+        assertThat(activity.type().routingKey()).isEqualTo("com.twake.contacts.contact.created.v1");
         JsonNode json = OBJECT_MAPPER.readTree(activity.serialize());
         assertThat(json).isEqualTo(OBJECT_MAPPER.readTree("""
             {
               "specversion": "1.0",
               "id": "%2$s",
               "source": "twake://contacts",
-              "type": "com.twake.contacts.contactCreated.v1",
+              "type": "com.twake.contacts.contact.created.v1",
               "time": "2026-10-06T12:00:00Z",
               "subject": "addressbooks/%1$s/contacts/card.vcf",
               "twakeactor": "alice@linagora.com",

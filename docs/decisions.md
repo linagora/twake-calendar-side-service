@@ -226,3 +226,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: Benoit Tellier (maintainer), session 6af3ff61-fac3-4072-9e09-31d266a09ba3; omitting it rather than publishing an empty value: agent, to be confirmed by Benoit Tellier.
 - Why: `twakeactor` is who made the change; a consumer needs whose data changed to tell a delegated change, and to show the activity to the owner.
 - Scope: `twake/extension` `UserActivity`, `UserActivities`.
+
+## 2026-11-26, [Product] User activity types and routing keys follow Twake ADR-067
+
+- Decision: replaces the type and routing key of "Event and contact creations are published as user activity". The CloudEvent `type` is `com.twake.{application}.{object}.{action}.v1` (`com.twake.calendar.event.created.v1`, `com.twake.contacts.contact.created.v1`) and the routing key is the `type`, as [Twake ADR-067](https://github.com/linagora/twake-adr/blob/main/adrs/adr-067.md#events) names and routes events. The user activity stays on the `activity` exchange, where TwakeSpace publishes its team calendar activity with the same `type` and routing key but another `data` and a `twakeorg`: consumers tell them apart by content.
+- Decided by: Benoit Tellier (maintainer), session 6af3ff61-fac3-4072-9e09-31d266a09ba3, after zatteo's [review](https://github.com/linagora/twake-calendar-side-service/pull/1661#issuecomment-7197039477) on PR #1661.
+- Why: one naming for every Twake Workplace event, as the ADR recommends.
+- Scope: `twake/extension` `UserActivity`; consumers of the `activity` exchange.

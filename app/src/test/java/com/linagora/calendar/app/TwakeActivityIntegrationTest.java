@@ -144,7 +144,7 @@ class TwakeActivityIntegrationTest {
         String uid = UUID.randomUUID().toString();
         dav.upsertCalendar(bob, event(uid), uid);
 
-        Activity activity = awaitActivity("calendar.eventCreated");
+        Activity activity = awaitActivity("com.twake.calendar.event.created.v1");
 
         assertThat(activity.contentType()).isEqualTo("application/cloudevents+json");
         assertThat(activity.messageId()).isEqualTo(activity.body().path("id").asText());
@@ -153,7 +153,7 @@ class TwakeActivityIntegrationTest {
               "specversion": "1.0",
               "id": "${json-unit.any-string}",
               "source": "twake://calendar",
-              "type": "com.twake.calendar.eventCreated.v1",
+              "type": "com.twake.calendar.event.created.v1",
               "time": "${json-unit.any-string}",
               "subject": "calendars/%1$s/%1$s/%2$s.ics",
               "twakeactor": "%3$s",
@@ -173,7 +173,7 @@ class TwakeActivityIntegrationTest {
         AddressBookURL addressBook = new AddressBookURL(bob.id(), "contacts");
         cardDavClient.upsertContact(bob.username(), addressBook, uid, vcard(uid)).block();
 
-        Activity activity = awaitActivity("contacts.contactCreated");
+        Activity activity = awaitActivity("com.twake.contacts.contact.created.v1");
 
         assertThat(activity.contentType()).isEqualTo("application/cloudevents+json");
         assertThat(activity.messageId()).isEqualTo(activity.body().path("id").asText());
@@ -182,7 +182,7 @@ class TwakeActivityIntegrationTest {
               "specversion": "1.0",
               "id": "${json-unit.any-string}",
               "source": "twake://contacts",
-              "type": "com.twake.contacts.contactCreated.v1",
+              "type": "com.twake.contacts.contact.created.v1",
               "time": "${json-unit.any-string}",
               "subject": "addressbooks/%1$s/contacts/%2$s.vcf",
               "twakeactor": "%3$s",
@@ -200,13 +200,13 @@ class TwakeActivityIntegrationTest {
     void eventUpdateShouldPublishNoActivity() throws Exception {
         String uid = UUID.randomUUID().toString();
         dav.upsertCalendar(bob, event(uid), uid);
-        awaitActivity("calendar.eventCreated");
+        awaitActivity("com.twake.calendar.event.created.v1");
 
         dav.upsertCalendar(bob, event(uid).replace("SUMMARY:Planning", "SUMMARY:Planning moved"), uid);
         String marker = UUID.randomUUID().toString();
         dav.upsertCalendar(bob, event(marker), marker);
 
-        Activity next = awaitActivity("calendar.eventCreated");
+        Activity next = awaitActivity("com.twake.calendar.event.created.v1");
         assertThat(next.body().path("data").path("path").asText()).endsWith(marker + ".ics");
     }
 

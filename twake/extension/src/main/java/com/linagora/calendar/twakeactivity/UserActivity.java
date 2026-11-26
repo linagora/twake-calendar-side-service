@@ -55,29 +55,30 @@ public record UserActivity(ResourceChange change, Actors actors, Instant time) {
     }
 
     public enum Type {
-        EVENT_CREATED(Application.CALENDAR, "eventCreated"),
-        CONTACT_CREATED(Application.CONTACTS, "contactCreated");
+        EVENT_CREATED(Application.CALENDAR, "event.created"),
+        CONTACT_CREATED(Application.CONTACTS, "contact.created");
 
         private final Application application;
-        private final String value;
+        private final String objectAction;
 
-        Type(Application application, String value) {
+        Type(Application application, String objectAction) {
             this.application = application;
-            this.value = value;
+            this.objectAction = objectAction;
         }
 
         public Application application() {
             return application;
         }
 
-        // calendar.eventCreated: a consumer binds "#" for everything, "calendar.#" for one application.
+        // The CloudEvent type, as Twake ADR-067 routes events: a consumer binds "#" for everything,
+        // "com.twake.calendar.#" for one application.
         public String routingKey() {
-            return application.value + "." + value;
+            return cloudEventType();
         }
 
-        // com.twake.calendar.eventCreated.v1: distinct from the com.twake.calendar.event.created.v1 of TwakeSpace.
+        // com.twake.{application}.{object}.{action}.v1, as Twake ADR-067 names events.
         public String cloudEventType() {
-            return TYPE_PREFIX + application.value + "." + value + VERSION_SUFFIX;
+            return TYPE_PREFIX + application.value + "." + objectAction + VERSION_SUFFIX;
         }
     }
 

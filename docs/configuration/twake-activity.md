@@ -15,10 +15,12 @@ It is independent of [TwakeSpace](twake-space.md): it covers every calendar and 
 
 | Change | Routing key | CloudEvent `type` | `source` |
 | --- | --- | --- | --- |
-| A user creates an event | `calendar.eventCreated` | `com.twake.calendar.eventCreated.v1` | `twake://calendar` |
-| A user creates a contact | `contacts.contactCreated` | `com.twake.contacts.contactCreated.v1` | `twake://contacts` |
+| A user creates an event | `com.twake.calendar.event.created.v1` | `com.twake.calendar.event.created.v1` | `twake://calendar` |
+| A user creates a contact | `com.twake.contacts.contact.created.v1` | `com.twake.contacts.contact.created.v1` | `twake://contacts` |
 
-The routing key is `{application}.{type}`. A consumer binds its queue to the `activity` topic exchange with `#` to receive every activity, `calendar.#` or `contacts.#` for one application, or a full routing key for a single kind of activity.
+The `type` follows [Twake ADR-067](https://github.com/linagora/twake-adr/blob/main/adrs/adr-067.md#events): `com.twake.{application}.{object}.{action}.v{version}`, and the routing key is the `type`. A consumer binds its queue to the `activity` topic exchange with `#` to receive every activity, `com.twake.calendar.#` or `com.twake.contacts.#` for one application, or a full routing key for a single kind of activity.
+
+TwakeSpace publishes its team calendar activity with the same `type` and routing key, `com.twake.calendar.event.created.v1`, on the same exchange, but with another `data` (an `object` and a `state` for the space feed) and a `twakeorg`. A consumer of both tells them apart by their content: a user activity has `data.path` and no `twakeorg`.
 
 Updates and deletions publish nothing yet.
 
@@ -33,7 +35,7 @@ An event created in a calendar:
   "specversion": "1.0",
   "id": "5b1f0c2e-8d3a-3c4e-9a51-2f6e7d8c9b10",
   "source": "twake://calendar",
-  "type": "com.twake.calendar.eventCreated.v1",
+  "type": "com.twake.calendar.event.created.v1",
   "time": "2026-10-06T12:00:00Z",
   "subject": "calendars/64b0f1e2a1b2c3d4e5f60718/64b0f1e2a1b2c3d4e5f60718/3e5a.ics",
   "twakeactor": "btellier@linagora.com",
@@ -53,7 +55,7 @@ A contact created in an address book:
   "specversion": "1.0",
   "id": "9e2d4a71-3b6c-3f80-8e12-7c5a1b0d4f33",
   "source": "twake://contacts",
-  "type": "com.twake.contacts.contactCreated.v1",
+  "type": "com.twake.contacts.contact.created.v1",
   "time": "2026-10-06T12:00:00Z",
   "subject": "addressbooks/64b0f1e2a1b2c3d4e5f60718/contacts/7c1d.vcf",
   "twakeactor": "btellier@linagora.com",
@@ -78,7 +80,7 @@ A contact created in an address book:
 | `data.calendar` | Calendar activities only: the DAV path of the calendar holding the event. |
 | `data.addressbook` | Contacts activities only: the DAV path of the address book holding the contact. |
 
-The `type` names the application and carries a version: a change that breaks the contract publishes a `.v2` type. They differ from the `com.twake.calendar.event.*.v1` types that TwakeSpace publishes on the same exchange for its team calendars.
+The `type` names the application and carries a version: a change that breaks the contract publishes a `.v2` type.
 
 ### Who the actor and the resource owner are
 
