@@ -50,6 +50,7 @@ import com.linagora.calendar.storage.UploadedFileDAO;
 import com.linagora.calendar.storage.booking.BookingLinkDAO;
 import com.linagora.calendar.storage.booking.EventBusBookingLinkDAO;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
+import com.linagora.calendar.storage.eventtoken.EventTokenDAO;
 import com.linagora.calendar.storage.secretlink.SecretLinkStore;
 import com.linagora.calendar.storage.unsent.UnsentMailHealthCheck;
 import com.linagora.calendar.storage.unsent.UnsentMailRepository;
@@ -92,6 +93,9 @@ public class MongoDBStorageModule extends AbstractModule {
         bind(TicketStore.class).to(MongoDBTicketDAO.class);
 
         bind(MongoDBBookingLinkDAO.class).in(Scopes.SINGLETON);
+
+        bind(MongoDBEventTokenDAO.class).in(Scopes.SINGLETON);
+        bind(EventTokenDAO.class).to(MongoDBEventTokenDAO.class);
 
         bind(MongoDBDomainSettingsDAO.class).in(Scopes.SINGLETON);
         bind(DomainSettingsDAO.class).to(MongoDBDomainSettingsDAO.class);

@@ -151,6 +151,7 @@ public class CalDavClient extends DavClient {
 
     private static final String CONTENT_TYPE_XML = "application/xml";
     private static final String CONTENT_TYPE_JSON = "application/json";
+    private static final String CONTENT_TYPE_JCAL = "application/calendar+json";
     private static final HttpMethod REPORT_METHOD = HttpMethod.valueOf("REPORT");
     private static final AsciiString HEADER_DEPTH = AsciiString.cached("Depth");
     private static final String FREE_BUSY_BULK_PATH = CalendarURL.CALENDAR_URL_PATH_PREFIX + "/freebusy";
@@ -649,6 +650,36 @@ public class CalDavClient extends DavClient {
                             calendarEventHref, statusCode, body))));
                 })
         );
+    }
+
+    /**
+     * Fetches a calendar object in jCal (RFC 7265) form, which the DAV server produces when asked for 'application/calendar+json'.
+     */
+    public Mono<JsonNode> fetchCalendarEventAsJCal(Username username, URI calendarEventHref) {
+        return httpClientWithImpersonation(username)
+            .headers(headers -> headers.add(HttpHeaderNames.ACCEPT, CONTENT_TYPE_JCAL))
+            .get()
+            .uri(calendarEventHref.toString())
+            .responseSingle((response, content) -> {
+                int statusCode = response.status().code();
+
+                if (statusCode == HttpStatus.SC_OK) {
+                    return content.asByteArray()
+                        .flatMap(bytes -> Mono.fromCallable(() -> OBJECT_MAPPER.readTree(bytes)));
+                }
+
+                if (statusCode == HttpStatus.SC_NOT_FOUND) {
+                    LOGGER.info("No calendar event found for calendarHref '{}'", calendarEventHref);
+                    return Mono.empty();
+                }
+
+                return content.asString(StandardCharsets.UTF_8)
+                    .switchIfEmpty(Mono.just(StringUtils.EMPTY))
+                    .flatMap(body -> Mono.error(new DavClientException(String.format(
+                        "Unexpected response when getting calendar event as jCal for calendarHref '%s'. " +
+                            "Status code: %d, response body: %s",
+                        calendarEventHref, statusCode, body))));
+            });
     }
 
     public Mono<JsonNode> fetchCalendarMetadata(Username username, CalendarURL calendarURL) {
