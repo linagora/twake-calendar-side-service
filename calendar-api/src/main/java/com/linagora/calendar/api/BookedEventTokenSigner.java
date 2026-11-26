@@ -112,7 +112,7 @@ public interface BookedEventTokenSigner {
             Preconditions.checkNotNull(jwt, "Token must not be null");
             return Mono.fromCallable(() -> jwtVerifier.verify(jwt))
                 .map(BookedEventTokenClaim.FROM_CLAIM)
-                .onErrorResume(error -> Mono.error(new BookedEventTokenClaimException("Invalid booked event token: " + jwt)))
+                .onErrorResume(error -> Mono.error(new BookedEventTokenClaimException("Invalid booked event token")))
                 .subscribeOn(Schedulers.parallel());
         }
     }

@@ -117,7 +117,7 @@ public interface ParticipationTokenSigner {
             Preconditions.checkNotNull(jwt, "Token must not be null");
             return Mono.fromCallable(() -> jwtVerifier.verify(jwt))
                 .map(ParticipationTokenClaim.CLAIM_TO_PARTICIPATION)
-                .onErrorResume(error -> Mono.error(new ParticipationTokenClaimException("Invalid participation token: " + jwt)))
+                .onErrorResume(error -> Mono.error(new ParticipationTokenClaimException("Invalid participation token")))
                 .subscribeOn(Schedulers.parallel());
         }
     }

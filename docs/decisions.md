@@ -191,3 +191,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: chibenwa, [issue #1644](https://github.com/linagora/twake-calendar-side-service/issues/1644); the shared helper chosen by agent (PR for #1644), to be confirmed by chibenwa. Relying on James' `JsonExtractor` rather than double-checking it: agent, after chibenwa pointed at the James upstream change on PR #1649.
 - Why: Jackson read `null` as a `null` DTO without error, which ended in a 500 carrying a NullPointerException message. James now fixes it upstream for `JsonExtractor`; a second null check behind it is dead code.
 - Scope: `calendar-webadmin` routes: users, registered users, domain settings, resources, team calendars and their members, user calendars and address books, booking links.
+
+## 2026-11-26, [Tech] A token verification error never carries the token nor the JWT library message
+
+- Decision: the participation, booked-event and resource-participation token checks report a failed verification with a fixed message (`Invalid participation token`, `Invalid booked event token`, `JWT verification failed`): neither the token nor the java-jwt / jjwt message is copied into the exception, as `TechnicalTokenService` already does since 13cfed83.
+- Decided by: Benoit Tellier, [issue #1657](https://github.com/linagora/twake-calendar-side-service/issues/1657)
+- Why: these tokens come percent-decoded from the query string of public routes and their failures are logged as plain text, so anyone could write line breaks and terminal escapes into the log; the JWT libraries also copy the decoded header or payload into their messages.
+- Scope: `calendar-api` `ParticipationTokenSigner`, `BookedEventTokenSigner`; `calendar-rest-api` `ResourceParticipationRoute`.

@@ -144,6 +144,17 @@ public class ParticipationTokenSignerTest {
     }
 
     @Test
+    void validateShouldNotCopyTheTokenIntoTheMessage() {
+        String header = BaseEncoding.base64Url().omitPadding().encode("x\r\nFAKE LOG LINE\u001B[31m".getBytes(StandardCharsets.UTF_8));
+        String forgedToken = header + ".e30.c2ln\r\n[ERROR] FAKE LOG LINE\u001B[31m";
+
+        assertThatThrownBy(() -> testee.validateAndExtractParticipation(forgedToken).block())
+            .isInstanceOf(ParticipationTokenClaimException.class)
+            .hasMessage("Invalid participation token")
+            .hasNoCause();
+    }
+
+    @Test
     void validateShouldFailOnTamperedToken() throws Exception {
         String validJwt = testee.signAsJwt(sampleParticipation()).block();
         String tamperedJWT = validJwt.substring(0, validJwt.length() - 1);

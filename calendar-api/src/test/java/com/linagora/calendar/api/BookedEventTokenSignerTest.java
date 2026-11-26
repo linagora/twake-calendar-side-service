@@ -117,6 +117,17 @@ public class BookedEventTokenSignerTest {
     }
 
     @Test
+    void validateShouldNotCopyTheTokenIntoTheMessage() {
+        String header = BaseEncoding.base64Url().omitPadding().encode("x\r\nFAKE LOG LINE\u001B[31m".getBytes(StandardCharsets.UTF_8));
+        String forgedToken = header + ".e30.c2ln\r\n[ERROR] FAKE LOG LINE\u001B[31m";
+
+        assertThatThrownBy(() -> testee.validateAndExtract(forgedToken).block())
+            .isInstanceOf(BookedEventTokenClaimException.class)
+            .hasMessage("Invalid booked event token")
+            .hasNoCause();
+    }
+
+    @Test
     void validateShouldFailOnTamperedToken() {
         String validJwt = testee.signAsJwt(sampleBookedEvent()).block();
         String tamperedJWT = validJwt.substring(0, validJwt.length() - 1);

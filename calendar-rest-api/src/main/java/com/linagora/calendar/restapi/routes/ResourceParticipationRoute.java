@@ -144,7 +144,7 @@ public class ResourceParticipationRoute extends PublicRoute {
                     .switchIfEmpty(Mono.error(new UnauthorizedException("Missing " + JWT_QUERY_PARAM + " in request")))
                     .map(jwtVerifier::verify)
                     .map(this::extractJwtClaims)
-                    .onErrorMap(io.jsonwebtoken.JwtException.class, e -> new UnauthorizedException("JWT verification failed: " + e.getMessage()))
+                    .onErrorMap(io.jsonwebtoken.JwtException.class, e -> new UnauthorizedException("JWT verification failed"))
                     .map(pair -> {
                         if (!updateReq.resourceId().equals(pair.getLeft()) || !updateReq.eventId().equals(pair.getRight())) {
                             throw new ForbiddenException("JWT does not match path parameter");
