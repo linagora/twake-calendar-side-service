@@ -52,12 +52,12 @@ public class EventTokenDeleteRoute extends CalendarRoute {
 
     @Override
     Endpoint endpoint() {
-        return new Endpoint(HttpMethod.DELETE, "/api/eventTokens/{" + EventTokenGetRoute.EVENT_TOKEN_PARAM + "}");
+        return new Endpoint(HttpMethod.DELETE, "/api/eventTokens/{" + EventTokenOwnership.EVENT_TOKEN_PARAM + "}");
     }
 
     @Override
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
-        EventTokenId id = new EventTokenId(request.param(EventTokenGetRoute.EVENT_TOKEN_PARAM));
+        EventTokenId id = new EventTokenId(request.param(EventTokenOwnership.EVENT_TOKEN_PARAM));
 
         return eventTokenDAO.findById(id)
             .switchIfEmpty(Mono.error(NotFoundException::new))

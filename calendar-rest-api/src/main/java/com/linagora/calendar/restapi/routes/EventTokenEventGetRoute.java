@@ -21,12 +21,10 @@ package com.linagora.calendar.restapi.routes;
 import static com.linagora.calendar.restapi.RestApiConstants.JSON_HEADER;
 import static com.linagora.calendar.restapi.RestApiConstants.OBJECT_MAPPER_DEFAULT;
 
-import java.util.List;
 import java.util.Map;
 
 import jakarta.inject.Inject;
 
-import org.apache.commons.lang3.StringUtils;
 import org.apache.james.jmap.Endpoint;
 import org.apache.james.metrics.api.MetricFactory;
 
@@ -36,11 +34,9 @@ import com.linagora.calendar.restapi.NotFoundException;
 import com.linagora.calendar.storage.OpenPaaSUserDAO;
 import com.linagora.calendar.storage.eventtoken.EventToken;
 import com.linagora.calendar.storage.eventtoken.EventTokenDAO;
-import com.linagora.calendar.storage.eventtoken.EventTokenId;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.codec.http.QueryStringDecoder;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
@@ -72,7 +68,7 @@ public class EventTokenEventGetRoute extends PublicRoute {
 
     @Override
     protected Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
-        return Mono.fromCallable(() -> extractToken(request))
+        return Mono.fromCallable(() -> EventTokenOwnership.eventTokenFromQuery(request))
             .flatMap(eventTokenDAO::findById)
             .flatMap(this::fetchEvent)
             .switchIfEmpty(Mono.error(NotFoundException::new))
@@ -88,15 +84,5 @@ public class EventTokenEventGetRoute extends PublicRoute {
                 EventTokenOwnership.eventHref(eventToken.calendarURL(), eventToken.eventId())))
             .map(VCalendarDto::new)
             .filter(event -> !event.isCancelled());
-    }
-
-    private EventTokenId extractToken(HttpServerRequest request) {
-        return new QueryStringDecoder(request.uri()).parameters()
-            .getOrDefault(EventTokenGetRoute.EVENT_TOKEN_PARAM, List.of())
-            .stream()
-            .filter(StringUtils::isNotBlank)
-            .findAny()
-            .map(EventTokenId::new)
-            .orElseThrow(() -> new IllegalArgumentException("Missing '" + EventTokenGetRoute.EVENT_TOKEN_PARAM + "' query parameter"));
     }
 }

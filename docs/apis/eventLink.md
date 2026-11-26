@@ -208,3 +208,90 @@ The `eventJSON` field contains the event in jCal format (RFC 7265).
 |--------|--------------------------------------------------------|
 | 400    | `eventToken` is missing                                |
 | 404    | Token not found or expired, event deleted or cancelled |
+
+---
+
+### **POST /api/events/addMyself?eventToken={eventToken}**
+
+Add the authenticated user as an attendee of the event an event token points to, with `PARTSTAT=ACCEPTED`.
+The token must have the `ADD_MYSELF` right. The event is updated on behalf of the owner of the calendar home, who must
+still be its `ORGANIZER`, and the DAV server schedules the invitation of the new attendee.
+
+Adding a user who is already an attendee leaves the event untouched.
+
+**Query parameters**
+
+| Parameter    | Required | Description         |
+|--------------|----------|---------------------|
+| `eventToken` | yes      | Value of the token  |
+
+**Sample request**
+```
+POST /api/events/addMyself?eventToken=Vb3N9nq0yZtJkq3Qe7cS1xG5cGw2Rw
+Authorization: Bearer <token>
+```
+
+**Sample response**
+```
+HTTP/1.1 204 No Content
+```
+
+**Error responses**
+
+| Status | Cause                                                                                 |
+|--------|---------------------------------------------------------------------------------------|
+| 400    | `eventToken` is missing                                                               |
+| 401    | Unauthenticated                                                                       |
+| 403    | The token does not have the `ADD_MYSELF` right, or the event is no longer a meeting organized by the owner |
+| 404    | Token not found or expired, event deleted or cancelled                                |
+
+---
+
+### **POST /api/events/addAttendee?eventToken={eventToken}**
+
+- No authentication required
+
+Add an attendee to the event an event token points to, with `PARTSTAT=NEEDS-ACTION`.
+The token must have the `ADD_MYSELF` right. The event is updated on behalf of the owner of the calendar home, who must
+still be its `ORGANIZER`, and the DAV server schedules the invitation of the new attendee.
+
+Adding an address which is already an attendee leaves the event untouched.
+
+Anyone holding the token can have an invitation sent to any address.
+
+**Query parameters**
+
+| Parameter    | Required | Description         |
+|--------------|----------|---------------------|
+| `eventToken` | yes      | Value of the token  |
+
+**Request body**
+
+| Field         | Required | Description                     |
+|---------------|----------|---------------------------------|
+| `mailAddress` | yes      | Mail address of the attendee    |
+| `displayName` | no       | Display name of the attendee    |
+
+**Sample request**
+```
+POST /api/events/addAttendee?eventToken=Vb3N9nq0yZtJkq3Qe7cS1xG5cGw2Rw
+Content-Type: application/json
+
+{
+    "mailAddress": "external@domain.com",
+    "displayName": "External Unauthenticated User"
+}
+```
+
+**Sample response**
+```
+HTTP/1.1 204 No Content
+```
+
+**Error responses**
+
+| Status | Cause                                                                                 |
+|--------|---------------------------------------------------------------------------------------|
+| 400    | `eventToken` is missing, missing or invalid body, missing or invalid `mailAddress`    |
+| 403    | The token does not have the `ADD_MYSELF` right, or the event is no longer a meeting organized by the owner |
+| 404    | Token not found or expired, event deleted or cancelled                                |

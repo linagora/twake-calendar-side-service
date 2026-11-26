@@ -40,8 +40,6 @@ import reactor.netty.http.server.HttpServerResponse;
 
 public class EventTokenGetRoute extends PublicRoute {
 
-    static final String EVENT_TOKEN_PARAM = "eventToken";
-
     private final EventTokenDAO eventTokenDAO;
 
     @Inject
@@ -52,12 +50,12 @@ public class EventTokenGetRoute extends PublicRoute {
 
     @Override
     protected Endpoint endpoint() {
-        return new Endpoint(HttpMethod.GET, "/api/eventTokens/{" + EVENT_TOKEN_PARAM + "}");
+        return new Endpoint(HttpMethod.GET, "/api/eventTokens/{" + EventTokenOwnership.EVENT_TOKEN_PARAM + "}");
     }
 
     @Override
     protected Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
-        return Mono.fromCallable(() -> new EventTokenId(request.param(EVENT_TOKEN_PARAM)))
+        return Mono.fromCallable(() -> new EventTokenId(request.param(EventTokenOwnership.EVENT_TOKEN_PARAM)))
             .flatMap(eventTokenDAO::findById)
             .switchIfEmpty(Mono.error(NotFoundException::new))
             .flatMap(eventToken -> response.status(HttpResponseStatus.OK)

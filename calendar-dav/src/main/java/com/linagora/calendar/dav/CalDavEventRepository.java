@@ -80,6 +80,13 @@ public class CalDavEventRepository {
         return applyModifierByEventUid(username, calendarId, eventUid, modifier).then();
     }
 
+    /**
+     * @return the updated calendar object, empty when no update was required.
+     */
+    public Mono<DavCalendarObject> updateEvent(Username username, URI calendarEventHref, CalendarEventModifier modifier) {
+        return applyModifierToEvent(Mono.just(client.httpClientWithImpersonation(username)), calendarEventHref, modifier);
+    }
+
     public Mono<CalendarReportJsonResponse> updatePartStat(Username username, OpenPaaSId calendarId, EventUid eventUid, PartStat partStat) {
         AttendeePartStatusUpdatePatch attendeePartStatusUpdatePatch = new AttendeePartStatusUpdatePatch(username, partStat);
         return updatePartStat(username, calendarId, eventUid, attendeePartStatusUpdatePatch)

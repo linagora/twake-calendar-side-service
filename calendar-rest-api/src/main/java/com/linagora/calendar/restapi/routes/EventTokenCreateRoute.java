@@ -40,12 +40,10 @@ import com.google.common.base.Preconditions;
 import com.linagora.calendar.dav.CalDavClient;
 import com.linagora.calendar.restapi.ForbiddenException;
 import com.linagora.calendar.restapi.NotFoundException;
-import com.linagora.calendar.smtp.MailUsernames;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.DavPathSegment;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
-import com.linagora.calendar.storage.event.EventParseUtils;
 import com.linagora.calendar.storage.eventtoken.EventToken;
 import com.linagora.calendar.storage.eventtoken.EventTokenDAO;
 import com.linagora.calendar.storage.eventtoken.EventTokenId;
@@ -53,9 +51,6 @@ import com.linagora.calendar.storage.eventtoken.EventTokenRight;
 
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import net.fortuna.ical4j.model.Calendar;
-import net.fortuna.ical4j.model.Component;
-import net.fortuna.ical4j.model.component.VEvent;
 import reactor.core.publisher.Mono;
 import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
@@ -140,19 +135,10 @@ public class EventTokenCreateRoute extends CalendarRoute {
     private Mono<Void> assertOrganizedEventExists(OpenPaaSUser owner, URI eventHref) {
         return calDavClient.fetchCalendarEvent(owner.username(), eventHref)
             .switchIfEmpty(Mono.error(NotFoundException::new))
-            .filter(event -> isOrganizedBy(event.calendarData(), owner))
+            .filter(event -> EventTokenOwnership.isOrganizedBy(event.calendarData(), owner))
             .switchIfEmpty(Mono.error(() -> new ForbiddenException("Only a meeting organized by '%s' can be shared"
                 .formatted(owner.username().asString()))))
             .then();
-    }
-
-    private boolean isOrganizedBy(Calendar calendar, OpenPaaSUser owner) {
-        return calendar.<VEvent>getComponents(Component.VEVENT).stream()
-            .findFirst()
-            .flatMap(EventParseUtils::getOrganizer)
-            .flatMap(organizer -> MailUsernames.asUsername(organizer.email()))
-            .filter(owner.username()::equals)
-            .isPresent();
     }
 
     static CalendarURL calendarURL(HttpServerRequest request) {

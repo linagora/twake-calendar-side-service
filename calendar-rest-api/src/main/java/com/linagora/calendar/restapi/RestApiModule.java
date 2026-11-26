@@ -96,6 +96,8 @@ import com.linagora.calendar.restapi.routes.DomainSettingsRoute;
 import com.linagora.calendar.restapi.routes.DownloadCalendarRoute;
 import com.linagora.calendar.restapi.routes.EntityRoute;
 import com.linagora.calendar.restapi.routes.EventParticipationRoute;
+import com.linagora.calendar.restapi.routes.EventTokenAddAttendeeRoute;
+import com.linagora.calendar.restapi.routes.EventTokenAddMyselfRoute;
 import com.linagora.calendar.restapi.routes.EventTokenCreateRoute;
 import com.linagora.calendar.restapi.routes.EventTokenDeleteRoute;
 import com.linagora.calendar.restapi.routes.EventTokenEventGetRoute;
@@ -188,6 +190,8 @@ public class RestApiModule extends AbstractModule {
         routes.addBinding().to(DomainRoute.class);
         routes.addBinding().to(DomainSettingsRoute.class);
         routes.addBinding().to(EntityRoute.class);
+        routes.addBinding().to(EventTokenAddAttendeeRoute.class);
+        routes.addBinding().to(EventTokenAddMyselfRoute.class);
         routes.addBinding().to(EventTokenCreateRoute.class);
         routes.addBinding().to(EventTokenDeleteRoute.class);
         routes.addBinding().to(EventTokenEventGetRoute.class);

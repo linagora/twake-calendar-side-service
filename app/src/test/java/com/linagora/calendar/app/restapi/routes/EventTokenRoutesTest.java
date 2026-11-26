@@ -18,6 +18,7 @@
 
 package com.linagora.calendar.app.restapi.routes;
 
+import static com.linagora.calendar.app.restapi.routes.ImportRouteTest.mailSenderConfigurationFunction;
 import static com.linagora.calendar.storage.TestFixture.TECHNICAL_TOKEN_SERVICE_TESTING;
 import static io.restassured.RestAssured.given;
 import static io.restassured.config.EncoderConfig.encoderConfig;
@@ -30,9 +31,13 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 import org.apache.http.HttpStatus;
+import org.awaitility.Awaitility;
+import org.awaitility.core.ConditionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -51,6 +56,8 @@ import com.linagora.calendar.dav.DavModuleTestHelper;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.SabreDavExtension;
 import com.linagora.calendar.restapi.RestApiServerProbe;
+import com.linagora.calendar.smtp.MailSenderConfiguration;
+import com.linagora.calendar.smtp.MockSmtpServerExtension;
 import com.linagora.calendar.storage.OpenPaaSUser;
 
 import io.restassured.RestAssured;
@@ -70,13 +77,24 @@ class EventTokenRoutesTest {
 
     @RegisterExtension
     @Order(2)
+    static final MockSmtpServerExtension mockSmtpExtension = new MockSmtpServerExtension();
+
+    @RegisterExtension
+    @Order(3)
     static TwakeCalendarExtension twakeCalendarExtension = new TwakeCalendarExtension(
         TwakeCalendarConfiguration.builder()
             .configurationFromClasspath()
             .userChoice(TwakeCalendarConfiguration.UserChoice.MEMORY)
             .dbChoice(TwakeCalendarConfiguration.DbChoice.MONGODB),
         AppTestHelper.OIDC_BY_PASS_MODULE,
-        DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension));
+        DavModuleTestHelper.FROM_SABRE_EXTENSION.apply(sabreDavExtension),
+        binder -> binder.bind(MailSenderConfiguration.class)
+            .toInstance(mailSenderConfigurationFunction.apply(mockSmtpExtension)));
+
+    private static final ConditionFactory CALMLY_AWAIT = Awaitility.with()
+        .pollInterval(Duration.ofMillis(200))
+        .await()
+        .atMost(Duration.ofSeconds(10));
 
     @AfterAll
     static void afterAll() {
@@ -107,6 +125,79 @@ class EventTokenRoutesTest {
 
         eventId = "sabredav-" + UUID.randomUUID();
         davTestHelper.upsertCalendar(owner, eventIcs(eventId, "CONFIRMED"), eventId);
+
+        clearSmtpMails();
+    }
+
+    private static RequestSpecification mockSmtpSpecification() {
+        return new RequestSpecBuilder()
+            .setPort(mockSmtpExtension.getMockSmtp().getRestApiPort())
+            .setBasePath("")
+            .build();
+    }
+
+    private static void clearSmtpMails() {
+        given(mockSmtpSpecification()).delete("/smtpMails").then();
+    }
+
+    private static List<String> smtpMailRecipients() {
+        JsonPath mails = given(mockSmtpSpecification()).get("/smtpMails").jsonPath();
+        return IntStream.range(0, mails.getList("").size())
+            .mapToObj(i -> mails.getString("[" + i + "].recipients[0].address"))
+            .toList();
+    }
+
+    private String eventJCal(String token) {
+        return given(anonymousSpecification)
+            .queryParam("eventToken", token)
+        .when()
+            .get("/api/events")
+        .then()
+            .statusCode(HttpStatus.SC_OK)
+            .extract()
+            .body()
+            .asString();
+    }
+
+    /**
+     * The test event once attendees were added through a token: adding them bumps its SEQUENCE and DTSTAMP.
+     */
+    private String expectedEventJCal(String attendees) {
+        return """
+            {
+              "eventJSON": [
+                "vcalendar",
+                [
+                  ["version", {}, "text", "2.0"],
+                  ["prodid", {}, "text", "${json-unit.any-string}"],
+                  ["calscale", {}, "text", "GREGORIAN"]
+                ],
+                [
+                  [
+                    "vevent",
+                    [
+                      ["uid", {}, "text", "%s"],
+                      ["dtstamp", {}, "date-time", "${json-unit.any-string}"],
+                      ["dtstart", {}, "date-time", "2036-12-01T10:00:00Z"],
+                      ["dtend", {}, "date-time", "2036-12-01T11:00:00Z"],
+                      ["summary", {}, "text", "Team sync"],
+                      ["status", {}, "text", "CONFIRMED"],
+                      ["organizer", {"cn": "Owner"}, "cal-address", "mailto:%s"],
+                      ["sequence", {}, "integer", 1],
+                      %s
+                    ],
+                    []
+                  ]
+                ]
+              ]
+            }
+            """.formatted(eventId, owner.username().asString(), attendees);
+    }
+
+    private String createAddMyselfToken() {
+        return createToken("""
+            { "right": "ADD_MYSELF" }
+            """);
     }
 
     private static RequestSpecification requestSpecification(int port, OpenPaaSUser user) {
@@ -619,6 +710,277 @@ class EventTokenRoutesTest {
                 .get("/api/events")
             .then()
                 .statusCode(HttpStatus.SC_NOT_FOUND);
+        }
+    }
+
+    @Nested
+    class AddMyself {
+
+        @Test
+        void shouldAddAuthenticatedUserAsAcceptedAttendee() {
+            // Given a token allowing to add oneself to the owner's meeting
+            String token = createAddMyselfToken();
+
+            // When another user attends through it
+            given(otherUserSpecification)
+                .queryParam("eventToken", token)
+            .when()
+                .post("/api/events/addMyself")
+            .then()
+                .statusCode(HttpStatus.SC_NO_CONTENT);
+
+            // Then that user is an attendee of the meeting, having accepted it
+            assertThatJson(eventJCal(token))
+                .withOptions(Option.IGNORING_ARRAY_ORDER, Option.IGNORING_EXTRA_FIELDS)
+                .isEqualTo(expectedEventJCal("""
+                    ["attendee", {"cn": "%s", "partstat": "ACCEPTED", "role": "REQ-PARTICIPANT", "rsvp": "TRUE", "cutype": "INDIVIDUAL"}, "cal-address", "mailto:%s"]
+                    """.formatted(otherUser.fullName(), otherUser.username().asString())));
+        }
+
+        @Test
+        void shouldDeliverTheMeetingToTheCalendarOfTheAuthenticatedUser() {
+            // Given a token allowing to add oneself to the owner's meeting
+            String token = createAddMyselfToken();
+
+            // When another user attends through it
+            given(otherUserSpecification)
+                .queryParam("eventToken", token)
+            .when()
+                .post("/api/events/addMyself")
+            .then()
+                .statusCode(HttpStatus.SC_NO_CONTENT);
+
+            // Then the meeting is scheduled in the calendar of that user
+            CALMLY_AWAIT.untilAsserted(() -> assertThat(davTestHelper.findFirstEventId(otherUser)).isPresent());
+        }
+
+        @Test
+        void shouldNotDuplicateTheAttendeeWhenAttendingTwice() {
+            // Given a user who already attended through a token
+            String token = createAddMyselfToken();
+            given(otherUserSpecification)
+                .queryParam("eventToken", token)
+                .post("/api/events/addMyself")
+            .then()
+                .statusCode(HttpStatus.SC_NO_CONTENT);
+
+            // When that user attends again
+            given(otherUserSpecification)
+                .queryParam("eventToken", token)
+            .when()
+                .post("/api/events/addMyself")
+            .then()
+                .statusCode(HttpStatus.SC_NO_CONTENT);
+
+            // Then the user is listed only once
+            assertThatJson(eventJCal(token))
+                .withOptions(Option.IGNORING_ARRAY_ORDER, Option.IGNORING_EXTRA_FIELDS)
+                .isEqualTo(expectedEventJCal("""
+                    ["attendee", {"cn": "%s", "partstat": "ACCEPTED", "role": "REQ-PARTICIPANT", "rsvp": "TRUE", "cutype": "INDIVIDUAL"}, "cal-address", "mailto:%s"]
+                    """.formatted(otherUser.fullName(), otherUser.username().asString())));
+        }
+
+        @Test
+        void shouldReturn403WhenTokenOnlyAllowsViewing() {
+            // Given a token only allowing to view the meeting
+            String token = createViewToken();
+
+            // When another user tries to attend through it
+            // Then the request is forbidden
+            given(otherUserSpecification)
+                .queryParam("eventToken", token)
+            .when()
+                .post("/api/events/addMyself")
+            .then()
+                .statusCode(HttpStatus.SC_FORBIDDEN);
+        }
+
+        @Test
+        void shouldReturn403WhenEventIsNoLongerOrganizedByTheOwner() {
+            // Given a token of a meeting the owner turned afterwards into a personal event without organizer
+            String token = createAddMyselfToken();
+            davTestHelper.updateCalendar(owner, eventIcs(eventId, "CONFIRMED", ""), eventId);
+
+            // When another user tries to attend through it
+            // Then the request is forbidden
+            given(otherUserSpecification)
+                .queryParam("eventToken", token)
+            .when()
+                .post("/api/events/addMyself")
+            .then()
+                .statusCode(HttpStatus.SC_FORBIDDEN);
+        }
+
+        @Test
+        void shouldReturn404WhenEventWasCancelled() {
+            // Given a token of a meeting the owner cancelled afterwards
+            String token = createAddMyselfToken();
+            davTestHelper.updateCalendar(owner, eventIcs(eventId, "CANCELLED"), eventId);
+
+            // When another user tries to attend through it
+            // Then the meeting is reported as not found
+            given(otherUserSpecification)
+                .queryParam("eventToken", token)
+            .when()
+                .post("/api/events/addMyself")
+            .then()
+                .statusCode(HttpStatus.SC_NOT_FOUND);
+        }
+
+        @Test
+        void shouldReturn404WhenTokenIsUnknown() {
+            // Given no token was issued with that value
+
+            // When a user tries to attend through it
+            // Then it is reported as not found
+            given(otherUserSpecification)
+                .queryParam("eventToken", "unknown")
+            .when()
+                .post("/api/events/addMyself")
+            .then()
+                .statusCode(HttpStatus.SC_NOT_FOUND);
+        }
+
+        @Test
+        void shouldReturn401WhenUnauthenticated() {
+            // Given a token allowing to add oneself to the owner's meeting
+            String token = createAddMyselfToken();
+
+            // When an anonymous client tries to attend through it
+            // Then authentication is required
+            given(anonymousSpecification)
+                .queryParam("eventToken", token)
+            .when()
+                .post("/api/events/addMyself")
+            .then()
+                .statusCode(HttpStatus.SC_UNAUTHORIZED);
+        }
+    }
+
+    @Nested
+    class AddAttendee {
+
+        @Test
+        void shouldAddAttendeeNeedingAction() {
+            // Given a token allowing to add attendees to the owner's meeting
+            String token = createAddMyselfToken();
+
+            // When an anonymous client adds an external attendee through it
+            given(anonymousSpecification)
+                .queryParam("eventToken", token)
+                .body("""
+                    { "mailAddress": "cedric@external.org", "displayName": "Cedric" }
+                    """)
+            .when()
+                .post("/api/events/addAttendee")
+            .then()
+                .statusCode(HttpStatus.SC_NO_CONTENT);
+
+            // Then the attendee is invited, still having to answer
+            assertThatJson(eventJCal(token))
+                .withOptions(Option.IGNORING_ARRAY_ORDER, Option.IGNORING_EXTRA_FIELDS)
+                .isEqualTo(expectedEventJCal("""
+                    ["attendee", {"cn": "Cedric", "partstat": "NEEDS-ACTION", "role": "REQ-PARTICIPANT", "rsvp": "TRUE", "cutype": "INDIVIDUAL"}, "cal-address", "mailto:cedric@external.org"]
+                    """));
+        }
+
+        @Test
+        void shouldMailTheInvitationOnlyToTheNewAttendee() {
+            // Given a meeting already attended by an external attendee, and a token allowing to add attendees to it
+            davTestHelper.updateCalendar(owner, eventIcs(eventId, "CONFIRMED", """
+                ORGANIZER;CN=Owner:mailto:%s
+                ATTENDEE;PARTSTAT=ACCEPTED:mailto:existing@external.org
+                """.formatted(owner.username().asString())), eventId);
+            CALMLY_AWAIT.untilAsserted(() -> assertThat(smtpMailRecipients()).contains("existing@external.org"));
+            clearSmtpMails();
+            String token = createAddMyselfToken();
+
+            // When an anonymous client adds another external attendee through it
+            given(anonymousSpecification)
+                .queryParam("eventToken", token)
+                .body("""
+                    { "mailAddress": "cedric@external.org" }
+                    """)
+            .when()
+                .post("/api/events/addAttendee")
+            .then()
+                .statusCode(HttpStatus.SC_NO_CONTENT);
+
+            // Then only the new attendee is mailed an invitation
+            CALMLY_AWAIT.untilAsserted(() -> assertThat(smtpMailRecipients()).isNotEmpty());
+            assertThat(smtpMailRecipients()).containsExactly("cedric@external.org");
+        }
+
+        @Test
+        void shouldReturn403WhenTokenOnlyAllowsViewing() {
+            // Given a token only allowing to view the meeting
+            String token = createViewToken();
+
+            // When an anonymous client tries to add an attendee through it
+            // Then the request is forbidden
+            given(anonymousSpecification)
+                .queryParam("eventToken", token)
+                .body("""
+                    { "mailAddress": "cedric@external.org" }
+                    """)
+            .when()
+                .post("/api/events/addAttendee")
+            .then()
+                .statusCode(HttpStatus.SC_FORBIDDEN);
+        }
+
+        @Test
+        void shouldReturn404WhenTokenIsUnknown() {
+            // Given no token was issued with that value
+
+            // When an anonymous client tries to add an attendee through it
+            // Then it is reported as not found
+            given(anonymousSpecification)
+                .queryParam("eventToken", "unknown")
+                .body("""
+                    { "mailAddress": "cedric@external.org" }
+                    """)
+            .when()
+                .post("/api/events/addAttendee")
+            .then()
+                .statusCode(HttpStatus.SC_NOT_FOUND);
+        }
+
+        @Test
+        void shouldReturn400WhenTokenIsMissing() {
+            // Given no token
+
+            // When an anonymous client tries to add an attendee
+            // Then the request is rejected
+            given(anonymousSpecification)
+                .body("""
+                    { "mailAddress": "cedric@external.org" }
+                    """)
+            .when()
+                .post("/api/events/addAttendee")
+            .then()
+                .statusCode(HttpStatus.SC_BAD_REQUEST);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {
+            "{}",
+            "{ \"mailAddress\": \"not an address\" }",
+            "not json"
+        })
+        void shouldReturn400WhenBodyIsInvalid(String body) {
+            // Given a token allowing to add attendees to the owner's meeting
+            String token = createAddMyselfToken();
+
+            // When an anonymous client adds an attendee with a missing or invalid address
+            // Then the request is rejected
+            given(anonymousSpecification)
+                .queryParam("eventToken", token)
+                .body(body)
+            .when()
+                .post("/api/events/addAttendee")
+            .then()
+                .statusCode(HttpStatus.SC_BAD_REQUEST);
         }
     }
 }
