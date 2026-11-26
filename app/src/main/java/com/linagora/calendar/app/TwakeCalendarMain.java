@@ -96,6 +96,7 @@ import com.linagora.calendar.storage.opensearch.OpensearchCalendarSearchModule;
 import com.linagora.calendar.storage.redis.RedisCommonModule;
 import com.linagora.calendar.storage.redis.RedisEventBusModule;
 import com.linagora.calendar.storage.redis.RedisOIDCModule;
+import com.linagora.calendar.twakeactivity.TwakeActivityModule;
 import com.linagora.calendar.twakespace.TwakeSpaceModule;
 import com.linagora.calendar.webadmin.CalendarRoutesModule;
 import com.linagora.calendar.webadmin.CommonContactRepublishRouteModule;
@@ -158,6 +159,7 @@ public class TwakeCalendarMain {
                 chooseMeet(configuration.meetEnabled()),
                 chooseTDrive(configuration.tdriveEnabled()),
                 chooseTwakeSpace(configuration.twakeSpaceEnabled(), configuration.dbChoice()),
+                chooseTwakeActivity(configuration.twakeActivityEnabled()),
                 new FileUploadConfigurationModule(),
                 new RestApiModule(),
                 new CommonContactsApiModule(),
@@ -287,6 +289,13 @@ public class TwakeCalendarMain {
                 case MEMORY -> TwakeSpaceModule.MEMORY_STORAGE;
                 case MONGODB -> TwakeSpaceModule.MONGODB_STORAGE;
             });
+        }
+        return Modules.EMPTY_MODULE;
+    }
+
+    public static Module chooseTwakeActivity(boolean enabled) {
+        if (enabled) {
+            return new TwakeActivityModule();
         }
         return Modules.EMPTY_MODULE;
     }

@@ -35,6 +35,7 @@ import org.apache.james.utils.PropertiesProvider;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.saas.drive.configuration.TDriveConfiguration;
 import com.linagora.calendar.saas.meet.MeetConfiguration;
+import com.linagora.calendar.twakeactivity.TwakeActivityConfiguration;
 import com.linagora.calendar.twakespace.TwakeSpaceConfiguration;
 
 public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, JamesDirectoriesProvider directories,
@@ -46,7 +47,8 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                                          boolean saasSubscriptionEnabled,
                                          boolean meetEnabled,
                                          boolean tdriveEnabled,
-                                         boolean twakeSpaceEnabled) implements Configuration {
+                                         boolean twakeSpaceEnabled,
+                                         boolean twakeActivityEnabled) implements Configuration {
 
     public static final boolean ENABLED = true;
 
@@ -63,6 +65,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
         private Optional<Boolean> meetEnabled;
         private Optional<Boolean> tdriveEnabled;
         private Optional<Boolean> twakeSpaceEnabled;
+        private Optional<Boolean> twakeActivityEnabled;
         private Optional<CalendarEventSearchChoice> calendarEventSearchChoice;
 
         private Builder() {
@@ -78,6 +81,7 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
             meetEnabled = Optional.empty();
             tdriveEnabled = Optional.empty();
             twakeSpaceEnabled = Optional.empty();
+            twakeActivityEnabled = Optional.empty();
             calendarEventSearchChoice = Optional.empty();
         }
 
@@ -138,6 +142,11 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
 
         public Builder enableTwakeSpace() {
             twakeSpaceEnabled = Optional.of(true);
+            return this;
+        }
+
+        public Builder enableTwakeActivity() {
+            twakeActivityEnabled = Optional.of(true);
             return this;
         }
 
@@ -229,6 +238,15 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 return configuration.getBoolean(TwakeSpaceConfiguration.ENABLED_PROPERTY, !ENABLED);
             }));
 
+            boolean twakeActivityEnabledValue = this.twakeActivityEnabled.orElseGet(Throwing.supplier(() -> {
+                var configuration = propertiesProvider.getConfiguration("configuration");
+                return configuration.getBoolean(TwakeActivityConfiguration.ENABLED_PROPERTY, !ENABLED);
+            }));
+
+            if (!twpSettingEnabledValue && twakeActivityEnabledValue) {
+                throw new IllegalArgumentException("TWP Setting must be enabled when Twake activity is enabled");
+            }
+
             if (!twpSettingEnabledValue && twakeSpaceEnabledValue) {
                 throw new IllegalArgumentException("TWP Setting must be enabled when TwakeSpace is enabled");
             }
@@ -267,7 +285,8 @@ public record TwakeCalendarConfiguration(ConfigurationPath configurationPath, Ja
                 saasSubscriptionEnabledValue,
                 meetEnabledValue,
                 tdriveEnabledValue,
-                twakeSpaceEnabledValue);
+                twakeSpaceEnabledValue,
+                twakeActivityEnabledValue);
         }
 
         private boolean redisConfigurationFileExists(PropertiesProvider propertiesProvider) throws ConfigurationException {

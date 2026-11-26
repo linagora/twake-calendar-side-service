@@ -3,7 +3,7 @@
 `POST /api/attachments` uploads a file to the authenticated user's TDrive and
 returns a public, read-only link. Anyone with the link can open the file.
 The endpoint is registered only when `twp.drive.enabled=true`. See the
-[TDrive configuration guide](../../saas/twake-drive/README.md).
+[TDrive configuration guide](../../twake/drive/README.md).
 
 ## Request
 

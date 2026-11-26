@@ -198,3 +198,38 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: Benoit Tellier, [issue #1657](https://github.com/linagora/twake-calendar-side-service/issues/1657)
 - Why: these tokens come percent-decoded from the query string of public routes and their failures are logged as plain text, so anyone could write line breaks and terminal escapes into the log; the JWT libraries also copy the decoded header or payload into their messages.
 - Scope: `calendar-api` `ParticipationTokenSigner`, `BookedEventTokenSigner`; `calendar-rest-api` `ResourceParticipationRoute`.
+
+## 2026-11-26, [Architecture] Twake integrations live under `twake/`, apart from the SaaS connectors
+
+- Decision: the modules integrating Twake Workplace move out of `saas/` into `twake/`: `twake/extension` (the former `saas/twake-space`, artifact renamed from `twake-space-extension` to `twake-extension`, hosting TwakeSpace and later the other Twake Workplace integrations), `twake/drive`, `twake/meet` and `twake/saas-rabbitmq`. `saas/common-contacts-api` stays in `saas/`. Other artifact ids, Java packages and configuration properties (`twakespace.*`, ...) are kept, so that no deployment changes its configuration.
+- Decided by: Benoit Tellier (maintainer), session 6af3ff61-fac3-4072-9e09-31d266a09ba3 and [PR #1661](https://github.com/linagora/twake-calendar-side-service/pull/1661); keeping the other artifact ids, packages and properties: agent, to be confirmed by Benoit Tellier.
+- Why: Twake Workplace can be deployed on premise, without the SaaS connectors but with the Twake ones.
+- Scope: Maven modules and folders, `app` dependencies, links to `twake/drive/README.md`.
+
+## 2026-11-26, [Product] Event and contact creations are published as user activity
+
+- Decision: when `twake.activity.enabled=true`, each event created in a calendar and each contact created in an address book publishes a CloudEvent 1.0 (`application/cloudevents+json`, persistent, AMQP `messageId` = CloudEvent `id`) on the `activity` topic exchange of the Twake Workplace broker, with routing key `{application}.{type}` (`calendar.eventCreated`, `contacts.contactCreated`) and type `com.twake.{application}.{type}.v1`. It carries `source` (`twake://calendar`, `twake://contacts`), `subject` (the DAV path), the extensions `twakeactor` (a mail address string) and `twakedomain`, and `data` holding `path` and `calendar` or `addressbook`. Updates and deletions publish nothing yet. Contract: [Twake activity](configuration/twake-activity.md).
+- Decided by: Benoit Tellier (maintainer), session 6af3ff61-fac3-4072-9e09-31d266a09ba3: the exchange, a CloudEvent envelope, the `{application}.{type}` routing key and creations only. Agent, to be confirmed by Benoit Tellier: `data` is one object rather than an array (sabre sends one message per resource), the `id` is a UUID named after type, path and etag, `twakeactor` is a string (a CloudEvent extension cannot be an object), `contactCreated` in the singular with `addressbook` and an `addressbooks/...` path.
+- Why: Twake Workplace builds its activity feed from it. The routing key lets a consumer bind `#` for everything or filter one application, where publishing on `#` itself would forbid any filter. A named `id` lets a consumer drop the duplicates of a redelivery.
+- Scope: `twake/extension` `UserActivities`, `UserActivityConsumer`, `UserActivityPublisher`; `twake.activity.enabled`, `twake.activity.exchange`.
+
+## 2026-11-26, [Product] Who the actor of a user activity is, and what tells no activity
+
+- Decision: the actor is the user sabre names in `connectedUser`; without one, or for a technical principal, the owner of the calendar home or of the address book; when neither is a known user, nothing is published. Calendar imports (`import: true`) and the copies sabre sends for subscribed or delegated address books (`sourcePath`) publish nothing. A vCard import, which sabre does not flag, publishes one activity per contact, and an event landing in several calendars (sharing, scheduling to local attendees) may publish one activity per calendar.
+- Decided by: agent (session 6af3ff61-fac3-4072-9e09-31d266a09ba3, PR for the user activity), to be confirmed by Benoit Tellier (maintainer).
+- Why: the author of a delegated change is the delegate, as for the audit log; an imported calendar would flood the feed; a mirror copy repeats a change already told.
+- Scope: `twake/extension` `UserActivities`.
+
+## 2026-11-26, [Product] A user activity names the owner of the resource
+
+- Decision: the user activity CloudEvent carries the `twakeresourceowner` extension: the mail address of the user owning the calendar home or the address book of the created resource. It is absent when that calendar or address book belongs to no user (domain address book, resource calendar). Completes "Event and contact creations are published as user activity".
+- Decided by: Benoit Tellier (maintainer), session 6af3ff61-fac3-4072-9e09-31d266a09ba3; omitting it rather than publishing an empty value: agent, to be confirmed by Benoit Tellier.
+- Why: `twakeactor` is who made the change; a consumer needs whose data changed to tell a delegated change, and to show the activity to the owner.
+- Scope: `twake/extension` `UserActivity`, `UserActivities`.
+
+## 2026-11-26, [Product] User activity types and routing keys follow Twake ADR-067
+
+- Decision: replaces the type and routing key of "Event and contact creations are published as user activity". The CloudEvent `type` is `com.twake.{application}.{object}.{action}.v1` (`com.twake.calendar.event.created.v1`, `com.twake.contacts.contact.created.v1`) and the routing key is the `type`, as [Twake ADR-067](https://github.com/linagora/twake-adr/blob/main/adrs/adr-067.md#events) names and routes events. The user activity stays on the `activity` exchange, where TwakeSpace publishes its team calendar activity with the same `type` and routing key but another `data` and a `twakeorg`: consumers tell them apart by content.
+- Decided by: Benoit Tellier (maintainer), session 6af3ff61-fac3-4072-9e09-31d266a09ba3, after zatteo's [review](https://github.com/linagora/twake-calendar-side-service/pull/1661#issuecomment-7197039477) on PR #1661.
+- Why: one naming for every Twake Workplace event, as the ADR recommends.
+- Scope: `twake/extension` `UserActivity`; consumers of the `activity` exchange.

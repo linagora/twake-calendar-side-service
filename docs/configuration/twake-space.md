@@ -8,6 +8,8 @@ meet.enabled=true
 twakespace.enabled=true
 ```
 
+TwakeSpace is part of the `twake-extension` module (`twake/extension`), along with [Twake activity](twake-activity.md), which tells the activity of every user rather than of team calendars.
+
 It needs `twp.settings.enabled`, as it reads the space events on the [Twake Workplace broker](configuration.md#twake-workplace-rabbitmq-properties). It needs the [Meet integration](configuration.md#meet-integration-meetenabledtrue), as it opens a Meet room for each meeting a space asks for. The startup fails without either.
 
 TwakeSpace keeps what the space events say about each space: its organization, domain, name, members with their role, and deletion. With the MongoDB backend it goes to the `twake_spaces` collection.

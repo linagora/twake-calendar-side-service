@@ -70,12 +70,13 @@ Here is the detail of the configuration entries:
 | common.contact.api.secrets | Required when `common.contact.api.port` is set (startup fails otherwise). Coma separated list of the Bearer tokens accepted by the Common Contacts API. Surrounding spaces and empty entries are ignored. | common.contact.api.secrets=abcdef,ghijz |
 | saas.subscription.enabled | Optional. Defaults to `false`. Enables the SaaS subscription consumers that listen to the Twake Workplace RabbitMQ broker for domain and user subscription messages, and automatically provision domains and register users with their calendar features. Requires `twp.settings.enabled=true` (startup fails otherwise). The related broker properties are described in [Twake Workplace RabbitMQ properties](#twake-workplace-rabbitmq-properties). | saas.subscription.enabled=true |
 | twakespace.enabled | Optional. Defaults to `false`. Gives each Twake Workplace space a team calendar and publishes its activity for the TwakeSpace feed. Requires `twp.settings.enabled=true` and `meet.enabled=true` (startup fails otherwise). See [TwakeSpace](twake-space.md). | twakespace.enabled=true |
+| twake.activity.enabled | Optional. Defaults to `false`. Publishes a CloudEvent on the Twake Workplace activity exchange each time a user creates an event or a contact. Requires `twp.settings.enabled=true` (startup fails otherwise). See [Twake activity](twake-activity.md). | twake.activity.enabled=true |
 
 Please find hereby a [working example](../../app/src/main/conf/configuration.properties).
 
 ## Twake Workplace RabbitMQ properties
 
-The TWP settings synchronization (`twp.settings.enabled`), Common Contacts synchronization (`common.contacts.enabled`), the SaaS subscription consumers (`saas.subscription.enabled`) and TwakeSpace (`twakespace.enabled`)
+The TWP settings synchronization (`twp.settings.enabled`), Common Contacts synchronization (`common.contacts.enabled`), the SaaS subscription consumers (`saas.subscription.enabled`), TwakeSpace (`twakespace.enabled`) and Twake activity (`twake.activity.enabled`)
 connect to the Twake Workplace RabbitMQ broker. These integrations read the following additional properties from
 [rabbitmq.properties](https://james.staged.apache.org/james-project/3.9.0/servers/distributed/configure/rabbitmq.html),
 in addition to the standard `uri`, `management.uri`, ... entries. All of them are optional and fall back to the defaults below.
@@ -165,6 +166,12 @@ Domains are provisioned when `dnsOwnershipValidated=true`, falling back to
 | twp.saas.domain.subscription.routingKey | Optional. Defaults to `domain.subscription.changed`. Routing key bound for domain subscription messages. | twp.saas.domain.subscription.routingKey=domain.subscription.changed |
 | twp.saas.configuration.exchange | Optional. Defaults to `configuration`. Exchange the domain configuration messages are consumed from. | twp.saas.configuration.exchange=configuration |
 | twp.saas.configuration.routingKey | Optional. Defaults to `domain.dns.configuration.status`. Routing key bound for domain DNS configuration status messages. | twp.saas.configuration.routingKey=domain.dns.configuration.status |
+
+### Twake activity (`twake.activity.enabled=true`)
+
+| Configuration entry | Explanation | Example |
+|---------------------|-------------|---------|
+| twake.activity.exchange | Optional. Defaults to `activity`. Durable topic exchange the user activity is published on. See [Twake activity](twake-activity.md). | twake.activity.exchange=activity |
 
 ## Per-domain sender
 
