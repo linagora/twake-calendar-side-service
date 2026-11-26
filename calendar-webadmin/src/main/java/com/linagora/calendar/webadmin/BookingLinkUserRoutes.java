@@ -18,7 +18,9 @@
 
 package com.linagora.calendar.webadmin;
 
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.NOT_A_JSON_OBJECT_MESSAGE;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.invalidBody;
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.parseDtoBody;
 import static com.linagora.calendar.webadmin.WebAdminRouteUtils.retrieveUser;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
@@ -294,8 +296,8 @@ public class BookingLinkUserRoutes implements Routes {
     }
 
     private BookingLinkInsertRequest parseInsertRequest(Request request) {
+        CreateBookingLinkRequestDTO dto = parseDtoBody(request, CreateBookingLinkRequestDTO.class, OBJECT_MAPPER);
         try {
-            CreateBookingLinkRequestDTO dto = OBJECT_MAPPER.readValue(request.bodyAsBytes(), CreateBookingLinkRequestDTO.class);
             return CreateBookingLinkRequestDTO.toBookingLinkInsertRequest(dto, DEFAULT_ZONE, Optional.empty());
         } catch (IllegalArgumentException e) {
             throw badRequest(e.getMessage(), e);
@@ -308,6 +310,9 @@ public class BookingLinkUserRoutes implements Routes {
         try {
             byte[] body = request.bodyAsBytes();
             JsonNode node = OBJECT_MAPPER.readTree(body);
+            if (!node.isObject()) {
+                throw new IllegalArgumentException(NOT_A_JSON_OBJECT_MESSAGE);
+            }
             PatchDto dto = OBJECT_MAPPER.readValue(body, PatchDto.class);
             return new BookingLinkPatchRequest(
                 parseCalendarUrl(node, dto),

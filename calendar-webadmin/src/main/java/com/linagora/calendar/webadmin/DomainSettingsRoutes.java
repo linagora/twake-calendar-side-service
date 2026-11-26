@@ -19,6 +19,7 @@
 package com.linagora.calendar.webadmin;
 
 import static com.linagora.calendar.storage.configuration.resolver.BusinessHoursSettingReader.OBJECT_MAPPER_DEFAULT;
+import static com.linagora.calendar.webadmin.WebAdminRouteUtils.NOT_A_JSON_OBJECT_MESSAGE;
 import static org.apache.james.webadmin.Constants.SEPARATOR;
 
 import java.util.Optional;
@@ -167,6 +168,9 @@ public class DomainSettingsRoutes implements Routes {
         }
         try {
             JsonNode node = OBJECT_MAPPER_DEFAULT.readTree(request.bodyAsBytes());
+            if (!node.isObject()) {
+                throw new IllegalArgumentException(NOT_A_JSON_OBJECT_MESSAGE);
+            }
             DomainSettingsPatchRequest dto = OBJECT_MAPPER_DEFAULT.treeToValue(node, DomainSettingsPatchRequest.class);
             DomainSettingsPatch patch = new DomainSettingsPatch(
                 parseUserSearchMode(node, dto),

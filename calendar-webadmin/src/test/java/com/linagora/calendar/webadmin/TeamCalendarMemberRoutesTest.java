@@ -438,6 +438,21 @@ class TeamCalendarMemberRoutesTest {
     }
 
     @Test
+    void inviteeShouldReturn400WhenBodyIsJsonNull() {
+        TeamCalendar teamCalendar = createTeamCalendar();
+
+        given()
+            .contentType(ContentType.JSON)
+            .body("null")
+        .when()
+            .post("/domains/{domain}/team-calendars/{teamCalendarId}/members/invitee", DOMAIN.asString(), teamCalendar.id().value())
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("Request body must be a JSON object"));
+    }
+
+    @Test
     void listShouldReturn404WhenDomainDoesNotExist() {
         // Given a valid team calendar and a missing requested domain.
         TeamCalendar teamCalendar = createTeamCalendar();

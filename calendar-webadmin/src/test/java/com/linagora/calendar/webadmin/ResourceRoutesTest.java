@@ -547,6 +547,34 @@ class ResourceRoutesTest {
     }
 
     @Test
+    void postShouldReturn400WhenBodyIsJsonNull() {
+        domainDAO.add(Domain.of("linagora.com")).block();
+
+        given()
+            .body("null")
+            .post("/domains/linagora.com/resources")
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("JSON payload of the request is not valid"));
+    }
+
+    @Test
+    void patchShouldReturn400WhenBodyIsJsonNull() {
+        OpenPaaSDomain domain = domainDAO.add(Domain.of("linagora.com")).block();
+        OpenPaaSUser user = userDAO.add(Username.of("user1@linagora.com")).block();
+        ResourceId resourceId = resourceDAO.insert(new ResourceInsertRequest(user.id(), "Descripting", domain.id(), "laptop", "Resource name")).block();
+
+        given()
+            .body("null")
+            .patch("/domains/linagora.com/resources/" + resourceId.value())
+        .then()
+            .statusCode(400)
+            .body("type", is("InvalidArgument"))
+            .body("message", is("JSON payload of the request is not valid"));
+    }
+
+    @Test
     void postShouldRejectIdField() {
         domainDAO.add(Domain.of("linagora.com")).block();
         userDAO.add(Username.of("user1@linagora.com")).block();
