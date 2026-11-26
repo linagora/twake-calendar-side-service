@@ -198,3 +198,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: Benoit Tellier, [issue #1657](https://github.com/linagora/twake-calendar-side-service/issues/1657)
 - Why: these tokens come percent-decoded from the query string of public routes and their failures are logged as plain text, so anyone could write line breaks and terminal escapes into the log; the JWT libraries also copy the decoded header or payload into their messages.
 - Scope: `calendar-api` `ParticipationTokenSigner`, `BookedEventTokenSigner`; `calendar-rest-api` `ResourceParticipationRoute`.
+
+## 2026-11-26, [Architecture] Twake integrations live under `twake/`, apart from the SaaS connectors
+
+- Decision: the modules integrating Twake Workplace move out of `saas/` into `twake/`: `twake/extension` (the former `saas/twake-space`, artifact renamed from `twake-space-extension` to `twake-extension`, hosting TwakeSpace and later the other Twake Workplace integrations), `twake/drive`, `twake/meet` and `twake/saas-rabbitmq`. `saas/common-contacts-api` stays in `saas/`. Other artifact ids, Java packages and configuration properties (`twakespace.*`, ...) are kept, so that no deployment changes its configuration.
+- Decided by: Benoit Tellier (maintainer), session 6af3ff61-fac3-4072-9e09-31d266a09ba3 and [PR #1661](https://github.com/linagora/twake-calendar-side-service/pull/1661); keeping the other artifact ids, packages and properties: agent, to be confirmed by Benoit Tellier.
+- Why: Twake Workplace can be deployed on premise, without the SaaS connectors but with the Twake ones.
+- Scope: Maven modules and folders, `app` dependencies, links to `twake/drive/README.md`.

@@ -131,7 +131,7 @@
         </dependency>
         <dependency>
             <groupId>${project.groupId}</groupId>
-            <artifactId>twake-space-extension</artifactId>
+            <artifactId>twake-extension</artifactId>
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>

@@ -32,7 +32,7 @@ The side service also enables synchronizing domain members into ESN-Sabre DAV se
 
 When Drive attachment storage is enabled, the side service can upload calendar attachments to the authenticated user's Drive and return a public, read-only URI.
 
-See [Twake Drive configuration](../saas/twake-drive/README.md) for settings and instance resolution. If ESN-Sabre filters attachment URLs, configure it to trust the generated Drive URLs.
+See [Twake Drive configuration](../twake/drive/README.md) for settings and instance resolution. If ESN-Sabre filters attachment URLs, configure it to trust the generated Drive URLs.
 
 ## Automatic user provisioning
 
