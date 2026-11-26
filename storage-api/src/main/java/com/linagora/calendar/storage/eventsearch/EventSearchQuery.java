@@ -75,6 +75,11 @@ public record EventSearchQuery(String query,
         Preconditions.checkArgument(limit <= MAX_LIMIT, "limit must be less than or equal to " + MAX_LIMIT);
     }
 
+    public EventSearchQuery withNfcQuery() {
+        return new EventSearchQuery(SearchTextNormalizer.nfc(query), calendars, organizers, attendees, bookingLink,
+            calendarsHidingPrivateEvents, limit, offset);
+    }
+
     public static class Builder {
         private String query;
         private Optional<List<CalendarURL>> calendars = Optional.empty();

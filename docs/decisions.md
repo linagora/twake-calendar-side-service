@@ -198,3 +198,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: Benoit Tellier, [issue #1657](https://github.com/linagora/twake-calendar-side-service/issues/1657)
 - Why: these tokens come percent-decoded from the query string of public routes and their failures are logged as plain text, so anyone could write line breaks and terminal escapes into the log; the JWT libraries also copy the decoded header or payload into their messages.
 - Scope: `calendar-api` `ParticipationTokenSigner`, `BookedEventTokenSigner`; `calendar-rest-api` `ResourceParticipationRoute`.
+
+## 2026-11-26, [Tech] Event search text is NFC-normalized at indexing and at query time
+
+- Decision: the calendar event search brings summary, location, description and the organizer, attendee and resource common names and addresses to Unicode NFC when indexing (`CalendarEventsDocument`), and the free text query to NFC before searching (`EventSearchQuery.withNfcQuery`), in OpenSearch and in memory alike. The index mapping is unchanged and documents indexed before are not rewritten: they are fixed by their next update or a reindexing.
+- Decided by: Benoit Tellier, following linagora/tmail-backend#3184 which does the same for mail search.
+- Why: a decomposed (NFD) text, as some clients send, was found neither by a composed query nor by an ASCII one (`reunion`, `hel` for "Réunion Hélène"), since ASCII folding only folds precomposed letters and leaves the combining marks in the token; a composed text was not found by a decomposed query either, and a decomposed summary reached the 7 code point prefix cap sooner (each combining mark counts).
+- Scope: `storage-opensearch` `CalendarEventsDocument`, `OpensearchCalendarSearchService`; `storage-api` `MemoryCalendarSearchService`, `EventSearchQuery`, `SearchTextNormalizer`.

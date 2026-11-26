@@ -28,6 +28,7 @@ import jakarta.mail.internet.AddressException;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linagora.calendar.storage.CalendarURL;
 import com.linagora.calendar.storage.event.EventFields;
+import com.linagora.calendar.storage.eventsearch.SearchTextNormalizer;
 import com.linagora.calendar.storage.opensearch.CalendarEventIndexMappingFactory.CalendarFields;
 
 public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_ID) String baseCalendarId,
@@ -72,7 +73,7 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_
             if (person == null) {
                 return null;
             }
-            return new SimplePerson(person.cn(), person.email().asString());
+            return new SimplePerson(SearchTextNormalizer.nfc(person.cn()), SearchTextNormalizer.nfc(person.email().asString()));
         }
 
         public EventFields.Person toEventPerson() {
@@ -88,9 +89,9 @@ public record CalendarEventsDocument(@JsonProperty(CalendarFields.BASE_CALENDAR_
         return new CalendarEventsDocument(
             eventFields.calendarURL().base().value(),
             eventFields.uid().value(),
-            eventFields.summary(),
-            eventFields.location(),
-            eventFields.description(),
+            SearchTextNormalizer.nfc(eventFields.summary()),
+            SearchTextNormalizer.nfc(eventFields.location()),
+            SearchTextNormalizer.nfc(eventFields.description()),
             eventFields.clazz(),
             eventFields.start(),
             eventFields.end(),
