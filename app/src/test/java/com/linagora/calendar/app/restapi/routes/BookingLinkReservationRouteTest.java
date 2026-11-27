@@ -1575,7 +1575,7 @@ class BookingLinkReservationRouteTest {
                 [{"name": "core", "configurations": [{"name": "datetime", "value": {"timeZone": "Europe/Paris"}}]}]
                 """)
         .when()
-            .put("/api/configurations?scope=user")
+            .patch("/api/configurations?scope=user")
         .then()
             .statusCode(HttpStatus.SC_NO_CONTENT);
 
