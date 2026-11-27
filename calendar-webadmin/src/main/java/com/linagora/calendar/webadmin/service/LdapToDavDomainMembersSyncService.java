@@ -29,8 +29,10 @@ import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
+import com.linagora.calendar.storage.UserSearchMode;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
 import com.linagora.calendar.storage.ldap.LdapFilter;
 import com.linagora.calendar.storage.ldap.LdapUser;
@@ -46,15 +48,18 @@ public class LdapToDavDomainMembersSyncService {
 
     private final LdapDomainMemberProvider ldapDomainMemberProvider;
     private final CardDavClient davClient;
+    private final DomainSettingsResolver domainSettingsResolver;
     private final LdapUserContactMapper ldapUserContactMapper;
     private final Function<OpenPaaSId, DavDomainMemberUpdateApplier> davDomainMemberUpdateApplierFactory;
 
     @Inject
     public LdapToDavDomainMembersSyncService(LdapDomainMemberProvider ldapDomainMemberProvider,
                                              CardDavClient davClient,
-                                             LdapUserContactMapper ldapUserContactMapper) {
+                                             LdapUserContactMapper ldapUserContactMapper,
+                                             DomainSettingsResolver domainSettingsResolver) {
         this.ldapDomainMemberProvider = ldapDomainMemberProvider;
         this.davClient = davClient;
+        this.domainSettingsResolver = domainSettingsResolver;
         this.ldapUserContactMapper = ldapUserContactMapper;
         this.davDomainMemberUpdateApplierFactory = openPaaSId -> new DavDomainMemberUpdateApplier.Default(davClient, openPaaSId);
     }
@@ -64,15 +69,23 @@ public class LdapToDavDomainMembersSyncService {
     }
 
     public Mono<UpdateResult> syncDomainMembers(OpenPaaSDomain openPaaSDomain, ContactUpdateContext contexts, Optional<LdapFilter> ldapFilter) {
-        return Mono.zip(fetchLdapDomainMembers(openPaaSDomain, ldapFilter), fetchDavDomainMembers(openPaaSDomain))
-            .flatMap(tuple -> {
-                List<LdapUser> ldapMembers = tuple.getT1();
-                List<AddressBookContact> davContacts = tuple.getT2();
-                DomainMemberUpdate domainMemberUpdate = DomainMemberUpdate.compute(ldapMembers, davContacts, ldapUserContactMapper);
-                return davDomainMemberUpdateApplierFactory.apply(openPaaSDomain.id()).apply(domainMemberUpdate, contexts);
-            })
-            .doOnSubscribe(sub -> LOGGER.info("Syncing domain: {}{}", openPaaSDomain.domain(),
-                ldapFilter.map(filter -> " with LDAP filter " + filter.asString()).orElse("")));
+        return domainSettingsResolver.resolveUserSearchMode(openPaaSDomain.domain())
+            .flatMap(mode -> {
+                if (mode == UserSearchMode.DISABLED) {
+                    // Skip reads too: fetching a missing DAV book would create it with member read access.
+                    LOGGER.info("Skipping LDAP sync for domain {} because user search is disabled", openPaaSDomain.domain());
+                    return Mono.just(contexts.toUpdateResult());
+                }
+                return Mono.zip(fetchLdapDomainMembers(openPaaSDomain, ldapFilter), fetchDavDomainMembers(openPaaSDomain))
+                    .flatMap(tuple -> {
+                        List<LdapUser> ldapMembers = tuple.getT1();
+                        List<AddressBookContact> davContacts = tuple.getT2();
+                        DomainMemberUpdate domainMemberUpdate = DomainMemberUpdate.compute(ldapMembers, davContacts, ldapUserContactMapper);
+                        return davDomainMemberUpdateApplierFactory.apply(openPaaSDomain.id()).apply(domainMemberUpdate, contexts);
+                    })
+                    .doOnSubscribe(sub -> LOGGER.info("Syncing domain: {}{}", openPaaSDomain.domain(),
+                        ldapFilter.map(filter -> " with LDAP filter " + filter.asString()).orElse("")));
+            });
     }
 
     private Mono<List<AddressBookContact>> fetchDavDomainMembers(OpenPaaSDomain openPaaSDomain) {

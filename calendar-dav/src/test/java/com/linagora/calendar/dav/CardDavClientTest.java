@@ -40,16 +40,20 @@ import javax.net.ssl.SSLException;
 
 import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
+import org.bson.types.ObjectId;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.linagora.calendar.dav.CardDavClient.CardDavSearchException;
 import com.linagora.calendar.dav.CardDavClient.DomainMemberCard;
 import com.linagora.calendar.dav.dto.ContactSearchResponse;
 import com.linagora.calendar.storage.AddressBookURL;
 import com.linagora.calendar.storage.OpenPaaSDomain;
+import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.OpenPaaSUser;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.mongodb.reactivestreams.client.MongoClient;
@@ -356,13 +360,12 @@ public class CardDavClientTest {
                     "acl": [
                         {
                             "privilege": "{DAV:}read",
-                            "principal": "principals/users/{user_id}",
-                            "protected": true
+                            "principal": "principals/domains/{domain_id}",
+                            "protected": false
                         }
                     ],
                     "dav:group": "principals/domains/{domain_id}"
-                }""".replace("{domain_id}", domain.id().value())
-                .replace("{user_id}", user.id().value())));
+                }""".replace("{domain_id}", domain.id().value())));
     }
 
     @Test
@@ -1155,6 +1158,87 @@ public class CardDavClientTest {
 
         assertThatThrownBy(() -> testee.searchContacts(user.username(), addressBook, "", 10).block())
             .isInstanceOfSatisfying(CardDavSearchException.class, error -> assertThat(error.statusCode()).isEqualTo(404));
+    }
+
+    @Test
+    void shouldRevokeMemberReadWhilePreservingCardsAndTechnicalTokenWrites() {
+        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.retrieve(user.username().getDomainPart().orElseThrow()).block();
+        AddressBookURL book = new AddressBookURL(domain.id(), CardDavClient.DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
+        String cardUid = UUID.randomUUID().toString();
+        byte[] original = domainMemberCard(cardUid, "Directory Member");
+        testee.upsertContactDomainMembers(domain.id(), cardUid, original).block();
+        assertThat(new String(testee.exportContact(user.username(), book).block(), StandardCharsets.UTF_8)).contains(cardUid);
+
+        testee.updateDomainMembersAcl(domain.id(), false).block();
+
+        assertThatThrownBy(() -> testee.exportContact(user.username(), book).block()).hasMessageContaining("403");
+        assertThat(testee.retrieveContactDomainMembers(domain.id(), cardUid).block()).isEqualTo(original);
+        byte[] updated = domainMemberCard(cardUid, "Updated Member");
+        testee.upsertContactDomainMembers(domain.id(), cardUid, updated).block();
+        assertThat(testee.retrieveContactDomainMembers(domain.id(), cardUid).block()).isEqualTo(updated);
+    }
+
+    @Test
+    void shouldRestoreMemberReadWithoutRecreatingCards() {
+        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.retrieve(user.username().getDomainPart().orElseThrow()).block();
+        AddressBookURL book = new AddressBookURL(domain.id(), CardDavClient.DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
+        String cardUid = UUID.randomUUID().toString();
+        byte[] original = domainMemberCard(cardUid, "Directory Member");
+        testee.upsertContactDomainMembers(domain.id(), cardUid, original).block();
+        testee.updateDomainMembersAcl(domain.id(), false).block();
+        assertThatThrownBy(() -> testee.exportContact(user.username(), book).block()).hasMessageContaining("403");
+
+        testee.updateDomainMembersAcl(domain.id(), true).block();
+
+        assertThat(new String(testee.exportContact(user.username(), book).block(), StandardCharsets.UTF_8)).contains(cardUid);
+        assertThat(testee.retrieveContactDomainMembers(domain.id(), cardUid).block()).isEqualTo(original);
+    }
+
+    @Test
+    void shouldGrantReadToMembersWhoJoinAfterTheAclWasApplied() {
+        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.retrieve(user.username().getDomainPart().orElseThrow()).block();
+        AddressBookURL book = new AddressBookURL(domain.id(), CardDavClient.DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
+        String cardUid = UUID.randomUUID().toString();
+        testee.upsertContactDomainMembers(domain.id(), cardUid, domainMemberCard(cardUid, "Directory Member")).block();
+        testee.updateDomainMembersAcl(domain.id(), false).block();
+        testee.updateDomainMembersAcl(domain.id(), true).block();
+
+        OpenPaaSUser newcomer = sabreDavExtension.newTestUser();
+
+        assertThat(new String(testee.exportContact(newcomer.username(), book).block(), StandardCharsets.UTF_8)).contains(cardUid);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void shouldReturn404WithoutCreatingAMissingBook(boolean readable) {
+        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.retrieve(user.username().getDomainPart().orElseThrow()).block();
+        AddressBookURL book = new AddressBookURL(domain.id(), CardDavClient.DOMAIN_MEMBERS_ADDRESS_BOOK_ID);
+        assertThatThrownBy(() -> testee.retrieveDomainAddressBookSyncToken(domain.id(), book).block())
+            .isInstanceOf(AddressBookNotFoundException.class);
+
+        assertThatThrownBy(() -> testee.updateDomainMembersAcl(domain.id(), readable).block())
+            .isInstanceOfSatisfying(DavResponseException.class, error -> assertThat(error.statusCode()).isEqualTo(404));
+
+        assertThatThrownBy(() -> testee.retrieveDomainAddressBookSyncToken(domain.id(), book).block())
+            .isInstanceOf(AddressBookNotFoundException.class);
+    }
+
+    @Test
+    void shouldPropagateSabreErrorsForAnUnknownDomain() {
+        OpenPaaSId unknownDomain = new OpenPaaSId(new ObjectId().toHexString());
+
+        assertThatThrownBy(() -> testee.updateDomainMembersAcl(unknownDomain, false).block())
+            .isInstanceOf(DavClientException.class);
+    }
+
+    private byte[] domainMemberCard(String cardUid, String name) {
+        return """
+            BEGIN:VCARD
+            VERSION:3.0
+            UID:%s
+            FN:%s
+            END:VCARD
+            """.formatted(cardUid, name).getBytes(StandardCharsets.UTF_8);
     }
 
     private void upsertContact(OpenPaaSUser owner, AddressBookURL addressBookURL, String fullName) {

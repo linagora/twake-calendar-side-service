@@ -28,6 +28,8 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 
 ### Fixes
 
+ - ISSUE-1646 Skip LDAP domain-members synchronization when user search is disabled
+ - ISSUE-1646 Control domain-members access through ACLs when user search mode changes, preserving existing contacts
  - ISSUE-1074 `POST /api/import` now shares its parsing with the webadmin import: imported events keep the calendar level properties and time zones they rely on, and re-importing the same vCard file updates the contacts rather than duplicating them.
  - Mail templates: a language without translations now falls back to English instead of the JVM default locale
 

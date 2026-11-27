@@ -33,12 +33,15 @@ import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 
 import javax.net.ssl.SSLException;
 
+import org.apache.commons.configuration2.MapConfiguration;
 import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
 import org.junit.jupiter.api.BeforeAll;
@@ -47,17 +50,25 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.dav.AddressBookContact;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.storage.AddressBookURL;
+import com.linagora.calendar.storage.DomainSettings;
+import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSDomain;
+import com.linagora.calendar.storage.UserSearchMode;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
+import com.linagora.calendar.storage.ldap.LdapFilter;
 import com.linagora.calendar.storage.ldap.LdapUser;
 import com.linagora.calendar.storage.ldap.LdapUserContactMapper;
 import com.linagora.calendar.storage.ldap.LdapVCardPropertiesConfiguration;
+import com.linagora.calendar.storage.mongodb.MongoDBDomainSettingsDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.ContactUpdateContext;
 import com.linagora.calendar.webadmin.service.DavDomainMemberUpdateApplier.UpdateResult;
@@ -74,6 +85,7 @@ public class LdapToDavDomainMembersSyncServiceTest {
     private LdapToDavDomainMembersSyncService testee;
     private LdapDomainMemberProvider ldapDomainMemberProvider;
     private CardDavClient cardDavClient;
+    private MongoDBDomainSettingsDAO domainSettingsDAO;
     private static MongoDBOpenPaaSDomainDAO mongoDBOpenPaaSDomainDAO;
     private OpenPaaSDomain openPaaSDomain;
 
@@ -91,8 +103,10 @@ public class LdapToDavDomainMembersSyncServiceTest {
         cardDavClient = spy(cardDavClientActual);
 
         ldapDomainMemberProvider = mock(LdapDomainMemberProvider.class);
+        domainSettingsDAO = new MongoDBDomainSettingsDAO(sabreDavExtension.dockerSabreDavSetup().getMongoDB());
         testee = new LdapToDavDomainMembersSyncService(ldapDomainMemberProvider, cardDavClient,
-            new LdapUserContactMapper(LdapVCardPropertiesConfiguration.EMPTY));
+            new LdapUserContactMapper(LdapVCardPropertiesConfiguration.EMPTY),
+            new DomainSettingsResolver(domainSettingsDAO, Set.of(), Set.of(), new MapConfiguration(Map.of())));
         openPaaSDomain = createNewDomainMemberAddressBook();
     }
 
@@ -102,8 +116,10 @@ public class LdapToDavDomainMembersSyncServiceTest {
         return newDomain;
     }
 
-    @Test
-    void shouldCreateDavContactWhenItDoesNotExist() {
+    @ParameterizedTest
+    @EnumSource(value = UserSearchMode.class, names = {"ENABLED", "LIMITED"})
+    void shouldCreateDavContactWhenItDoesNotExist(UserSearchMode mode) {
+        domainSettingsDAO.save(openPaaSDomain.domain(), DomainSettings.builder().userSearchMode(mode).build()).block();
         LdapUser ldap = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
         when(ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain()))
             .thenReturn(Flux.just(ldap));
@@ -118,6 +134,49 @@ public class LdapToDavDomainMembersSyncServiceTest {
                 N:Nguyen;Van A;;;
                 EMAIL:user1@example.com
                 TEL;TYPE=work:123""".trim());
+    }
+
+    @Test
+    void shouldSkipSyncAndPreserveCardsWhenUserSearchIsDisabled() {
+        LdapUser member = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "123");
+        LdapUser removed = ldapMember("uid456", "removed@example.com", "Le", "B", "Le B", "456");
+        preloadDavData(member, removed);
+        String before = listContactDomainMembersAsVcard(openPaaSDomain);
+        domainSettingsDAO.save(openPaaSDomain.domain(), DomainSettings.builder().userSearchMode(UserSearchMode.DISABLED).build()).block();
+        LdapUser updated = ldapMember("uid123", "user1@example.com", "Nguyen", "Van A", "Nguyen Van A", "999");
+        LdapUser added = ldapMember("uid789", "new@example.com", "Tran", "C", "Tran C", "789");
+        when(ldapDomainMemberProvider.domainMembers(openPaaSDomain.domain())).thenReturn(Flux.just(updated, added));
+
+        UpdateResult result = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
+
+        assertThat(result).isEqualTo(new ContactUpdateContext().toUpdateResult());
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain)).isEqualTo(before);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "(uid=uid123)"})
+    void shouldNotCreateAnAddressBookWhenUserSearchIsDisabled(String filter) {
+        OpenPaaSDomain domain = mongoDBOpenPaaSDomainDAO.add(Domain.of("no-book-" + UUID.randomUUID() + ".tld")).block();
+        domainSettingsDAO.save(domain.domain(), DomainSettings.builder().userSearchMode(UserSearchMode.DISABLED).build()).block();
+        Optional<LdapFilter> ldapFilter = filter.isEmpty() ? Optional.empty() : Optional.of(LdapFilter.of(filter));
+
+        UpdateResult result = testee.syncDomainMembers(domain, new ContactUpdateContext(), ldapFilter).block();
+
+        assertThat(result).isEqualTo(new ContactUpdateContext().toUpdateResult());
+        assertThat(cardDavClient.listDomainAddressBookUrls(domain.id(), CardDavClient.MirrorAddressBooks.EXCLUDE).collectList().block())
+            .doesNotContain(new AddressBookURL(domain.id(), CardDavClient.DOMAIN_MEMBERS_ADDRESS_BOOK_ID));
+    }
+
+    @Test
+    void shouldSkipSyncWhenConfigurationDisablesUserSearch() {
+        testee = new LdapToDavDomainMembersSyncService(ldapDomainMemberProvider, cardDavClient,
+            new LdapUserContactMapper(LdapVCardPropertiesConfiguration.EMPTY),
+            new DomainSettingsResolver(domainSettingsDAO, Set.of(openPaaSDomain.domain()), Set.of(), new MapConfiguration(Map.of())));
+
+        UpdateResult result = testee.syncDomainMembers(openPaaSDomain, new ContactUpdateContext()).block();
+
+        assertThat(result).isEqualTo(new ContactUpdateContext().toUpdateResult());
+        assertThat(listContactDomainMembersAsVcard(openPaaSDomain)).isEmpty();
     }
 
     @Test

@@ -29,11 +29,14 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
 import javax.net.ssl.SSLException;
 
+import org.apache.commons.configuration2.MapConfiguration;
 import org.apache.james.core.Domain;
 import org.apache.james.core.MailAddress;
 import org.apache.james.json.DTOConverter;
@@ -55,12 +58,14 @@ import com.github.fge.lambdas.Throwing;
 import com.google.common.collect.ImmutableSet;
 import com.linagora.calendar.dav.CardDavClient;
 import com.linagora.calendar.dav.SabreDavExtension;
+import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSDomain;
 import com.linagora.calendar.storage.OpenPaaSId;
 import com.linagora.calendar.storage.ldap.LdapDomainMemberProvider;
 import com.linagora.calendar.storage.ldap.LdapUser;
 import com.linagora.calendar.storage.ldap.LdapUserContactMapper;
 import com.linagora.calendar.storage.ldap.LdapVCardPropertiesConfiguration;
+import com.linagora.calendar.storage.mongodb.MongoDBDomainSettingsDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.webadmin.DomainMembersAddressBookRoutes.LdapToDavDomainMembersSyncTaskRegistration;
 import com.linagora.calendar.webadmin.service.DavDomainMembersClearService;
@@ -94,7 +99,8 @@ public class DomainMembersAddressBookRoutesTest {
         TaskManager taskManager = new MemoryTaskManager(new Hostname("foo"));
         ldapDomainMemberProvider = mock(LdapDomainMemberProvider.class);
         LdapToDavDomainMembersSyncService syncService = new LdapToDavDomainMembersSyncService(
-            ldapDomainMemberProvider, cardDavClient, new LdapUserContactMapper(LdapVCardPropertiesConfiguration.EMPTY));
+            ldapDomainMemberProvider, cardDavClient, new LdapUserContactMapper(LdapVCardPropertiesConfiguration.EMPTY),
+            new DomainSettingsResolver(new MongoDBDomainSettingsDAO(mongoDB), Set.of(), Set.of(), new MapConfiguration(Map.of())));
 
         LdapToDavDomainMembersSyncTaskRegistration ldapToDavDomainMembersSyncTaskRegistration = new LdapToDavDomainMembersSyncTaskRegistration(
             syncService, domainDAO);

@@ -165,6 +165,8 @@ POST /addressbook/domain-members?task=sync
 
 Synchronizes LDAP members for **all existing domains**.
 
+Both sync routes skip domains whose resolved `userSearchMode` is `disabled`, preserving existing cards without creating an address book.
+
 Optional query parameters:
 - `ignoredDomains` : [String] Comma-separated list of domains to exclude from synchronization
 - `ldapFilter` : [String] Optional, URL-encoded LDAP search filter (RFC 4515). See [Restricting members with an LDAP filter](#restricting-members-with-an-ldap-filter).
@@ -1271,6 +1273,10 @@ All fields are optional. Only the fields present in the body are updated:
 - `204`: patch applied
 - `400`: a field value is invalid
 - `404`: domain does not exist
+
+`PUT`/`PATCH` with `userSearchMode` also update the `domain-members` ACL: `enabled` grants member read access; `limited`/`disabled` revokes it while retaining administrator access and existing cards. Requires [esn-sabre#931](https://github.com/linagora/esn-sabre/issues/931).
+
+The ACL is applied before saving settings. If the book is missing, `enabled`/`limited` creates it first; `disabled` saves the setting without creating it. On `500`, retry the same request idempotently. Sending the current mode reapplies its ACL; `null` uses the configuration fallback.
 
 ---
 
