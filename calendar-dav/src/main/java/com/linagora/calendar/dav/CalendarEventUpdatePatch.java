@@ -18,11 +18,13 @@
 
 package com.linagora.calendar.dav;
 
+import java.net.URI;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
 import org.apache.commons.lang3.Strings;
+import org.apache.james.core.MailAddress;
 import org.apache.james.core.Username;
 
 import com.google.common.base.MoreObjects;
@@ -35,7 +37,11 @@ import net.fortuna.ical4j.model.Parameter;
 import net.fortuna.ical4j.model.Property;
 import net.fortuna.ical4j.model.PropertyList;
 import net.fortuna.ical4j.model.component.VEvent;
+import net.fortuna.ical4j.model.parameter.Cn;
+import net.fortuna.ical4j.model.parameter.CuType;
 import net.fortuna.ical4j.model.parameter.PartStat;
+import net.fortuna.ical4j.model.parameter.Role;
+import net.fortuna.ical4j.model.parameter.Rsvp;
 import net.fortuna.ical4j.model.property.Attendee;
 
 public interface CalendarEventUpdatePatch {
@@ -131,6 +137,42 @@ public interface CalendarEventUpdatePatch {
                 .add("status", status.getValue())
                 .add("recurrenceId", recurrenceId)
                 .toString();
+        }
+    }
+
+    /**
+     * Invites an attendee to every VEvent of the calendar object, so that a recurring event and all its changed
+     * occurrences are concerned. An attendee already invited is left untouched.
+     */
+    record AddAttendeePatch(MailAddress email, Optional<String> displayName, PartStat partStat) implements CalendarEventUpdatePatch {
+        private static final String MAIL_TO_PREFIX = "mailto:";
+
+        public AddAttendeePatch {
+            Preconditions.checkNotNull(email, "email must not be null");
+            Preconditions.checkNotNull(displayName, "displayName must not be null");
+            Preconditions.checkNotNull(partStat, "partStat must not be null");
+        }
+
+        @Override
+        public boolean apply(VEvent vEvent) {
+            boolean alreadyInvited = vEvent.getAttendees().stream()
+                .anyMatch(attendee -> Strings.CI.equals(attendee.getCalAddress().toASCIIString(), MAIL_TO_PREFIX + email.asString()));
+            if (alreadyInvited) {
+                return false;
+            }
+            addProperties(vEvent, attendee());
+            return true;
+        }
+
+        private Attendee attendee() {
+            Attendee attendee = (Attendee) new Attendee(URI.create(MAIL_TO_PREFIX + email.asString()))
+                .withParameter(Rsvp.TRUE)
+                .withParameter(Role.REQ_PARTICIPANT)
+                .withParameter(CuType.INDIVIDUAL)
+                .withParameter(partStat)
+                .getFluentTarget();
+            displayName.map(Cn::new).ifPresent(attendee::withParameter);
+            return attendee;
         }
     }
 

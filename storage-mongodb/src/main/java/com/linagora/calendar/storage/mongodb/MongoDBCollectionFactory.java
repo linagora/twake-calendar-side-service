@@ -42,6 +42,7 @@ public class MongoDBCollectionFactory {
     public static final String BOOKING_LINKS = MongoDBBookingLinkDAO.COLLECTION;
     public static final String DOMAIN_SETTINGS = MongoDBDomainSettingsDAO.COLLECTION;
     public static final String TEAM_CALENDAR = MongoDBTeamCalendarRepository.COLLECTION;
+    public static final String EVENT_TOKENS = MongoDBEventTokenDAO.COLLECTION;
     static final String SEARCH_INDEX_PREFIX = "search_";
     static final List<String> SEARCH_INDEXED_USER_FIELDS = List.of("accounts.emails", "firstname", "lastname", "firstnames");
 
@@ -54,6 +55,7 @@ public class MongoDBCollectionFactory {
         createBookingLinksCollection(database);
         createDomainSettingsCollection(database);
         createTeamCalendarCollection(database);
+        createEventTokensCollection(database);
     }
 
     private static void createUsersCollection(MongoDatabase database) {
@@ -164,6 +166,13 @@ public class MongoDBCollectionFactory {
             Mono.from(database.createCollection(TEAM_CALENDAR)).block();
         }
         MongoDBTeamCalendarRepository.declareIndex(database.getCollection(TEAM_CALENDAR)).block();
+    }
+
+    private static void createEventTokensCollection(MongoDatabase database) {
+        if (!collectionExists(database, EVENT_TOKENS)) {
+            Mono.from(database.createCollection(EVENT_TOKENS)).block();
+        }
+        MongoDBEventTokenDAO.declareIndex(database.getCollection(EVENT_TOKENS)).block();
     }
 
     private static boolean collectionExists(MongoDatabase database, String collectionName) {

@@ -51,6 +51,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.testcontainers.shaded.com.google.common.collect.ImmutableList;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.dav.CalDavClient.CalendarAccess;
@@ -2129,5 +2130,74 @@ public class CalDavClientTest {
         assertThatThrownBy(() -> testee.updateCalendarShares(owner.username(), calendarURL,
             CalendarSharingUpdate.grant(delegate.username(), DavRight.READ)).block())
             .isInstanceOf(CalendarNotFoundException.class);
+    }
+
+    @Test
+    void fetchCalendarEventAsJCalShouldReturnEventInJCalForm() throws Exception {
+        // Given an event stored in the default calendar of the user
+        OpenPaaSUser user = createOpenPaaSUser();
+        String eventId = UUID.randomUUID().toString();
+        davTestHelper.upsertCalendar(user, simpleEventIcs(eventId, user), eventId);
+
+        // When it is fetched as jCal
+        JsonNode jCal = testee.fetchCalendarEventAsJCal(user.username(), defaultCalendarEventHref(user, eventId)).block();
+
+        // Then the whole event is returned in jCal form
+        assertThatJson(new ObjectMapper().writeValueAsString(jCal))
+            .isEqualTo("""
+                [
+                  "vcalendar",
+                  [
+                    ["version", {}, "text", "2.0"],
+                    ["prodid", {}, "text", "${json-unit.any-string}"]
+                  ],
+                  [
+                    [
+                      "vevent",
+                      [
+                        ["uid", {}, "text", "%s"],
+                        ["dtstamp", {}, "date-time", "2025-01-01T10:00:00Z"],
+                        ["dtstart", {}, "date-time", "2025-01-02T12:00:00Z"],
+                        ["dtend", {}, "date-time", "2025-01-02T13:00:00Z"],
+                        ["summary", {}, "text", "Test Event"],
+                        ["organizer", {"cn": "john doe"}, "cal-address", "mailto:%s"]
+                      ],
+                      []
+                    ]
+                  ]
+                ]
+                """.formatted(eventId, user.username().asString()));
+    }
+
+    @Test
+    void fetchCalendarEventAsJCalShouldReturnEmptyWhenEventDoesNotExist() {
+        // Given a user without any event
+        OpenPaaSUser user = createOpenPaaSUser();
+
+        // When an event of the default calendar is fetched as jCal
+        // Then nothing is returned
+        assertThat(testee.fetchCalendarEventAsJCal(user.username(), defaultCalendarEventHref(user, UUID.randomUUID().toString())).blockOptional())
+            .isEmpty();
+    }
+
+    private URI defaultCalendarEventHref(OpenPaaSUser user, String eventId) {
+        return URI.create(CalendarURL.from(user.id()).asUri() + "/" + eventId + ".ics");
+    }
+
+    private String simpleEventIcs(String uid, OpenPaaSUser organizer) {
+        return """
+            BEGIN:VCALENDAR
+            VERSION:2.0
+            PRODID:-//Sabre//Sabre VObject 4.1.3//EN
+            BEGIN:VEVENT
+            UID:%s
+            DTSTAMP:20250101T100000Z
+            DTSTART:20250102T120000Z
+            DTEND:20250102T130000Z
+            SUMMARY:Test Event
+            ORGANIZER;CN=john doe:mailto:%s
+            END:VEVENT
+            END:VCALENDAR
+            """.formatted(uid, organizer.username().asString());
     }
 }

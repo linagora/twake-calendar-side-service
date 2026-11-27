@@ -41,6 +41,8 @@ import com.linagora.calendar.storage.booking.MemoryBookingLinkDAO;
 import com.linagora.calendar.storage.configuration.UserConfigurationDAO;
 import com.linagora.calendar.storage.eventsearch.CalendarSearchService;
 import com.linagora.calendar.storage.eventsearch.MemoryCalendarSearchService;
+import com.linagora.calendar.storage.eventtoken.EventTokenDAO;
+import com.linagora.calendar.storage.eventtoken.MemoryEventTokenDAO;
 import com.linagora.calendar.storage.secretlink.MemorySecretLinkStore;
 import com.linagora.calendar.storage.secretlink.SecretLinkStore;
 import com.linagora.calendar.storage.unsent.MemoryUnsentMailRepository;
@@ -87,6 +89,9 @@ public class MemoryStorageModule extends AbstractModule {
         bind(TeamCalendarRepository.class).to(MemoryTeamCalendarRepository.class);
 
         bind(MemoryBookingLinkDAO.class).in(Scopes.SINGLETON);
+
+        bind(MemoryEventTokenDAO.class).in(Scopes.SINGLETON);
+        bind(EventTokenDAO.class).to(MemoryEventTokenDAO.class);
 
         bind(MemoryTicketStore.class).in(Scopes.SINGLETON);
         bind(TicketStore.class).to(MemoryTicketStore.class);
