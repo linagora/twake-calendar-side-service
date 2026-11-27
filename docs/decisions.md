@@ -212,3 +212,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: Tung
 - Why: control access without deleting and repopulating cards.
 - Scope: calendar-dav, calendar-webadmin; esn-sabre#931.
+
+## 2026-11-27, [Product] LDAP sync respects disabled user search
+
+- Decision: skip LDAP domain-members sync when the resolved userSearchMode is disabled; keep existing cards and do not create a book.
+- Decided by: Tung
+- Why: match the SaaS guard and avoid creating a readable book for a disabled domain.
+- Scope: calendar-webadmin.

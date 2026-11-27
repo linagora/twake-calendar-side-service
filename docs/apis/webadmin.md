@@ -165,6 +165,8 @@ POST /addressbook/domain-members?task=sync
 
 Synchronizes LDAP members for **all existing domains**.
 
+Both sync routes skip domains whose resolved `userSearchMode` is `disabled`, preserving existing cards without creating an address book.
+
 Optional query parameters:
 - `ignoredDomains` : [String] Comma-separated list of domains to exclude from synchronization
 - `ldapFilter` : [String] Optional, URL-encoded LDAP search filter (RFC 4515). See [Restricting members with an LDAP filter](#restricting-members-with-an-ldap-filter).
