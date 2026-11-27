@@ -39,6 +39,8 @@ import org.eclipse.jetty.http.HttpStatus;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.linagora.calendar.dav.CardDavClient;
+import com.linagora.calendar.dav.DavResponseException;
 import com.linagora.calendar.storage.DefaultCalendarPublicVisibility;
 import com.linagora.calendar.storage.DomainSettings;
 import com.linagora.calendar.storage.DomainSettingsDAO;
@@ -47,6 +49,7 @@ import com.linagora.calendar.storage.DomainSettingsResolver;
 import com.linagora.calendar.storage.OpenPaaSDomainDAO;
 import com.linagora.calendar.storage.UserSearchMode;
 
+import reactor.core.publisher.Mono;
 import spark.Request;
 import spark.Response;
 import spark.Service;
@@ -114,17 +117,20 @@ public class DomainSettingsRoutes implements Routes {
     private final DomainSettingsResolver domainSettingsResolver;
     private final OpenPaaSDomainDAO domainDAO;
     private final JsonTransformer jsonTransformer;
+    private final CardDavClient cardDavClient;
     private final JsonExtractor<DomainSettingsPutRequest> jsonExtractor;
 
     @Inject
     public DomainSettingsRoutes(DomainSettingsDAO domainSettingsDAO,
                                 DomainSettingsResolver domainSettingsResolver,
                                 OpenPaaSDomainDAO domainDAO,
-                                JsonTransformer jsonTransformer) {
+                                JsonTransformer jsonTransformer,
+                                CardDavClient cardDavClient) {
         this.domainSettingsDAO = domainSettingsDAO;
         this.domainSettingsResolver = domainSettingsResolver;
         this.domainDAO = domainDAO;
         this.jsonTransformer = jsonTransformer;
+        this.cardDavClient = cardDavClient;
         this.jsonExtractor = new JsonExtractor<>(DomainSettingsPutRequest.class);
     }
 
@@ -152,7 +158,8 @@ public class DomainSettingsRoutes implements Routes {
         Domain domain = asDomain(request);
         DomainSettingsPutRequest requestDTO = jsonExtractor.parse(request.body());
         DomainSettings settings = requestDTO.toDomainSettings();
-        domainSettingsDAO.save(domain, settings).block();
+        UserSearchMode mode = domainSettingsResolver.applyFallbacks(domain, settings).userSearchMode().orElseThrow();
+        updateSettings(domain, mode, domainSettingsDAO.save(domain, settings));
         response.status(HttpStatus.NO_CONTENT_204);
         return Constants.EMPTY_BODY;
     }
@@ -166,18 +173,18 @@ public class DomainSettingsRoutes implements Routes {
                 .message("Request body is required")
                 .haltError();
         }
+        DomainSettingsPatch patch;
         try {
             JsonNode node = OBJECT_MAPPER_DEFAULT.readTree(request.bodyAsBytes());
             if (!node.isObject()) {
                 throw new IllegalArgumentException(NOT_A_JSON_OBJECT_MESSAGE);
             }
             DomainSettingsPatchRequest dto = OBJECT_MAPPER_DEFAULT.treeToValue(node, DomainSettingsPatchRequest.class);
-            DomainSettingsPatch patch = new DomainSettingsPatch(
+            patch = new DomainSettingsPatch(
                 parseUserSearchMode(node, dto),
                 parseResourceSearchEnabled(node, dto),
                 parseDefaultCalendarPublicVisibility(node, dto),
                 parseCalendarPublicVisibilitySettingEnabled(node, dto));
-            domainSettingsDAO.patch(domain, patch).block();
         } catch (IllegalArgumentException e) {
             throw ErrorResponder.builder()
                 .statusCode(HttpStatus.BAD_REQUEST_400)
@@ -191,8 +198,37 @@ public class DomainSettingsRoutes implements Routes {
                 .message("Invalid request body")
                 .haltError();
         }
+        if (patch.userSearchMode().isModified() || patch.userSearchMode().isRemoved()) {
+            DomainSettings.Builder candidateBuilder = DomainSettings.builder();
+            if (patch.userSearchMode().isModified()) {
+                candidateBuilder.userSearchMode(patch.userSearchMode().get());
+            }
+            DomainSettings candidate = candidateBuilder.build();
+            UserSearchMode mode = domainSettingsResolver.applyFallbacks(domain, candidate).userSearchMode().orElseThrow();
+            updateSettings(domain, mode, domainSettingsDAO.patch(domain, patch));
+        } else {
+            domainSettingsDAO.patch(domain, patch).block();
+        }
         response.status(HttpStatus.NO_CONTENT_204);
         return Constants.EMPTY_BODY;
+    }
+
+    private void updateSettings(Domain domain, UserSearchMode mode, Mono<Void> persist) {
+        domainDAO.retrieve(domain)
+            .flatMap(openPaaSDomain -> cardDavClient.updateDomainMembersAcl(openPaaSDomain.id(), mode == UserSearchMode.ENABLED)
+                .onErrorResume(DavResponseException.class, error -> {
+                    if (error.statusCode() != HttpStatus.NOT_FOUND_404) {
+                        return Mono.error(error);
+                    }
+                    if (mode == UserSearchMode.DISABLED) {
+                        // A missing book already prevents member reads; leave it absent while disabled.
+                        return Mono.empty();
+                    }
+                    return cardDavClient.createDomainMembersAddressBook(openPaaSDomain.id())
+                        .then(cardDavClient.updateDomainMembersAcl(openPaaSDomain.id(), mode == UserSearchMode.ENABLED));
+                })
+                .then(persist))
+            .block();
     }
 
     private ValuePatch<UserSearchMode> parseUserSearchMode(JsonNode node, DomainSettingsPatchRequest dto) {

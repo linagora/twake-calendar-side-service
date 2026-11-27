@@ -205,3 +205,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: Benoit Tellier, following linagora/tmail-backend#3184 which does the same for mail search.
 - Why: a decomposed (NFD) text, as some clients send, was found neither by a composed query nor by an ASCII one (`reunion`, `hel` for "Réunion Hélène"), since ASCII folding only folds precomposed letters and leaves the combining marks in the token; a composed text was not found by a decomposed query either, and a decomposed summary reached the 7 code point prefix cap sooner (each combining mark counts).
 - Scope: `storage-opensearch` `CalendarEventsDocument`, `OpensearchCalendarSearchService`; `storage-api` `MemoryCalendarSearchService`, `EventSearchQuery`, `SearchTextNormalizer`.
+
+## 2026-11-27, [Architecture] Domain-members access uses ACLs
+
+- Decision: WebAdmin userSearchMode updates apply ACLs before saving, with idempotent retries; a missing book is created unless the resolved mode is disabled. SaaS behavior stays unchanged.
+- Decided by: Tung
+- Why: control access without deleting and repopulating cards.
+- Scope: calendar-dav, calendar-webadmin; esn-sabre#931.

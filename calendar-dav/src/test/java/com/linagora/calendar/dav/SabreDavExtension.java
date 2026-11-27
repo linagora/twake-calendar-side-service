@@ -49,6 +49,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.linagora.calendar.storage.OpenPaaSUser;
+import com.linagora.calendar.storage.mongodb.MongoDBDomainSettingsDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSDomainDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBOpenPaaSUserDAO;
 import com.linagora.calendar.storage.mongodb.MongoDBResourceDAO;
@@ -69,6 +70,7 @@ public final class SabreDavExtension implements BeforeAllCallback, AfterAllCallb
     private static final Logger LOGGER = LoggerFactory.getLogger(SabreDavExtension.class);
     private static final String DEFAULT_VHOST = "%2F";
     private static final List<String> CLEANUP_COLLECTIONS = List.of(
+        MongoDBDomainSettingsDAO.COLLECTION,
         MongoDBOpenPaaSDomainDAO.COLLECTION,
         MongoDBOpenPaaSUserDAO.COLLECTION,
         MongoDBUploadedFileDAO.COLLECTION,

@@ -194,6 +194,23 @@ public class CardDavClient extends DavClient {
             "type": "group"
         }
         """.formatted(DOMAIN_MEMBERS_ADDRESS_BOOK_ID).getBytes(StandardCharsets.UTF_8);
+    private static final String DOMAIN_MEMBERS_READ_ACL = """
+        <d:acl xmlns:d="DAV:">
+          <d:ace>
+            <d:principal>
+              <d:href>/principals/domains/%s</d:href>
+            </d:principal>
+            <d:grant>
+              <d:privilege>
+                <d:read/>
+              </d:privilege>
+            </d:grant>
+          </d:ace>
+        </d:acl>
+        """;
+    private static final String DOMAIN_MEMBERS_RESTRICTED_ACL = """
+        <d:acl xmlns:d="DAV:"/>
+        """;
 
     public CardDavClient(DavConfiguration config,
                          TechnicalTokenService technicalTokenService) throws SSLException {
@@ -320,6 +337,30 @@ public class CardDavClient extends DavClient {
                         %s
                         """.formatted(response.status().code(), addressBookURL.vcardUri(vcardUid).toASCIIString(), responseBody))));
         };
+    }
+
+    /** Replaces member grants only: Sabre preserves its implicit administrator and technical-token access. */
+    public Mono<Void> updateDomainMembersAcl(OpenPaaSId domainId, boolean readable) {
+        return httpClientWithTechnicalToken(domainId)
+            .flatMap(client -> updateDomainMembersAcl(client, domainId, readable));
+    }
+
+    private Mono<Void> updateDomainMembersAcl(HttpClient client, OpenPaaSId domainId, boolean readable) {
+        String payload = readable ? DOMAIN_MEMBERS_READ_ACL.formatted(domainId.value()) : DOMAIN_MEMBERS_RESTRICTED_ACL;
+        String uri = "/addressbooks/%s/domain-members".formatted(domainId.value());
+        return client.headers(headers -> headers.set(HttpHeaderNames.CONTENT_TYPE, CONTENT_TYPE_XML)
+                .set(HttpHeaderNames.ACCEPT, CONTENT_TYPE_XML))
+            .request(HttpMethod.valueOf("ACL"))
+            .uri(uri)
+            .send(Mono.fromSupplier(() -> Unpooled.wrappedBuffer(payload.getBytes(StandardCharsets.UTF_8))))
+            .responseSingle((response, content) -> {
+                if (response.status().code() == 200) {
+                    return content.then();
+                }
+                return responseBodyAsString(content)
+                    .flatMap(body -> Mono.error(new DavResponseException(response.status().code(),
+                        "updating domain-members ACL for domain " + domainId.value(), body)));
+            });
     }
 
     public Mono<Void> createDomainMembersAddressBook(OpenPaaSId domainId) {
