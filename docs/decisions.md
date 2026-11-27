@@ -205,3 +205,10 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: Benoit Tellier, following linagora/tmail-backend#3184 which does the same for mail search.
 - Why: a decomposed (NFD) text, as some clients send, was found neither by a composed query nor by an ASCII one (`reunion`, `hel` for "Réunion Hélène"), since ASCII folding only folds precomposed letters and leaves the combining marks in the token; a composed text was not found by a decomposed query either, and a decomposed summary reached the 7 code point prefix cap sooner (each combining mark counts).
 - Scope: `storage-opensearch` `CalendarEventsDocument`, `OpensearchCalendarSearchService`; `storage-api` `MemoryCalendarSearchService`, `EventSearchQuery`, `SearchTextNormalizer`.
+
+## 2026-11-27, [Tech] The back-channel logout route never echoes the logout token in its errors
+
+- Decision: extends the 2026-11-26 decision "A token verification error never carries the token nor the JWT library message" to the WebAdmin back-channel logout route: every logout token parse failure is reported as a fixed `Invalid logout token`, without the token and without chaining the Base64 or Jackson cause.
+- Decided by: Benoit Tellier, [issue #1663](https://github.com/linagora/twake-calendar-side-service/issues/1663)
+- Why: the route is public, Spark percent-decodes its form body, and James' WebAdmin logs the `IllegalArgumentException` with its cause as plain text, so anyone reaching WebAdmin could write line breaks and terminal escapes into the log; the chained decoding exceptions can quote the decoded payload.
+- Scope: `calendar-webadmin` `CalendarChannelLogoutRoutes`.
