@@ -55,7 +55,7 @@ public class EventTokenGetRoute extends PublicRoute {
 
     @Override
     protected Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response) {
-        return Mono.fromCallable(() -> new EventTokenId(request.param(EventTokenOwnership.EVENT_TOKEN_PARAM)))
+        return Mono.fromCallable(() -> EventTokenId.from(request.param(EventTokenOwnership.EVENT_TOKEN_PARAM)))
             .flatMap(eventTokenDAO::findById)
             .switchIfEmpty(Mono.error(NotFoundException::new))
             .flatMap(eventToken -> response.status(HttpResponseStatus.OK)

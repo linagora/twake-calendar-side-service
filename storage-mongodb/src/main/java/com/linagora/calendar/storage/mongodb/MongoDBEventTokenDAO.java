@@ -20,6 +20,7 @@ package com.linagora.calendar.storage.mongodb;
 
 import java.time.Clock;
 import java.util.Date;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import jakarta.inject.Inject;
@@ -113,7 +114,7 @@ public class MongoDBEventTokenDAO implements EventTokenDAO {
 
     private EventToken fromDocument(Document document) {
         return EventToken.builder()
-            .id(new EventTokenId(document.getString(FIELD_TOKEN)))
+            .id(new EventTokenId(document.get(FIELD_TOKEN, UUID.class)))
             .calendarURL(new CalendarURL(new OpenPaaSId(document.getString(FIELD_CALENDAR_HOME_ID)),
                 new OpenPaaSId(document.getString(FIELD_CALENDAR_ID))))
             .eventId(document.getString(FIELD_EVENT_ID))

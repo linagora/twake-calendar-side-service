@@ -123,7 +123,7 @@ public class EventTokenCreateRoute extends CalendarRoute {
             .flatMap(eventToken -> response.status(HttpResponseStatus.CREATED)
                 .headers(JSON_HEADER)
                 .sendByteArray(Mono.fromCallable(() -> OBJECT_MAPPER_DEFAULT.writeValueAsBytes(Map.of(
-                    "eventToken", eventToken.id().value(),
+                    "eventToken", eventToken.id().asString(),
                     "expiration", eventToken.expiration().toString()))))
                 .then());
     }

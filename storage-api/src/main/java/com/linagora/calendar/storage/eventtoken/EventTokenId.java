@@ -18,24 +18,30 @@
 
 package com.linagora.calendar.storage.eventtoken;
 
-import java.security.SecureRandom;
+import java.util.UUID;
 
 import com.google.common.base.Preconditions;
-import com.google.common.base.Strings;
-import com.google.common.io.BaseEncoding;
 
-public record EventTokenId(String value) {
-
-    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
-    private static final int TOKEN_BYTES = 22;
+public record EventTokenId(UUID value) {
 
     public static EventTokenId generate() {
-        byte[] bytes = new byte[TOKEN_BYTES];
-        SECURE_RANDOM.nextBytes(bytes);
-        return new EventTokenId(BaseEncoding.base64Url().omitPadding().encode(bytes));
+        return new EventTokenId(UUID.randomUUID());
+    }
+
+    public static EventTokenId from(String value) {
+        Preconditions.checkArgument(value != null, "'eventToken' must not be null");
+        try {
+            return new EventTokenId(UUID.fromString(value));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("'eventToken' must be a UUID", e);
+        }
     }
 
     public EventTokenId {
-        Preconditions.checkArgument(!Strings.isNullOrEmpty(value), "'eventToken' must not be empty");
+        Preconditions.checkNotNull(value, "'eventToken' must not be null");
+    }
+
+    public String asString() {
+        return value.toString();
     }
 }

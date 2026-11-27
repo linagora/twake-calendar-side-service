@@ -57,7 +57,7 @@ public class EventTokenDeleteRoute extends CalendarRoute {
 
     @Override
     Mono<Void> handleRequest(HttpServerRequest request, HttpServerResponse response, MailboxSession session) {
-        EventTokenId id = new EventTokenId(request.param(EventTokenOwnership.EVENT_TOKEN_PARAM));
+        EventTokenId id = EventTokenId.from(request.param(EventTokenOwnership.EVENT_TOKEN_PARAM));
 
         return eventTokenDAO.findById(id)
             .switchIfEmpty(Mono.error(NotFoundException::new))

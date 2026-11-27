@@ -21,11 +21,11 @@ An event is designated by the path of its calendar object resource, as found in 
 
 | Field        | Type               | Description                                                  |
 |--------------|--------------------|--------------------------------------------------------------|
-| `eventToken` | string             | Value of the token                                           |
-| `right`      | string             | One of `VIEW`, `ADD_MYSELF`                                  |
+| `eventToken` | string (UUID)      | Value of the token                                           |
+| `right`      | string             | One of `VIEW`, `ADD_ATTENDEE`                                |
 | `expiration` | string (ISO-8601)  | Instant after which the token is no longer valid             |
 
-Expired tokens are never returned nor accepted.
+Every field is always present: a token always expires. Expired tokens are never returned nor accepted.
 
 ---
 
@@ -43,7 +43,7 @@ Tokens can only be created for a meeting whose `ORGANIZER` is the owner.
 
 | Field              | Required | Description                                                           |
 |--------------------|----------|-----------------------------------------------------------------------|
-| `right`            | yes      | One of `VIEW`, `ADD_MYSELF`                                           |
+| `right`            | yes      | One of `VIEW`, `ADD_ATTENDEE`                                         |
 | `expirationInDays` | no       | Validity of the token in days, must be positive. Defaults to `30`.    |
 
 **Sample request**
@@ -64,7 +64,7 @@ HTTP/1.1 201 Created
 Content-Type: application/json
 
 {
-    "eventToken": "Vb3N9nq0yZtJkq3Qe7cS1xG5cGw2Rw",
+    "eventToken": "3f0c2a8e-6b1d-4c57-9e2a-8d4b7f1c0a93",
     "expiration": "2026-12-02T14:30:00Z"
 }
 ```
@@ -97,13 +97,13 @@ Content-Type: application/json
 
 [
     {
-        "eventToken": "Vb3N9nq0yZtJkq3Qe7cS1xG5cGw2Rw",
+        "eventToken": "3f0c2a8e-6b1d-4c57-9e2a-8d4b7f1c0a93",
         "right": "VIEW",
         "expiration": "2026-12-02T14:30:00Z"
     },
     {
-        "eventToken": "p1Xc6Qw0T2mYbVd8sK4nJe9rLhA3Zu",
-        "right": "ADD_MYSELF",
+        "eventToken": "b7e45d21-0c9f-4a3e-8f6b-2d1a9c3e5f70",
+        "right": "ADD_ATTENDEE",
         "expiration": "2026-12-25T09:00:00Z"
     }
 ]
@@ -127,7 +127,7 @@ Return the right granted by an event token.
 
 **Sample request**
 ```
-GET /api/eventTokens/Vb3N9nq0yZtJkq3Qe7cS1xG5cGw2Rw
+GET /api/eventTokens/3f0c2a8e-6b1d-4c57-9e2a-8d4b7f1c0a93
 ```
 
 **Sample response**
@@ -144,6 +144,7 @@ Content-Type: application/json
 
 | Status | Cause                             |
 |--------|-----------------------------------|
+| 400    | `eventToken` is not a UUID        |
 | 404    | Token not found or expired        |
 
 ---
@@ -154,7 +155,7 @@ Revoke an event token. Only the owner of the calendar home holding the event can
 
 **Sample request**
 ```
-DELETE /api/eventTokens/Vb3N9nq0yZtJkq3Qe7cS1xG5cGw2Rw
+DELETE /api/eventTokens/3f0c2a8e-6b1d-4c57-9e2a-8d4b7f1c0a93
 Authorization: Bearer <token>
 ```
 
@@ -167,6 +168,7 @@ HTTP/1.1 204 No Content
 
 | Status | Cause                                                          |
 |--------|----------------------------------------------------------------|
+| 400    | `eventToken` is not a UUID                                     |
 | 401    | Unauthenticated                                                |
 | 403    | The authenticated user is not the owner of the calendar home   |
 | 404    | Token not found or expired                                     |
@@ -177,7 +179,7 @@ HTTP/1.1 204 No Content
 
 - No authentication required
 
-Return the event an event token points to.
+Return the event an event token points to. A token of any right allows it.
 
 **Query parameters**
 
@@ -187,7 +189,7 @@ Return the event an event token points to.
 
 **Sample request**
 ```
-GET /api/events?eventToken=Vb3N9nq0yZtJkq3Qe7cS1xG5cGw2Rw
+GET /api/events?eventToken=3f0c2a8e-6b1d-4c57-9e2a-8d4b7f1c0a93
 ```
 
 **Sample response**
@@ -206,7 +208,7 @@ The `eventJSON` field contains the event in jCal format (RFC 7265).
 
 | Status | Cause                                                  |
 |--------|--------------------------------------------------------|
-| 400    | `eventToken` is missing                                |
+| 400    | `eventToken` is missing or not a UUID                  |
 | 404    | Token not found or expired, event deleted or cancelled |
 
 ---
@@ -214,7 +216,7 @@ The `eventJSON` field contains the event in jCal format (RFC 7265).
 ### **POST /api/events/addMyself?eventToken={eventToken}**
 
 Add the authenticated user as an attendee of the event an event token points to, with `PARTSTAT=ACCEPTED`.
-The token must have the `ADD_MYSELF` right. The event is updated on behalf of the owner of the calendar home, who must
+The token must have the `ADD_ATTENDEE` right. The event is updated on behalf of the owner of the calendar home, who must
 still be its `ORGANIZER`, and the DAV server schedules the invitation of the new attendee.
 
 Adding a user who is already an attendee leaves the event untouched.
@@ -227,7 +229,7 @@ Adding a user who is already an attendee leaves the event untouched.
 
 **Sample request**
 ```
-POST /api/events/addMyself?eventToken=Vb3N9nq0yZtJkq3Qe7cS1xG5cGw2Rw
+POST /api/events/addMyself?eventToken=3f0c2a8e-6b1d-4c57-9e2a-8d4b7f1c0a93
 Authorization: Bearer <token>
 ```
 
@@ -240,9 +242,9 @@ HTTP/1.1 204 No Content
 
 | Status | Cause                                                                                 |
 |--------|---------------------------------------------------------------------------------------|
-| 400    | `eventToken` is missing                                                               |
+| 400    | `eventToken` is missing or not a UUID                                                 |
 | 401    | Unauthenticated                                                                       |
-| 403    | The token does not have the `ADD_MYSELF` right, or the event is no longer a meeting organized by the owner |
+| 403    | The token does not have the `ADD_ATTENDEE` right, or the event is no longer a meeting organized by the owner |
 | 404    | Token not found or expired, event deleted or cancelled                                |
 
 ---
@@ -252,7 +254,7 @@ HTTP/1.1 204 No Content
 - No authentication required
 
 Add an attendee to the event an event token points to, with `PARTSTAT=NEEDS-ACTION`.
-The token must have the `ADD_MYSELF` right. The event is updated on behalf of the owner of the calendar home, who must
+The token must have the `ADD_ATTENDEE` right. The event is updated on behalf of the owner of the calendar home, who must
 still be its `ORGANIZER`, and the DAV server schedules the invitation of the new attendee.
 
 Adding an address which is already an attendee leaves the event untouched.
@@ -274,7 +276,7 @@ Anyone holding the token can have an invitation sent to any address.
 
 **Sample request**
 ```
-POST /api/events/addAttendee?eventToken=Vb3N9nq0yZtJkq3Qe7cS1xG5cGw2Rw
+POST /api/events/addAttendee?eventToken=3f0c2a8e-6b1d-4c57-9e2a-8d4b7f1c0a93
 Content-Type: application/json
 
 {
@@ -292,6 +294,6 @@ HTTP/1.1 204 No Content
 
 | Status | Cause                                                                                 |
 |--------|---------------------------------------------------------------------------------------|
-| 400    | `eventToken` is missing, missing or invalid body, missing or invalid `mailAddress`    |
-| 403    | The token does not have the `ADD_MYSELF` right, or the event is no longer a meeting organized by the owner |
+| 400    | `eventToken` is missing or not a UUID, missing or invalid body, missing or invalid `mailAddress` |
+| 403    | The token does not have the `ADD_ATTENDEE` right, or the event is no longer a meeting organized by the owner |
 | 404    | Token not found or expired, event deleted or cancelled                                |

@@ -67,7 +67,7 @@ public class EventTokenListRoute extends CalendarRoute {
         return ownership.assertCalendarHomeOwner(session, calendarURL)
             .thenMany(eventTokenDAO.listByEvent(calendarURL, eventId))
             .map(eventToken -> Map.of(
-                "eventToken", eventToken.id().value(),
+                "eventToken", eventToken.id().asString(),
                 "right", eventToken.right().name(),
                 "expiration", eventToken.expiration().toString()))
             .collectList()

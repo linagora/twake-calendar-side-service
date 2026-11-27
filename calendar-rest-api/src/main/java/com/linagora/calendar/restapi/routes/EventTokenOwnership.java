@@ -68,7 +68,7 @@ public class EventTokenOwnership {
             .stream()
             .filter(StringUtils::isNotBlank)
             .findAny()
-            .map(EventTokenId::new)
+            .map(EventTokenId::from)
             .orElseThrow(() -> new IllegalArgumentException("Missing '" + EVENT_TOKEN_PARAM + "' query parameter"));
     }
 

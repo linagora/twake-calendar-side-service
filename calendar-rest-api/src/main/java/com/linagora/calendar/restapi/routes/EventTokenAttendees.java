@@ -63,7 +63,7 @@ public class EventTokenAttendees {
     public Mono<Void> add(EventTokenId id, MailAddress email, Optional<String> displayName, PartStat partStat) {
         return eventTokenDAO.findById(id)
             .switchIfEmpty(Mono.error(NotFoundException::new))
-            .filter(eventToken -> eventToken.right() == EventTokenRight.ADD_MYSELF)
+            .filter(eventToken -> eventToken.right() == EventTokenRight.ADD_ATTENDEE)
             .switchIfEmpty(Mono.error(() -> new ForbiddenException("Event token does not allow to add attendees")))
             .flatMap(eventToken -> openPaaSUserDAO.retrieve(eventToken.calendarURL().base())
                 .switchIfEmpty(Mono.error(NotFoundException::new))

@@ -194,9 +194,9 @@ class EventTokenRoutesTest {
             """.formatted(eventId, owner.username().asString(), attendees);
     }
 
-    private String createAddMyselfToken() {
+    private String createAddAttendeeToken() {
         return createToken("""
-            { "right": "ADD_MYSELF" }
+            { "right": "ADD_ATTENDEE" }
             """);
     }
 
@@ -238,15 +238,11 @@ class EventTokenRoutesTest {
             """.formatted(uid, status, organizerAndAttendees);
     }
 
-    private String eventTokensPath(OpenPaaSUser calendarOwner, String eventId) {
-        return "/api/events/%s/%s/%s/eventTokens".formatted(calendarOwner.id().value(), calendarOwner.id().value(), eventId);
-    }
-
     private String createToken(String body) {
         return given(ownerSpecification)
             .body(body)
         .when()
-            .post(eventTokensPath(owner, eventId))
+            .post("/api/events/" + owner.id().value() + "/" + owner.id().value() + "/" + eventId + "/eventTokens")
         .then()
             .statusCode(HttpStatus.SC_CREATED)
             .extract()
@@ -274,7 +270,7 @@ class EventTokenRoutesTest {
                     { "right": "VIEW" }
                     """)
             .when()
-                .post(eventTokensPath(owner, eventId))
+                .post("/api/events/" + owner.id().value() + "/" + owner.id().value() + "/" + eventId + "/eventTokens")
             .then()
                 .statusCode(HttpStatus.SC_CREATED)
                 .contentType(JSON)
@@ -301,10 +297,10 @@ class EventTokenRoutesTest {
             // When the token is created
             String expiration = given(ownerSpecification)
                 .body("""
-                    { "right": "ADD_MYSELF", "expirationInDays": 7 }
+                    { "right": "ADD_ATTENDEE", "expirationInDays": 7 }
                     """)
             .when()
-                .post(eventTokensPath(owner, eventId))
+                .post("/api/events/" + owner.id().value() + "/" + owner.id().value() + "/" + eventId + "/eventTokens")
             .then()
                 .statusCode(HttpStatus.SC_CREATED)
                 .extract()
@@ -326,7 +322,7 @@ class EventTokenRoutesTest {
                     { "right": "VIEW" }
                     """)
             .when()
-                .post(eventTokensPath(owner, eventId))
+                .post("/api/events/" + owner.id().value() + "/" + owner.id().value() + "/" + eventId + "/eventTokens")
             .then()
                 .statusCode(HttpStatus.SC_FORBIDDEN);
         }
@@ -342,13 +338,13 @@ class EventTokenRoutesTest {
                     { "right": "VIEW" }
                     """)
             .when()
-                .post(eventTokensPath(owner, "unknown-event"))
+                .post("/api/events/" + owner.id().value() + "/" + owner.id().value() + "/unknown-event/eventTokens")
             .then()
                 .statusCode(HttpStatus.SC_NOT_FOUND);
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {"VIEW", "ADD_MYSELF"})
+        @ValueSource(strings = {"VIEW", "ADD_ATTENDEE"})
         void shouldReturn403WhenMeetingIsOrganizedBySomeoneElse(String right) {
             // Given a meeting organized by another user, of which the owner holds an attendee copy
             String attendeeCopyId = "sabredav-" + UUID.randomUUID();
@@ -364,13 +360,13 @@ class EventTokenRoutesTest {
                     { "right": "%s" }
                     """.formatted(right))
             .when()
-                .post(eventTokensPath(owner, attendeeCopyId))
+                .post("/api/events/" + owner.id().value() + "/" + owner.id().value() + "/" + attendeeCopyId + "/eventTokens")
             .then()
                 .statusCode(HttpStatus.SC_FORBIDDEN);
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {"VIEW", "ADD_MYSELF"})
+        @ValueSource(strings = {"VIEW", "ADD_ATTENDEE"})
         void shouldReturn403WhenEventHasNoOrganizer(String right) {
             // Given a personal event without organizer
             String personalEventId = "sabredav-" + UUID.randomUUID();
@@ -383,7 +379,7 @@ class EventTokenRoutesTest {
                     { "right": "%s" }
                     """.formatted(right))
             .when()
-                .post(eventTokensPath(owner, personalEventId))
+                .post("/api/events/" + owner.id().value() + "/" + owner.id().value() + "/" + personalEventId + "/eventTokens")
             .then()
                 .statusCode(HttpStatus.SC_FORBIDDEN);
         }
@@ -405,7 +401,7 @@ class EventTokenRoutesTest {
             given(ownerSpecification)
                 .body(body)
             .when()
-                .post(eventTokensPath(owner, eventId))
+                .post("/api/events/" + owner.id().value() + "/" + owner.id().value() + "/" + eventId + "/eventTokens")
             .then()
                 .statusCode(HttpStatus.SC_BAD_REQUEST);
         }
@@ -421,7 +417,7 @@ class EventTokenRoutesTest {
                     { "right": "VIEW" }
                     """)
             .when()
-                .post(eventTokensPath(owner, eventId))
+                .post("/api/events/" + owner.id().value() + "/" + owner.id().value() + "/" + eventId + "/eventTokens")
             .then()
                 .statusCode(HttpStatus.SC_UNAUTHORIZED);
         }
@@ -435,7 +431,7 @@ class EventTokenRoutesTest {
             // Given two tokens of the event and one of another event of the owner
             String viewToken = createViewToken();
             String addMyselfToken = createToken("""
-                { "right": "ADD_MYSELF", "expirationInDays": 7 }
+                { "right": "ADD_ATTENDEE", "expirationInDays": 7 }
                 """);
             String otherEventId = "sabredav-" + UUID.randomUUID();
             davTestHelper.upsertCalendar(owner, eventIcs(otherEventId, "CONFIRMED"), otherEventId);
@@ -443,14 +439,14 @@ class EventTokenRoutesTest {
                 .body("""
                     { "right": "VIEW" }
                     """)
-                .post(eventTokensPath(owner, otherEventId))
+                .post("/api/events/" + owner.id().value() + "/" + owner.id().value() + "/" + otherEventId + "/eventTokens")
             .then()
                 .statusCode(HttpStatus.SC_CREATED);
 
             // When the owner lists the tokens of the event
             String response = given(ownerSpecification)
             .when()
-                .get(eventTokensPath(owner, eventId))
+                .get("/api/events/" + owner.id().value() + "/" + owner.id().value() + "/" + eventId + "/eventTokens")
             .then()
                 .statusCode(HttpStatus.SC_OK)
                 .contentType(JSON)
@@ -464,7 +460,7 @@ class EventTokenRoutesTest {
                 .isEqualTo("""
                     [
                       { "eventToken": "%s", "right": "VIEW", "expiration": "${json-unit.any-string}" },
-                      { "eventToken": "%s", "right": "ADD_MYSELF", "expiration": "${json-unit.any-string}" }
+                      { "eventToken": "%s", "right": "ADD_ATTENDEE", "expiration": "${json-unit.any-string}" }
                     ]
                     """.formatted(viewToken, addMyselfToken));
         }
@@ -476,7 +472,7 @@ class EventTokenRoutesTest {
             // When the owner lists its tokens
             String response = given(ownerSpecification)
             .when()
-                .get(eventTokensPath(owner, eventId))
+                .get("/api/events/" + owner.id().value() + "/" + owner.id().value() + "/" + eventId + "/eventTokens")
             .then()
                 .statusCode(HttpStatus.SC_OK)
                 .extract()
@@ -496,7 +492,7 @@ class EventTokenRoutesTest {
             // Then the request is forbidden
             given(otherUserSpecification)
             .when()
-                .get(eventTokensPath(owner, eventId))
+                .get("/api/events/" + owner.id().value() + "/" + owner.id().value() + "/" + eventId + "/eventTokens")
             .then()
                 .statusCode(HttpStatus.SC_FORBIDDEN);
         }
@@ -507,9 +503,9 @@ class EventTokenRoutesTest {
 
         @Test
         void shouldReturnOnlyTheRightOfTheToken() {
-            // Given a token granting to add oneself to the event
+            // Given a token granting to add attendees to the event
             String token = createToken("""
-                { "right": "ADD_MYSELF" }
+                { "right": "ADD_ATTENDEE" }
                 """);
 
             // When an anonymous client looks the token up
@@ -525,7 +521,7 @@ class EventTokenRoutesTest {
 
             // Then only the right is disclosed
             assertThatJson(response).isEqualTo("""
-                { "right": "ADD_MYSELF" }
+                { "right": "ADD_ATTENDEE" }
                 """);
         }
 
@@ -537,9 +533,22 @@ class EventTokenRoutesTest {
             // Then it is reported as not found
             given(anonymousSpecification)
             .when()
-                .get("/api/eventTokens/unknown")
+                .get("/api/eventTokens/" + UUID.randomUUID())
             .then()
                 .statusCode(HttpStatus.SC_NOT_FOUND);
+        }
+
+        @Test
+        void shouldReturn400WhenTokenIsMalformed() {
+            // Given a value which cannot be a token
+
+            // When an anonymous client looks it up
+            // Then the request is rejected
+            given(anonymousSpecification)
+            .when()
+                .get("/api/eventTokens/not-a-token")
+            .then()
+                .statusCode(HttpStatus.SC_BAD_REQUEST);
         }
     }
 
@@ -595,7 +604,7 @@ class EventTokenRoutesTest {
             // Then it is reported as not found
             given(ownerSpecification)
             .when()
-                .delete("/api/eventTokens/unknown")
+                .delete("/api/eventTokens/" + UUID.randomUUID())
             .then()
                 .statusCode(HttpStatus.SC_NOT_FOUND);
         }
@@ -604,10 +613,13 @@ class EventTokenRoutesTest {
     @Nested
     class GetEvent {
 
-        @Test
-        void shouldReturnTheEventAsJCal() {
-            // Given a token of the event
-            String token = createViewToken();
+        @ParameterizedTest
+        @ValueSource(strings = {"VIEW", "ADD_ATTENDEE"})
+        void shouldReturnTheEventAsJCal(String right) {
+            // Given a token of the event, whatever its right
+            String token = createToken("""
+                { "right": "%s" }
+                """.formatted(right));
 
             // When an anonymous client fetches the event with it
             String response = given(anonymousSpecification)
@@ -673,7 +685,7 @@ class EventTokenRoutesTest {
             // When an anonymous client fetches an event with it
             // Then it is reported as not found
             given(anonymousSpecification)
-                .queryParam("eventToken", "unknown")
+                .queryParam("eventToken", UUID.randomUUID().toString())
             .when()
                 .get("/api/events")
             .then()
@@ -718,8 +730,8 @@ class EventTokenRoutesTest {
 
         @Test
         void shouldAddAuthenticatedUserAsAcceptedAttendee() {
-            // Given a token allowing to add oneself to the owner's meeting
-            String token = createAddMyselfToken();
+            // Given a token allowing to add attendees to the owner's meeting
+            String token = createAddAttendeeToken();
 
             // When another user attends through it
             given(otherUserSpecification)
@@ -739,8 +751,8 @@ class EventTokenRoutesTest {
 
         @Test
         void shouldDeliverTheMeetingToTheCalendarOfTheAuthenticatedUser() {
-            // Given a token allowing to add oneself to the owner's meeting
-            String token = createAddMyselfToken();
+            // Given a token allowing to add attendees to the owner's meeting
+            String token = createAddAttendeeToken();
 
             // When another user attends through it
             given(otherUserSpecification)
@@ -757,7 +769,7 @@ class EventTokenRoutesTest {
         @Test
         void shouldNotDuplicateTheAttendeeWhenAttendingTwice() {
             // Given a user who already attended through a token
-            String token = createAddMyselfToken();
+            String token = createAddAttendeeToken();
             given(otherUserSpecification)
                 .queryParam("eventToken", token)
                 .post("/api/events/addMyself")
@@ -798,7 +810,7 @@ class EventTokenRoutesTest {
         @Test
         void shouldReturn403WhenEventIsNoLongerOrganizedByTheOwner() {
             // Given a token of a meeting the owner turned afterwards into a personal event without organizer
-            String token = createAddMyselfToken();
+            String token = createAddAttendeeToken();
             davTestHelper.updateCalendar(owner, eventIcs(eventId, "CONFIRMED", ""), eventId);
 
             // When another user tries to attend through it
@@ -814,7 +826,7 @@ class EventTokenRoutesTest {
         @Test
         void shouldReturn404WhenEventWasCancelled() {
             // Given a token of a meeting the owner cancelled afterwards
-            String token = createAddMyselfToken();
+            String token = createAddAttendeeToken();
             davTestHelper.updateCalendar(owner, eventIcs(eventId, "CANCELLED"), eventId);
 
             // When another user tries to attend through it
@@ -834,7 +846,27 @@ class EventTokenRoutesTest {
             // When a user tries to attend through it
             // Then it is reported as not found
             given(otherUserSpecification)
-                .queryParam("eventToken", "unknown")
+                .queryParam("eventToken", UUID.randomUUID().toString())
+            .when()
+                .post("/api/events/addMyself")
+            .then()
+                .statusCode(HttpStatus.SC_NOT_FOUND);
+        }
+
+        @Test
+        void shouldReturn404WhenTokenWasRevoked() {
+            // Given a token allowing to add attendees to the owner's meeting, which the owner revoked
+            String token = createAddAttendeeToken();
+            given(ownerSpecification)
+            .when()
+                .delete("/api/eventTokens/" + token)
+            .then()
+                .statusCode(HttpStatus.SC_NO_CONTENT);
+
+            // When a user tries to attend through it
+            // Then it is reported as not found
+            given(otherUserSpecification)
+                .queryParam("eventToken", token)
             .when()
                 .post("/api/events/addMyself")
             .then()
@@ -843,8 +875,8 @@ class EventTokenRoutesTest {
 
         @Test
         void shouldReturn401WhenUnauthenticated() {
-            // Given a token allowing to add oneself to the owner's meeting
-            String token = createAddMyselfToken();
+            // Given a token allowing to add attendees to the owner's meeting
+            String token = createAddAttendeeToken();
 
             // When an anonymous client tries to attend through it
             // Then authentication is required
@@ -863,7 +895,7 @@ class EventTokenRoutesTest {
         @Test
         void shouldAddAttendeeNeedingAction() {
             // Given a token allowing to add attendees to the owner's meeting
-            String token = createAddMyselfToken();
+            String token = createAddAttendeeToken();
 
             // When an anonymous client adds an external attendee through it
             given(anonymousSpecification)
@@ -893,7 +925,7 @@ class EventTokenRoutesTest {
                 """.formatted(owner.username().asString())), eventId);
             CALMLY_AWAIT.untilAsserted(() -> assertThat(smtpMailRecipients()).contains("existing@external.org"));
             clearSmtpMails();
-            String token = createAddMyselfToken();
+            String token = createAddAttendeeToken();
 
             // When an anonymous client adds another external attendee through it
             given(anonymousSpecification)
@@ -936,7 +968,30 @@ class EventTokenRoutesTest {
             // When an anonymous client tries to add an attendee through it
             // Then it is reported as not found
             given(anonymousSpecification)
-                .queryParam("eventToken", "unknown")
+                .queryParam("eventToken", UUID.randomUUID().toString())
+                .body("""
+                    { "mailAddress": "cedric@external.org" }
+                    """)
+            .when()
+                .post("/api/events/addAttendee")
+            .then()
+                .statusCode(HttpStatus.SC_NOT_FOUND);
+        }
+
+        @Test
+        void shouldReturn404WhenTokenWasRevoked() {
+            // Given a token allowing to add attendees to the owner's meeting, which the owner revoked
+            String token = createAddAttendeeToken();
+            given(ownerSpecification)
+            .when()
+                .delete("/api/eventTokens/" + token)
+            .then()
+                .statusCode(HttpStatus.SC_NO_CONTENT);
+
+            // When an anonymous client tries to add an attendee through it
+            // Then it is reported as not found
+            given(anonymousSpecification)
+                .queryParam("eventToken", token)
                 .body("""
                     { "mailAddress": "cedric@external.org" }
                     """)
@@ -970,7 +1025,7 @@ class EventTokenRoutesTest {
         })
         void shouldReturn400WhenBodyIsInvalid(String body) {
             // Given a token allowing to add attendees to the owner's meeting
-            String token = createAddMyselfToken();
+            String token = createAddAttendeeToken();
 
             // When an anonymous client adds an attendee with a missing or invalid address
             // Then the request is rejected

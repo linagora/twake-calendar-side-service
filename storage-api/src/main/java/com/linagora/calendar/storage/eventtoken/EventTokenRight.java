@@ -22,7 +22,7 @@ import java.util.Arrays;
 
 public enum EventTokenRight {
     VIEW,
-    ADD_MYSELF;
+    ADD_ATTENDEE;
 
     public static EventTokenRight fromString(String value) {
         return Arrays.stream(values())
