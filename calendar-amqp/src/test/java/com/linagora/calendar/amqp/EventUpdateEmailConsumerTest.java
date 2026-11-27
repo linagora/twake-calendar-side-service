@@ -73,7 +73,7 @@ import org.awaitility.core.ConditionFactory;
 import com.github.fge.lambdas.Throwing;
 import com.linagora.calendar.smtp.EventEmailFilter;
 import com.linagora.calendar.api.EventParticipationActionLinkFactory;
-import com.linagora.calendar.api.Participation;
+import com.linagora.calendar.api.ParticipationGrant;
 import com.linagora.calendar.api.ParticipationTokenSigner;
 import com.linagora.calendar.dav.DavTestHelper;
 import com.linagora.calendar.dav.DockerSabreDavSetup;
@@ -207,11 +207,8 @@ public class EventUpdateEmailConsumerTest {
         UsersRepository usersRepository = mock(UsersRepository.class);
         when(usersRepository.containsReactive(any())).thenReturn(Mono.just(INTERNAL_USER));
         ParticipationTokenSigner participationTokenSigner = mock(ParticipationTokenSigner.class);
-        when(participationTokenSigner.signAsJwt(any(Participation.class)))
-            .thenAnswer(invocation -> {
-                Participation arg = invocation.getArgument(0);
-                return Mono.just("mocked-jwt-token-" + arg.action().name().toLowerCase());
-            });
+        when(participationTokenSigner.signAsJwt(any(ParticipationGrant.class)))
+            .thenReturn(Mono.just("mocked-jwt-token"));
 
         EventParticipationActionLinkFactory actionLinkFactory = new EventParticipationActionLinkFactory(
             participationTokenSigner,
@@ -310,9 +307,9 @@ public class EventUpdateEmailConsumerTest {
                 .contains(attendee.username().asString())
                 .contains("This is a meeting to discuss the sprint planning for the next week.")
                 .contains("This is a meeting to discuss the sprint planning for the next 2 weeks.")
-                .contains("http://localhost:8888/excal/?jwt=mocked-jwt-token-accepted")
-                .contains("http://localhost:8888/excal/?jwt=mocked-jwt-token-rejected")
-                .contains("http://localhost:8888/excal/?jwt=mocked-jwt-token-tentative");
+                .contains("http://localhost:8888/excal/?jwt=mocked-jwt-token&amp;action=ACCEPTED")
+                .contains("http://localhost:8888/excal/?jwt=mocked-jwt-token&amp;action=REJECTED")
+                .contains("http://localhost:8888/excal/?jwt=mocked-jwt-token&amp;action=TENTATIVE");
         }));
     }
 

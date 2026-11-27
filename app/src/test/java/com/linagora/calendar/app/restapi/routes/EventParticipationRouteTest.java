@@ -93,6 +93,7 @@ import com.google.inject.multibindings.Multibinder;
 import com.linagora.calendar.api.CalendarUtil;
 import com.linagora.calendar.api.Participation;
 import com.linagora.calendar.api.Participation.ParticipantAction;
+import com.linagora.calendar.api.ParticipationGrant;
 import com.linagora.calendar.api.ParticipationTokenSigner;
 import com.linagora.calendar.app.AppTestHelper;
 import com.linagora.calendar.app.TwakeCalendarConfiguration;
@@ -148,8 +149,13 @@ class EventParticipationRouteTest {
                 .block();
         }
 
-        public Participation validateAndExtractParticipation(String jwt) {
-            return participationTokenSigner.validateAndExtractParticipation(jwt).block();
+        public String signAsJwt(ParticipationGrant grant) {
+            return participationTokenSigner.signAsJwt(grant)
+                .block();
+        }
+
+        public Participation validateAndExtractParticipation(String jwt, Optional<ParticipantAction> action) {
+            return participationTokenSigner.validateAndExtractParticipation(jwt, action).block();
         }
     }
 
@@ -1067,6 +1073,7 @@ class EventParticipationRouteTest {
         }
         return links.stream()
             .filter(e-> e.startsWith("https://excal.linagora.com/excal/?jwt="))
+            .map(link -> link.replace("&amp;", "&"))
             .toList();
     }
 
@@ -1089,6 +1096,105 @@ class EventParticipationRouteTest {
 
         String calendarEventReportResponse = getCalendarEventReportResponse(eventUid);
         assertThat(calendarEventReportResponse).contains("\"partstat\" : \"DECLINED\"");
+    }
+
+    @Test
+    void shouldUpdatePartStatWithTheActionOfTheLink(TwakeCalendarGuiceServer server) throws Exception {
+        String eventUid = UUID.randomUUID().toString();
+        upsertCalendarForTest(eventUid);
+
+        String token = server.getProbe(ParticipationTokenProbe.class)
+            .signAsJwt(getParticipation(eventUid, ParticipantAction.ACCEPTED).grant());
+
+        RestAssured
+            .given()
+            .when()
+            .get(getParticipationTokenUrl(token, "REJECTED"))
+            .then()
+            .statusCode(200)
+            .contentType(JSON);
+
+        assertThat(getCalendarEventReportResponse(eventUid)).contains("\"partstat\" : \"DECLINED\"");
+    }
+
+    @Test
+    void actionBoundToALinkSignedBeforeShouldPrevailOverTheActionParameter(TwakeCalendarGuiceServer server) throws Exception {
+        String eventUid = UUID.randomUUID().toString();
+        upsertCalendarForTest(eventUid);
+
+        String token = server.getProbe(ParticipationTokenProbe.class)
+            .signAsJwt(getParticipation(eventUid, ParticipantAction.REJECTED));
+
+        RestAssured
+            .given()
+            .when()
+            .get(getParticipationTokenUrl(token, "ACCEPTED"))
+            .then()
+            .statusCode(200)
+            .contentType(JSON);
+
+        assertThat(getCalendarEventReportResponse(eventUid)).contains("\"partstat\" : \"DECLINED\"");
+    }
+
+    @Test
+    void tokenNotBoundToAnActionShouldReturn400WithoutActionParameter(TwakeCalendarGuiceServer server) throws Exception {
+        String eventUid = UUID.randomUUID().toString();
+        upsertCalendarForTest(eventUid);
+
+        String token = server.getProbe(ParticipationTokenProbe.class)
+            .signAsJwt(getParticipation(eventUid, ParticipantAction.ACCEPTED).grant());
+
+        RestAssured
+            .given()
+            .when()
+            .get(getParticipationTokenUrl(token))
+            .then()
+            .statusCode(400);
+
+        assertThat(getCalendarEventReportResponse(eventUid)).contains("\"partstat\" : \"NEEDS-ACTION\"");
+    }
+
+    @Test
+    void shouldReturn400WhenInvalidActionParameter(TwakeCalendarGuiceServer server) {
+        String eventUid = UUID.randomUUID().toString();
+        upsertCalendarForTest(eventUid);
+
+        String token = server.getProbe(ParticipationTokenProbe.class)
+            .signAsJwt(getParticipation(eventUid, ParticipantAction.ACCEPTED).grant());
+
+        RestAssured
+            .given()
+            .when()
+            .get(getParticipationTokenUrl(token, "DECLINED"))
+            .then()
+            .statusCode(400);
+    }
+
+    @Test
+    void linksShouldShareOneTokenAndCarryTheirAction(TwakeCalendarGuiceServer server) {
+        String eventUid = UUID.randomUUID().toString();
+        upsertCalendarForTest(eventUid);
+
+        URL participationTokenUrl = getParticipationTokenUrl(getParticipation(eventUid, ParticipantAction.ACCEPTED), server);
+
+        Map<String, String> links = RestAssured
+            .given()
+            .when()
+            .get(participationTokenUrl)
+            .then()
+            .statusCode(200)
+            .contentType(JSON)
+            .extract()
+            .jsonPath()
+            .getMap("links");
+
+        assertSoftly(softly -> {
+            softly.assertThat(Stream.of("yes", "no", "maybe").map(links::get).map(this::extractJwtFromUrl).distinct())
+                .hasSize(1);
+            softly.assertThat(extractParameterFromUrl(links.get("yes"), "action")).contains("ACCEPTED");
+            softly.assertThat(extractParameterFromUrl(links.get("no"), "action")).contains("REJECTED");
+            softly.assertThat(extractParameterFromUrl(links.get("maybe"), "action")).contains("TENTATIVE");
+        });
     }
 
     @Test
@@ -1163,13 +1269,9 @@ class EventParticipationRouteTest {
             softly.assertThat(links.get("no")).startsWith(expectedPrefix);
             softly.assertThat(links.get("maybe")).startsWith(expectedPrefix);
 
-            String jwtYes = extractJwtFromUrl(links.get("yes"));
-            String jwtNo = extractJwtFromUrl(links.get("no"));
-            String jwtMaybe = extractJwtFromUrl(links.get("maybe"));
-
-            Participation actualYes = tokenProbe.validateAndExtractParticipation(jwtYes);
-            Participation actualNo = tokenProbe.validateAndExtractParticipation(jwtNo);
-            Participation actualMaybe = tokenProbe.validateAndExtractParticipation(jwtMaybe);
+            Participation actualYes = extractParticipationFromUrl(tokenProbe, links.get("yes"));
+            Participation actualNo = extractParticipationFromUrl(tokenProbe, links.get("no"));
+            Participation actualMaybe = extractParticipationFromUrl(tokenProbe, links.get("maybe"));
 
             Participation base = Throwing.supplier(() -> new Participation(
                 organizer.username().asMailAddress(),
@@ -1270,7 +1372,7 @@ class EventParticipationRouteTest {
 
         String jwt = extractJwtFromUrl(links.get("maybe"));
 
-        String reusedUrl = String.format("http://localhost:%d/calendar/api/calendars/event/participation?jwt=%s",
+        String reusedUrl = String.format("http://localhost:%d/calendar/api/calendars/event/participation?jwt=%s&action=TENTATIVE",
             restApiPort, URLEncoder.encode(jwt, StandardCharsets.UTF_8));
 
         RestAssured
@@ -1450,7 +1552,7 @@ class EventParticipationRouteTest {
         assertThat(jwtParts).hasSize(3);
         String payload = new String(Base64.getUrlDecoder().decode(jwtParts[1]), StandardCharsets.UTF_8);
         assertThat(payload)
-            .contains("iat", "calendarURI", "uid", "action", "organizerEmail", "attendeeEmail")
+            .contains("iat", "calendarURI", "uid", "organizerEmail", "attendeeEmail")
             .doesNotContain("exp");
     }
 
@@ -1464,12 +1566,21 @@ class EventParticipationRouteTest {
     }
 
     private String extractJwtFromUrl(String url) {
+        return extractParameterFromUrl(url, "jwt")
+            .orElseThrow(() -> new IllegalArgumentException("JWT parameter not found in URL: " + url));
+    }
+
+    private Optional<String> extractParameterFromUrl(String url, String name) {
         return URLEncodedUtils.parse(StringUtils.substringAfter(url, "?"), StandardCharsets.UTF_8)
             .stream()
-            .filter(nameValuePair -> "jwt".equals(nameValuePair.getName()))
+            .filter(nameValuePair -> name.equals(nameValuePair.getName()))
             .findFirst()
-            .map(NameValuePair::getValue)
-            .orElseThrow(() -> new IllegalArgumentException("JWT parameter not found in URL: " + url));
+            .map(NameValuePair::getValue);
+    }
+
+    private Participation extractParticipationFromUrl(ParticipationTokenProbe tokenProbe, String url) {
+        return tokenProbe.validateAndExtractParticipation(extractJwtFromUrl(url),
+            extractParameterFromUrl(url, "action").map(ParticipantAction::valueOf));
     }
 
     private void setUserLanguage(Locale locale) {
@@ -1497,6 +1608,10 @@ class EventParticipationRouteTest {
         return Throwing.supplier(() -> URI.create(String.format("http://localhost:%d/calendar/api/calendars/event/participation?jwt=%s",
             restApiPort,
             URLEncoder.encode(token, StandardCharsets.UTF_8))).toURL()).get();
+    }
+
+    private URL getParticipationTokenUrl(String token, String action) {
+        return Throwing.supplier(() -> URI.create(getParticipationTokenUrl(token) + "&action=" + action).toURL()).get();
     }
 
     private URL getParticipationTokenUrl(Participation participation, TwakeCalendarGuiceServer server) {
