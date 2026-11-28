@@ -199,6 +199,13 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Why: these tokens come percent-decoded from the query string of public routes and their failures are logged as plain text, so anyone could write line breaks and terminal escapes into the log; the JWT libraries also copy the decoded header or payload into their messages.
 - Scope: `calendar-api` `ParticipationTokenSigner`, `BookedEventTokenSigner`; `calendar-rest-api` `ResourceParticipationRoute`.
 
+## 2026-11-28, [Architecture] A logged-out OIDC session is remembered for the token cache expiration
+
+- Decision: `OIDCTokenCache.invalidate(sid)` records the session as logged out for the token cache expiration (`oidc.token.cache.expiration`), before reading the sid -> tokens index; a token of that session is refused (`UnauthorizedException`, 401) and evicted for that duration, even when the identity provider still vouches for it. `CaffeineOIDCTokenCache` checks the mark on every lookup (a local read); `RedisOIDCTokenCache` writes a `tcal_oidc_logged_out_sid_<sid>` key (`SET ... EX`) and checks it with `EXISTS` after caching a resolved token, each command a single key awaited before the next (Redis Cluster compatible).
+- Decided by: agent (fix of the logout / token validation race), to be confirmed by Benoit Tellier
+- Why: the index only knows a token once its validation answered; a logout landing while the validation was in flight (or, for Caffeine, while an expired token was reloaded before its asynchronous removal listener unindexed it) evicted nothing, and the token kept authenticating until the cache expiration. With the mark written before the index is read, and the index written before the mark is read, one side always sees the other.
+- Scope: storage-api `CaffeineOIDCTokenCache`, calendar-redis `RedisOIDCTokenCache`, the WebAdmin back-channel logout route.
+  
 ## 2026-11-26, [Tech] Event search text is NFC-normalized at indexing and at query time
 
 - Decision: the calendar event search brings summary, location, description and the organizer, attendee and resource common names and addresses to Unicode NFC when indexing (`CalendarEventsDocument`), and the free text query to NFC before searching (`EventSearchQuery.withNfcQuery`), in OpenSearch and in memory alike. The index mapping is unchanged and documents indexed before are not rewritten: they are fixed by their next update or a reindexing.

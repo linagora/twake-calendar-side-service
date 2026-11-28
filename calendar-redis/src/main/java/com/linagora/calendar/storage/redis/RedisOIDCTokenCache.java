@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.james.jmap.exceptions.UnauthorizedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,6 +60,7 @@ public class RedisOIDCTokenCache implements OIDCTokenCache {
 
     private static final String TOKEN_CACHE_PREFIX = "tcal_oidc_hash_";
     private static final String SID_CACHE_PREFIX = "tcal_oidc_sid_";
+    private static final String LOGGED_OUT_SID_PREFIX = "tcal_oidc_logged_out_sid_";
     private static final String AUD_DELIMITER = ";";
 
     public interface TokenFields {
@@ -83,8 +85,11 @@ public class RedisOIDCTokenCache implements OIDCTokenCache {
     @Override
     public Mono<Void> invalidate(Sid sid) {
         String sidRedisKey = resolveSidRedisKey(sid);
-        return redisCommand.lrange(sidRedisKey)
-            .collectList()
+        // The mark is written before the sid list is read, and a token is pushed to the sid list before its mark is
+        // checked: a token missed by this read is refused by resolveTokenInfoAndCache.
+        return redisCommand.set(resolveLoggedOutSidRedisKey(sid), "1", tokenCacheConfiguration.expiration())
+            .then(redisCommand.lrange(sidRedisKey)
+                .collectList())
             .filter(tokenRedisKeyList -> !tokenRedisKeyList.isEmpty())
             .flatMap(tokenRedisKeyList -> redisCommand.del(tokenRedisKeyList.toArray(String[]::new)))
             .then(redisCommand.del(sidRedisKey))
@@ -142,7 +147,24 @@ public class RedisOIDCTokenCache implements OIDCTokenCache {
     private Mono<TokenInfo> resolveTokenInfoAndCache(Token token, String tokenRedisKey) {
         return tokenInfoResolver.apply(token)
             .flatMap(tokenInfo -> cacheTokenInfo(tokenRedisKey, tokenInfo)
+                .then(refuseIfLoggedOut(tokenRedisKey, tokenInfo))
                 .thenReturn(tokenInfo));
+    }
+
+    private Mono<Void> refuseIfLoggedOut(String tokenRedisKey, TokenInfo tokenInfo) {
+        return Mono.justOrEmpty(tokenInfo.sid())
+            .flatMap(sid -> redisCommand.exists(resolveLoggedOutSidRedisKey(sid))
+                .onErrorResume(error -> {
+                    LOGGER.warn("Failed to check whether the OIDC session {} was logged out", sid.value(), error);
+                    return Mono.just(false);
+                }))
+            .filter(loggedOut -> loggedOut)
+            .flatMap(loggedOut -> redisCommand.del(tokenRedisKey)
+                .onErrorResume(error -> {
+                    LOGGER.warn("Failed to evict the token of a logged out OIDC session from the cache", error);
+                    return Mono.empty();
+                })
+                .then(Mono.error(new UnauthorizedException("The OIDC session of this token was logged out"))));
     }
 
     private Mono<Void> cacheTokenInfo(String tokenRedisKey, TokenInfo tokenInfo) {
@@ -180,5 +202,9 @@ public class RedisOIDCTokenCache implements OIDCTokenCache {
 
     private String resolveSidRedisKey(Sid sid) {
         return SID_CACHE_PREFIX + sid.value();
+    }
+
+    private String resolveLoggedOutSidRedisKey(Sid sid) {
+        return LOGGED_OUT_SID_PREFIX + sid.value();
     }
 }
