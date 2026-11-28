@@ -22,10 +22,12 @@ import java.time.Duration;
 import java.util.Map;
 
 import io.lettuce.core.KeyValue;
+import io.lettuce.core.SetArgs;
 import io.lettuce.core.api.reactive.RedisHashReactiveCommands;
 import io.lettuce.core.api.reactive.RedisKeyReactiveCommands;
 import io.lettuce.core.api.reactive.RedisListReactiveCommands;
 import io.lettuce.core.api.reactive.RedisReactiveCommands;
+import io.lettuce.core.api.reactive.RedisStringReactiveCommands;
 import io.lettuce.core.cluster.api.reactive.RedisClusterReactiveCommands;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -33,23 +35,26 @@ import reactor.core.publisher.Mono;
 public class RedisTokenCacheCommands {
 
     public static RedisTokenCacheCommands of(RedisReactiveCommands<String, String> commands) {
-        return new RedisTokenCacheCommands(commands, commands, commands);
+        return new RedisTokenCacheCommands(commands, commands, commands, commands);
     }
 
     public static RedisTokenCacheCommands of(RedisClusterReactiveCommands<String, String> commands) {
-        return new RedisTokenCacheCommands(commands, commands, commands);
+        return new RedisTokenCacheCommands(commands, commands, commands, commands);
     }
 
     private final RedisKeyReactiveCommands<String, String> keyCommand;
     private final RedisListReactiveCommands<String, String> listCommand;
     private final RedisHashReactiveCommands<String, String> hashCommand;
+    private final RedisStringReactiveCommands<String, String> stringCommand;
 
     public RedisTokenCacheCommands(RedisKeyReactiveCommands<String, String> keyCommand,
                                    RedisListReactiveCommands<String, String> listCommand,
-                                   RedisHashReactiveCommands<String, String> hashCommand) {
+                                   RedisHashReactiveCommands<String, String> hashCommand,
+                                   RedisStringReactiveCommands<String, String> stringCommand) {
         this.keyCommand = keyCommand;
         this.listCommand = listCommand;
         this.hashCommand = hashCommand;
+        this.stringCommand = stringCommand;
     }
 
     public Flux<String> lrange(String key) {
@@ -62,6 +67,16 @@ public class RedisTokenCacheCommands {
 
     public Mono<Void> del(String... key) {
         return keyCommand.del(key).then();
+    }
+
+    public Mono<Boolean> exists(String key) {
+        return keyCommand.exists(key)
+            .map(count -> count > 0);
+    }
+
+    public Mono<Void> set(String key, String value, Duration expiration) {
+        return stringCommand.set(key, value, SetArgs.Builder.ex(expiration))
+            .then();
     }
 
     public Mono<Void> expire(String key, Duration duration) {

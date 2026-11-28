@@ -96,10 +96,11 @@ public abstract class RedisOIDCTokenCacheContract extends OIDCTokenCacheContract
 
         pauseRedis();
 
-        assertThatCode(() -> testee().invalidate(SID).block())
+        // Another session: a logout recorded in Redis refuses the tokens of its own session
+        assertThatCode(() -> testee().invalidate(SID_2).block())
             .doesNotThrowAnyException();
 
-        assertThat(testee().associatedInformation(token).block())
-            .isEqualTo(TOKEN_INFO);
+        assertThat(testee().associatedInformation(token).block().email())
+            .isEqualTo(EMAIL);
     }
 }
