@@ -21,6 +21,7 @@ package com.linagora.calendar.storage.opensearch;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 
+import java.text.Normalizer;
 import java.util.List;
 import java.util.Optional;
 
@@ -101,6 +102,59 @@ public class OpensearchCalendarSearchServiceTest implements CalendarSearchServic
 
             assertThat(searchResults2).hasSize(0);
         });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"reunion", "reu", "helene", "hel", "zoe"})
+    void searchShouldFindDecomposedAccentedSummaryWithAnAsciiQuery(String search) {
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary(Normalizer.normalize("R\u00E9union H\u00E9l\u00E8ne Zo\u00E9", Normalizer.Form.NFD))
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        testee().index(CalendarEvents.of(event)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery(search, event.calendarURL()))
+            .map(EventFields::uid)
+            .collectList().block())
+            .containsExactly(event.uid()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"helene", "hel", "zoe"})
+    void searchShouldFindDecomposedAccentedAttendeeNameWithAnAsciiQuery(String search) throws Exception {
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary("unrelated")
+            .addAttendee(Person.of(Normalizer.normalize("H\u00E9l\u00E8ne Zo\u00E9", Normalizer.Form.NFD), "attendee@domain.tld"))
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        testee().index(CalendarEvents.of(event)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery(search, event.calendarURL()))
+            .map(EventFields::uid)
+            .collectList().block())
+            .containsExactly(event.uid()));
+    }
+
+    @Test
+    void decomposedAccentsShouldNotCountAgainstTheSummaryPrefixLength() {
+        // "Réunions" decomposed is 9 code points: without normalization its longest 7 code point gram is "re" U+0301 "unio",
+        // so the 7 letter prefix "réunion" did not match.
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary(Normalizer.normalize("R\u00E9unions", Normalizer.Form.NFD))
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        testee().index(CalendarEvents.of(event)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery("r\u00E9union", event.calendarURL()))
+            .map(EventFields::uid)
+            .collectList().block())
+            .containsExactly(event.uid()));
     }
 
     @ParameterizedTest

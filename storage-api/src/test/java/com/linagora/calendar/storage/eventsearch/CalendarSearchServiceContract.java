@@ -24,6 +24,7 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 import static org.awaitility.Durations.ONE_HUNDRED_MILLISECONDS;
 
+import java.text.Normalizer;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -565,6 +566,70 @@ public interface CalendarSearchServiceContract {
             assertThat(searchResults).hasSize(1)
                 .containsExactly(eventFields);
         });
+    }
+
+    String ACCENTED_TEXT = "R\u00E9union H\u00E9l\u00E8ne Zo\u00E9";
+
+    static String nfc(String text) {
+        return Normalizer.normalize(text, Normalizer.Form.NFC);
+    }
+
+    static String nfd(String text) {
+        return Normalizer.normalize(text, Normalizer.Form.NFD);
+    }
+
+    static EventFields eventWithTextIn(String field, String text, CalendarURL calendarURL) throws AddressException {
+        EventFields.Builder builder = EventFields.builder()
+            .uid(new EventUid("event-" + UUID.randomUUID()))
+            .summary("unrelated")
+            .calendarURL(calendarURL);
+        return switch (field) {
+            case "summary" -> builder.summary(text).build();
+            case "description" -> builder.description(text).build();
+            case "location" -> builder.location(text).build();
+            case "organizer cn" -> builder.organizer(Person.of(text, "organizer@domain.tld")).build();
+            case "attendee cn" -> builder.addAttendee(Person.of(text, "attendee@domain.tld")).build();
+            default -> throw new IllegalArgumentException(field);
+        };
+    }
+
+    static Stream<Arguments> unicodeNormalizationForms() {
+        return Stream.of("summary", "description", "location", "organizer cn", "attendee cn")
+            .flatMap(field -> Stream.of(
+                Arguments.of(field, "NFD", nfd(ACCENTED_TEXT), "NFC", nfc("h\u00E9l\u00E8ne")),
+                Arguments.of(field, "NFC", nfc(ACCENTED_TEXT), "NFD", nfd("h\u00E9l\u00E8ne")),
+                Arguments.of(field, "NFD", nfd(ACCENTED_TEXT), "NFD", nfd("zo\u00E9")),
+                Arguments.of(field, "NFC", nfc(ACCENTED_TEXT), "NFC", nfc("zo\u00E9"))));
+    }
+
+    @ParameterizedTest(name = "{0} stored {1} found by a {3} query")
+    @MethodSource("unicodeNormalizationForms")
+    default void searchShouldMatchAccentedTextWhateverItsUnicodeNormalizationForm(String field, String storedForm, String storedText,
+                                                                                   String queryForm, String queryText) throws AddressException {
+        EventFields event = eventWithTextIn(field, storedText, generateCalendarURL());
+
+        testee().index(CalendarEvents.of(event)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery(queryText, event.calendarURL()))
+            .map(EventFields::uid)
+            .collectList().block())
+            .containsExactly(event.uid()));
+    }
+
+    @Test
+    default void searchShouldMatchAMultiWordQueryInAnotherUnicodeNormalizationForm() {
+        EventFields event = EventFields.builder()
+            .uid(generateEventUid())
+            .summary(nfd(ACCENTED_TEXT))
+            .calendarURL(generateCalendarURL())
+            .build();
+
+        testee().index(CalendarEvents.of(event)).block();
+
+        CALMLY_AWAIT.untilAsserted(() -> assertThat(testee().search(simpleQuery(nfc("R\u00E9union H\u00E9l\u00E8ne"), event.calendarURL()))
+            .map(EventFields::uid)
+            .collectList().block())
+            .containsExactly(event.uid()));
     }
 
     @Test

@@ -205,3 +205,17 @@ Categories: UX, UI, Product, Architecture, Infra, Tech.
 - Decided by: agent (fix of the logout / token validation race), to be confirmed by Benoit Tellier
 - Why: the index only knows a token once its validation answered; a logout landing while the validation was in flight (or, for Caffeine, while an expired token was reloaded before its asynchronous removal listener unindexed it) evicted nothing, and the token kept authenticating until the cache expiration. With the mark written before the index is read, and the index written before the mark is read, one side always sees the other.
 - Scope: storage-api `CaffeineOIDCTokenCache`, calendar-redis `RedisOIDCTokenCache`, the WebAdmin back-channel logout route.
+  
+## 2026-11-26, [Tech] Event search text is NFC-normalized at indexing and at query time
+
+- Decision: the calendar event search brings summary, location, description and the organizer, attendee and resource common names and addresses to Unicode NFC when indexing (`CalendarEventsDocument`), and the free text query to NFC before searching (`EventSearchQuery.withNfcQuery`), in OpenSearch and in memory alike. The index mapping is unchanged and documents indexed before are not rewritten: they are fixed by their next update or a reindexing.
+- Decided by: Benoit Tellier, following linagora/tmail-backend#3184 which does the same for mail search.
+- Why: a decomposed (NFD) text, as some clients send, was found neither by a composed query nor by an ASCII one (`reunion`, `hel` for "Réunion Hélène"), since ASCII folding only folds precomposed letters and leaves the combining marks in the token; a composed text was not found by a decomposed query either, and a decomposed summary reached the 7 code point prefix cap sooner (each combining mark counts).
+- Scope: `storage-opensearch` `CalendarEventsDocument`, `OpensearchCalendarSearchService`; `storage-api` `MemoryCalendarSearchService`, `EventSearchQuery`, `SearchTextNormalizer`.
+
+## 2026-11-27, [Tech] The back-channel logout route never echoes the logout token in its errors
+
+- Decision: extends the 2026-11-26 decision "A token verification error never carries the token nor the JWT library message" to the WebAdmin back-channel logout route: every logout token parse failure is reported as a fixed `Invalid logout token`, without the token and without chaining the Base64 or Jackson cause.
+- Decided by: Benoit Tellier, [issue #1663](https://github.com/linagora/twake-calendar-side-service/issues/1663)
+- Why: the route is public, Spark percent-decodes its form body, and James' WebAdmin logs the `IllegalArgumentException` with its cause as plain text, so anyone reaching WebAdmin could write line breaks and terminal escapes into the log; the chained decoding exceptions can quote the decoded payload.
+- Scope: `calendar-webadmin` `CalendarChannelLogoutRoutes`.

@@ -19,6 +19,10 @@
 package com.linagora.calendar.webadmin;
 
 import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.matchesPattern;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -129,6 +133,28 @@ class CalendarChannelLogoutRoutesTest {
             .post()
         .then()
             .statusCode(400);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "FAKE\r\n12:00:00.000 [ERROR] forged\u001b[31m",
+        "eyJ\r\n12:00:00.000 [ERROR] FAKE\u001b[31m",
+        "eyJ\r\nFAKE\u001b[31m.e30.signature",
+        "eyJblablabla.eyJGQUtFIjoiXHUwMDFiWzMxbSJ9.signature"
+    })
+    void postShouldNotEchoAnInvalidTokenInTheError(String invalidToken) {
+        given()
+            .contentType(ContentType.URLENC)
+            .formParam("logout_token", invalidToken)
+        .when()
+            .post()
+        .then()
+            .statusCode(400)
+            .body(allOf(
+                containsString("Invalid logout token"),
+                not(containsString("FAKE")),
+                not(containsString("eyJ")),
+                not(matchesPattern("(?s).*[\\x00-\\x08\\x0B-\\x1F].*"))));
     }
 
     @Test

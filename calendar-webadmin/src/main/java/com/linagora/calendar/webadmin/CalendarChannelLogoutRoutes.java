@@ -52,6 +52,7 @@ public class CalendarChannelLogoutRoutes implements PublicRoutes {
     private static final String APPLICATION_FORM_URLENCODED_VALUE = "application/x-www-form-urlencoded";
     private static final String TOKEN_PARAM = "logout_token";
     private static final String SID_PROPERTY = "sid";
+    private static final String INVALID_LOGOUT_TOKEN = "Invalid logout token";
 
     private final OIDCTokenCache oidcTokenCache;
     private final ObjectMapper objectMapper;
@@ -94,7 +95,7 @@ public class CalendarChannelLogoutRoutes implements PublicRoutes {
 
     private Sid extractSidFromLogoutToken(String token) {
         if (!Strings.CS.startsWith(token, "eyJ")) {  // Heuristic for detecting JWT
-            throw new IllegalArgumentException("Token do not start with JWT prefix: " + token);
+            throw new IllegalArgumentException(INVALID_LOGOUT_TOKEN);
         }
 
         try {
@@ -103,7 +104,7 @@ public class CalendarChannelLogoutRoutes implements PublicRoutes {
                 .omitEmptyStrings()
                 .splitToList(token);
             if (parts.size() < 2) {
-                throw new IllegalArgumentException("JWT do not contaim mandatory 2 parts: " + token);
+                throw new IllegalArgumentException(INVALID_LOGOUT_TOKEN);
             }
 
             String payloadJson = new String(BaseEncoding.base64Url().decode(parts.get(1)), StandardCharsets.UTF_8);
@@ -113,9 +114,10 @@ public class CalendarChannelLogoutRoutes implements PublicRoutes {
             return Optional.ofNullable(payloadMap.getOrDefault(SID_PROPERTY, null))
                 .map(s -> (String) s)
                 .map(Sid::new)
-                .orElseThrow(() -> new IllegalArgumentException("Unable to extract Sid from logout token: " + token));
+                .orElseThrow(() -> new IllegalArgumentException(INVALID_LOGOUT_TOKEN));
         } catch (Exception exception) {
-            throw new IllegalArgumentException("Unable to extract Sid from logout token: " + token, exception);
+            // Neither the token nor the cause is kept: the Base64 or Jackson message can quote the decoded payload
+            throw new IllegalArgumentException(INVALID_LOGOUT_TOKEN);
         }
     }
 }

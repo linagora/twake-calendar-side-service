@@ -248,7 +248,8 @@ public class OpensearchCalendarSearchService implements CalendarSearchService {
     }
 
     @Override
-    public Flux<EventFields> search(EventSearchQuery query) {
+    public Flux<EventFields> search(EventSearchQuery searchQuery) {
+        EventSearchQuery query = searchQuery.withNfcQuery();
         List<CalendarURL> calendars = validateSourceSearchCalendars(query);
         if (calendars.isEmpty()) {
             return Flux.empty();

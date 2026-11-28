@@ -83,7 +83,8 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
     }
 
     @Override
-    public Flux<EventFields> search(EventSearchQuery query) {
+    public Flux<EventFields> search(EventSearchQuery searchQuery) {
+        EventSearchQuery query = searchQuery.withNfcQuery();
         List<CalendarURL> calendars = validateSourceSearchCalendars(query);
         if (calendars.isEmpty()) {
             return Flux.empty();
@@ -154,17 +155,17 @@ public class MemoryCalendarSearchService implements CalendarSearchService {
             return true;
         }
 
-        return Strings.CI.contains(event.summary(), keyword) ||
-            Strings.CI.contains(event.description(), keyword) ||
-            Strings.CI.contains(event.location(), keyword) ||
+        return Strings.CI.contains(SearchTextNormalizer.nfc(event.summary()), keyword) ||
+            Strings.CI.contains(SearchTextNormalizer.nfc(event.description()), keyword) ||
+            Strings.CI.contains(SearchTextNormalizer.nfc(event.location()), keyword) ||
             Optional.ofNullable(event.organizer()).filter(matchesPerson(keyword)).isPresent() ||
             Optional.ofNullable(event.attendees()).orElse(List.of())
                 .stream().anyMatch(matchesPerson(keyword));
     }
 
     private Predicate<EventFields.Person> matchesPerson(String queryText) {
-        return person -> Strings.CI.contains(person.email().asString(), queryText)
-            || Strings.CI.contains(person.cn(), queryText);
+        return person -> Strings.CI.contains(SearchTextNormalizer.nfc(person.email().asString()), queryText)
+            || Strings.CI.contains(SearchTextNormalizer.nfc(person.cn()), queryText);
     }
 
     private boolean matchesCalendarRef(EventFields event, List<CalendarURL> calendarURLList) {
