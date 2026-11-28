@@ -56,16 +56,15 @@ import reactor.core.publisher.Mono;
 public abstract class OIDCTokenCacheContract {
 
     protected static final String EMAIL = "user@example.com";
-    protected static final String SID_STRING = "sid-1";
-    protected static final Sid SID = new Sid(SID_STRING);
     protected static final List<Aud> AUD = ImmutableList.of(new Aud("tcalendar"));
     protected static final Instant EXPIRES_AT = Instant.now().plus(Duration.ofMinutes(1));
-    protected static final TokenInfo TOKEN_INFO = new TokenInfo(EMAIL, Optional.of(SID), EXPIRES_AT, AUD);
-
     protected static final String EMAIL_2 = "user2@example.com";
-    protected static final String SID_STRING_2 = "sid-2";
-    protected static final Sid SID_2 = new Sid(SID_STRING_2);
-    protected static final TokenInfo TOKEN_INFO_2 = new TokenInfo(EMAIL_2, Optional.of(SID_2), EXPIRES_AT, AUD);
+
+    // Unique per test: a logout is remembered for its session, and shared backends (Redis) outlive a test.
+    protected final Sid sid = newSid();
+    protected final TokenInfo tokenInfo = new TokenInfo(EMAIL, Optional.of(sid), EXPIRES_AT, AUD);
+    protected final Sid sid2 = newSid();
+    protected final TokenInfo tokenInfo2 = new TokenInfo(EMAIL_2, Optional.of(sid2), EXPIRES_AT, AUD);
 
     protected TokenInfoResolver tokenInfoResolver = mock(TokenInfoResolver.class);
 
@@ -80,7 +79,7 @@ public abstract class OIDCTokenCacheContract {
     void beforeEach() {
         token = newToken();
         token2 = newToken();
-        mockTokenInfoResolverSuccess(token, TOKEN_INFO);
+        mockTokenInfoResolverSuccess(token, tokenInfo);
     }
 
     @AfterEach
@@ -92,13 +91,17 @@ public abstract class OIDCTokenCacheContract {
         return new Token("token-" + UUID.randomUUID());
     }
 
+    private static Sid newSid() {
+        return new Sid("sid-" + UUID.randomUUID());
+    }
+
     @Test
     public void invalidateShouldRemoveSidFromCache() {
         testee().associatedInformation(token).block();
 
         assertThat(getUsernameFromCache(token)).contains(Username.of(EMAIL));
 
-        testee().invalidate(SID).block();
+        testee().invalidate(sid).block();
         assertThat(getUsernameFromCache(token)).isEmpty();
     }
 
@@ -106,7 +109,7 @@ public abstract class OIDCTokenCacheContract {
     public void invalidateShouldRemoveTokenFromCache() {
         testee().associatedInformation(token).block();
         verify(tokenInfoResolver, times(1)).apply(token);
-        testee().invalidate(SID).block();
+        testee().invalidate(sid).block();
 
         assertThatThrownBy(() -> testee().associatedInformation(token).block())
             .isInstanceOf(UnauthorizedException.class);
@@ -121,11 +124,11 @@ public abstract class OIDCTokenCacheContract {
             .thenReturn(Mono.defer(() -> {
                 validating.countDown();
                 return Mono.fromFuture(idpAnswer);
-            }).thenReturn(TOKEN_INFO));
+            }).thenReturn(tokenInfo));
 
         CompletableFuture<TokenInfo> request = testee().associatedInformation(token).toFuture();
         assertThat(validating.await(10, TimeUnit.SECONDS)).isTrue();
-        testee().invalidate(SID).block();
+        testee().invalidate(sid).block();
         idpAnswer.complete(null);
 
         assertThatThrownBy(() -> request.get(10, TimeUnit.SECONDS))
@@ -136,16 +139,16 @@ public abstract class OIDCTokenCacheContract {
 
     @Test
     public void invalidateShouldRemoveAllTokensForSid() {
-        TokenInfo tokenInfo1 = new TokenInfo(EMAIL, Optional.of(SID), EXPIRES_AT, AUD);
-        TokenInfo tokenInfo2 = new TokenInfo(EMAIL_2, Optional.of(SID), EXPIRES_AT, AUD);
+        TokenInfo firstUserInfo = new TokenInfo(EMAIL, Optional.of(sid), EXPIRES_AT, AUD);
+        TokenInfo secondUserInfo = new TokenInfo(EMAIL_2, Optional.of(sid), EXPIRES_AT, AUD);
 
-        mockTokenInfoResolverSuccess(token, tokenInfo1);
-        mockTokenInfoResolverSuccess(token2, tokenInfo2);
+        mockTokenInfoResolverSuccess(token, firstUserInfo);
+        mockTokenInfoResolverSuccess(token2, secondUserInfo);
 
         testee().associatedInformation(token).block();
         testee().associatedInformation(token2).block();
 
-        testee().invalidate(SID).block();
+        testee().invalidate(sid).block();
 
         assertThat(getUsernameFromCache(token)).isEmpty();
         assertThat(getUsernameFromCache(token2)).isEmpty();
@@ -159,14 +162,14 @@ public abstract class OIDCTokenCacheContract {
 
     @Test
     public void invalidateShouldNotAffectOtherTokens() {
-        mockTokenInfoResolverSuccess(token, TOKEN_INFO);
-        mockTokenInfoResolverSuccess(token2, TOKEN_INFO_2);
+        mockTokenInfoResolverSuccess(token, tokenInfo);
+        mockTokenInfoResolverSuccess(token2, tokenInfo2);
         testee().associatedInformation(token).block();
         testee().associatedInformation(token2).block();
 
         verify(tokenInfoResolver, times(1)).apply(token2);
 
-        testee().invalidate(SID).block();
+        testee().invalidate(sid).block();
 
         testee().associatedInformation(token2).block();
         verify(tokenInfoResolver, times(1)).apply(token2);
@@ -205,9 +208,9 @@ public abstract class OIDCTokenCacheContract {
     @Test
     public void associatedUsernameShouldThrowWhenInvalidateRelatedSid() {
         Token token = new Token("token-" + UUID.randomUUID());
-        mockTokenInfoResolverSuccess(token, TOKEN_INFO);
+        mockTokenInfoResolverSuccess(token, tokenInfo);
         testee().associatedInformation(token).block();
-        testee().invalidate(SID).block();
+        testee().invalidate(sid).block();
 
         mockTokenInfoResolverFailure(token, new RuntimeException("Token expired"));
 

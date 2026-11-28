@@ -72,32 +72,32 @@ public abstract class RedisOIDCTokenCacheContract extends OIDCTokenCacheContract
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
     @Test
     public void associatedUsernameShouldStillReturnValueWhenRedisIsDown() {
-        mockTokenInfoResolverSuccess(token, TOKEN_INFO);
+        mockTokenInfoResolverSuccess(token, tokenInfo);
 
         pauseRedis();
 
         assertThat(testee().associatedInformation(token).block())
-            .isEqualTo(TOKEN_INFO);
+            .isEqualTo(tokenInfo);
     }
 
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
     @Test
     public void invalidateShouldSwallowRedisError() {
         pauseRedis();
-        assertThatCode(() -> testee().invalidate(SID).block())
+        assertThatCode(() -> testee().invalidate(sid).block())
             .doesNotThrowAnyException();
     }
 
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
     @Test
     public void shouldFallbackGracefullyWhenRedisIsDown() {
-        mockTokenInfoResolverSuccess(token, TOKEN_INFO);
+        mockTokenInfoResolverSuccess(token, tokenInfo);
         testee().associatedInformation(token).block();
 
         pauseRedis();
 
         // Another session: a logout recorded in Redis refuses the tokens of its own session
-        assertThatCode(() -> testee().invalidate(SID_2).block())
+        assertThatCode(() -> testee().invalidate(sid2).block())
             .doesNotThrowAnyException();
 
         assertThat(testee().associatedInformation(token).block().email())

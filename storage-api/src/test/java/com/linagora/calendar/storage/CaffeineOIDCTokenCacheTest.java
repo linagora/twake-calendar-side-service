@@ -64,17 +64,17 @@ public class CaffeineOIDCTokenCacheTest extends OIDCTokenCacheContract {
 
         CompletableFuture<TokenInfo> firstRequest = cache.associatedInformation(token).toFuture();
         runAll(tasks);
-        assertThat(firstRequest.join()).isEqualTo(TOKEN_INFO);
+        assertThat(firstRequest.join()).isEqualTo(tokenInfo);
 
         // The token expires, and a request reloads it before the removal listener of the expired entry runs:
         // the listener then unindexes the reloaded token.
         nanos.addAndGet(OIDCTokenCacheConfiguration.DEFAULT.expiration().plus(Duration.ofSeconds(1)).toNanos());
         CompletableFuture<TokenInfo> reload = cache.associatedInformation(token).toFuture();
         runAll(tasks);
-        assertThat(reload.join()).isEqualTo(TOKEN_INFO);
+        assertThat(reload.join()).isEqualTo(tokenInfo);
         verify(tokenInfoResolver, times(2)).apply(token);
 
-        cache.invalidate(SID).block();
+        cache.invalidate(sid).block();
         CompletableFuture<TokenInfo> afterLogout = cache.associatedInformation(token).toFuture();
         runAll(tasks);
 
